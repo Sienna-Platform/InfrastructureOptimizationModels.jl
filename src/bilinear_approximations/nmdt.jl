@@ -28,7 +28,7 @@ end
 # --- DNMDT bilinear approximation ---
 
 """
-    _add_bilinear_approx!(config::DNMDTBilinearConfig, container, C, names, time_steps, x_disc, y_disc, meta)
+    _add_bilinear_approx!(config::DNMDTBilinearConfig, container, C, names, time_steps, x_disc, y_disc, x_bounds, y_bounds, meta)
 
 Approximate x·y using the DNMDT method from pre-built discretizations.
 
@@ -44,6 +44,8 @@ container.
 - `time_steps::UnitRange{Int}`: time periods
 - `x_disc::NMDTDiscretization`: pre-built discretization for x
 - `y_disc::NMDTDiscretization`: pre-built discretization for y
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 - `meta::String`: identifier encoding the original variable type being approximated
 """
 function _add_bilinear_approx!(
@@ -54,10 +56,8 @@ function _add_bilinear_approx!(
     time_steps::UnitRange{Int},
     x_disc::NMDTDiscretization,
     y_disc::NMDTDiscretization,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     bx_yh_expr = _binary_continuous_product!(
@@ -84,13 +84,13 @@ function _add_bilinear_approx!(
     return _assemble_dnmdt!(
         container, C, names, time_steps,
         bx_yh_expr, by_dx_expr, by_xh_expr, bx_dy_expr,
-        x_disc, y_disc, x_min, x_max, y_min, y_max,
+        x_disc, y_disc, x_bounds, y_bounds,
         config.depth, meta; result_type = BilinearProductExpression,
     )
 end
 
 """
-    _add_bilinear_approx!(config::DNMDTBilinearConfig, container, C, names, time_steps, x_var, y_var, x_min, x_max, y_min, y_max, meta)
+    _add_bilinear_approx!(config::DNMDTBilinearConfig, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
 
 Approximate x·y using the DNMDT method from raw variable inputs.
 
@@ -105,10 +105,8 @@ pre-discretized overload.
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of x variables indexed by (name, t)
 - `y_var`: container of y variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x
-- `x_max::Float64`: upper bound of x
-- `y_min::Float64`: lower bound of y
-- `y_max::Float64`: upper bound of y
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 - `meta::String`: identifier encoding the original variable type being approximated
 """
 function _add_bilinear_approx!(
@@ -119,10 +117,8 @@ function _add_bilinear_approx!(
     time_steps::UnitRange{Int},
     x_var,
     y_var,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     x_disc = _discretize!(
@@ -131,8 +127,7 @@ function _add_bilinear_approx!(
         names,
         time_steps,
         x_var,
-        x_min,
-        x_max,
+        x_bounds,
         config.depth,
         meta * "_x",
     )
@@ -142,8 +137,7 @@ function _add_bilinear_approx!(
         names,
         time_steps,
         y_var,
-        y_min,
-        y_max,
+        y_bounds,
         config.depth,
         meta * "_y",
     )
@@ -155,10 +149,8 @@ function _add_bilinear_approx!(
         time_steps,
         x_disc,
         y_disc,
-        x_min,
-        x_max,
-        y_min,
-        y_max,
+        x_bounds,
+        y_bounds,
         meta,
     )
 end
@@ -166,7 +158,7 @@ end
 # --- NMDT bilinear approximation ---
 
 """
-    _add_bilinear_approx!(config::NMDTBilinearConfig, container, C, names, time_steps, x_disc, yh_expr, y_min, y_max, meta)
+    _add_bilinear_approx!(config::NMDTBilinearConfig, container, C, names, time_steps, x_disc, yh_expr, x_bounds, y_bounds, meta)
 
 Approximate x·y using the NMDT method from a pre-built x discretization and normalized y.
 
@@ -182,8 +174,8 @@ x·y via `_assemble_product!`. Stores results in a `BilinearProductExpression` c
 - `time_steps::UnitRange{Int}`: time periods
 - `x_disc::NMDTDiscretization`: pre-built discretization for x
 - `yh_expr`: expression container for the normalized variable yh = (y − y_min)/(y_max − y_min)
-- `y_min::Float64`: lower bound of y
-- `y_max::Float64`: upper bound of y
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 - `meta::String`: identifier encoding the original variable type being approximated
 """
 function _add_bilinear_approx!(
@@ -194,10 +186,8 @@ function _add_bilinear_approx!(
     time_steps::UnitRange{Int},
     x_disc::NMDTDiscretization,
     yh_expr,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String;
 ) where {C <: IS.InfrastructureSystemsComponent}
     bx_y_expr = _binary_continuous_product!(
@@ -213,13 +203,13 @@ function _add_bilinear_approx!(
     return _assemble_product!(
         container, C, names, time_steps,
         [bx_y_expr], dz,
-        x_disc, yh_expr, x_min, x_max, y_min, y_max,
+        x_disc, yh_expr, x_bounds, y_bounds,
         meta; result_type = BilinearProductExpression,
     )
 end
 
 """
-    _add_bilinear_approx!(config::NMDTBilinearConfig, container, C, names, time_steps, x_var, y_var, x_min, x_max, y_min, y_max, meta)
+    _add_bilinear_approx!(config::NMDTBilinearConfig, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
 
 Approximate x·y using the NMDT method from raw variable inputs.
 
@@ -234,10 +224,8 @@ delegates to the pre-discretized overload.
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of x variables indexed by (name, t)
 - `y_var`: container of y variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x
-- `x_max::Float64`: upper bound of x
-- `y_min::Float64`: lower bound of y
-- `y_max::Float64`: upper bound of y
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 - `meta::String`: identifier encoding the original variable type being approximated
 """
 function _add_bilinear_approx!(
@@ -248,10 +236,8 @@ function _add_bilinear_approx!(
     time_steps::UnitRange{Int},
     x_var,
     y_var,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     x_disc = _discretize!(
@@ -260,13 +246,12 @@ function _add_bilinear_approx!(
         names,
         time_steps,
         x_var,
-        x_min,
-        x_max,
+        x_bounds,
         config.depth,
         meta * "_x",
     )
     yh_expr =
-        _normed_variable!(container, C, names, time_steps, y_var, y_min, y_max, meta * "_y")
+        _normed_variable!(container, C, names, time_steps, y_var, y_bounds, meta * "_y")
     return _add_bilinear_approx!(
         config,
         container,
@@ -275,10 +260,8 @@ function _add_bilinear_approx!(
         time_steps,
         x_disc,
         yh_expr,
-        x_min,
-        x_max,
-        y_min,
-        y_max,
+        x_bounds,
+        y_bounds,
         meta,
     )
 end

@@ -10,7 +10,7 @@ struct QuadraticExpression <: ExpressionType end
 abstract type QuadraticApproxConfig end
 
 """
-    _normed_variable!(container, C, names, time_steps, x_var, x_min, x_max, meta)
+    _normed_variable!(container, C, names, time_steps, x_var, bounds, meta)
 
 Create an affine expression for the normalized variable xh = (x − x_min) / (x_max − x_min) ∈ [0,1].
 
@@ -22,8 +22,7 @@ Stores results in a `NormedVariableExpression` expression container.
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x domain
-- `x_max::Float64`: upper bound of x domain
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: identifier encoding the original variable type being approximated
 """
 function _normed_variable!(
@@ -32,12 +31,9 @@ function _normed_variable!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_var,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    IS.@assert_op x_max > x_min
-    lx = x_max - x_min
     result_expr = add_expression_container!(
         container,
         NormedVariableExpression,
@@ -47,9 +43,12 @@ function _normed_variable!(
         meta,
     )
 
-    for name in names, t in time_steps
+    for (i, name) in enumerate(names), t in time_steps
+        b = bounds[i]
+        IS.@assert_op b.max > b.min
+        lx = b.max - b.min
         result = result_expr[name, t] = JuMP.AffExpr(0.0)
-        add_linear_to_jump_expression!(result, x_var[name, t], 1.0 / lx, -x_min / lx)
+        add_linear_to_jump_expression!(result, x_var[name, t], 1.0 / lx, -b.min / lx)
     end
     return result_expr
 end

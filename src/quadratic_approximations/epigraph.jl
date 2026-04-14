@@ -24,7 +24,7 @@ struct EpigraphQuadConfig <: QuadraticApproxConfig
 end
 
 """
-    _add_quadratic_approx!(::EpigraphQuadConfig, container, C, names, time_steps, x_var, x_min, x_max, meta)
+    _add_quadratic_approx!(::EpigraphQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 
 Create a variable z that lower-bounds x² using tangent-line cuts (Q^{L1} relaxation).
 
@@ -44,8 +44,7 @@ The maximum underestimation gap between the tangent envelope and x² is
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x domain
-- `x_max::Float64`: upper bound of x domain
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: variable type identifier for the approximated variable
 """
 function _add_quadratic_approx!(
@@ -55,14 +54,11 @@ function _add_quadratic_approx!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_var,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    IS.@assert_op x_max > x_min
     IS.@assert_op config.depth >= 1
     jump_model = get_jump_model(container)
-    delta = x_max - x_min
     g_levels = 0:(config.depth)
 
     z_var = add_variable_container!(
@@ -126,10 +122,11 @@ function _add_quadratic_approx!(
         meta,
     )
 
-    # Upper bound for epigraph variable z ≈ x²
-    z_ub = max(x_min^2, x_max^2)
-
-    for name in names, t in time_steps
+    for (i, name) in enumerate(names), t in time_steps
+        b = bounds[i]
+        IS.@assert_op b.max > b.min
+        delta = b.max - b.min
+        z_ub = max(b.min^2, b.max^2)
         x = x_var[name, t]
 
         # Auxiliary variables g_0,...,g_L ∈ [0, 1]
@@ -146,7 +143,7 @@ function _add_quadratic_approx!(
         # Linking constraint: g_0 = (x - x_min) / Δ
         link_cons[name, t] = JuMP.@constraint(
             jump_model,
-            g0 == (x - x_min) / delta,
+            g0 == (x - b.min) / delta,
         )
 
         # T^L constraints for j = 1,...,L
@@ -180,13 +177,13 @@ function _add_quadratic_approx!(
             tangent_cons[(name, j + 1, t)] = JuMP.@constraint(
                 jump_model,
                 z >=
-                x_min * (2 * delta * g0 + x_min) - fL + delta^2 * (g0 - 2.0^(-2j - 2))
+                b.min * (2 * delta * g0 + b.min) - fL + delta^2 * (g0 - 2.0^(-2j - 2))
             )
         end
         tangent_cons[name, 1, t] = JuMP.@constraint(jump_model, z >= 0)
         tangent_cons[name, config.depth + 1, t] = JuMP.@constraint(
             jump_model,
-            z >= 2.0 * x_min - 1.0 + 2.0 * delta * g0
+            z >= 2.0 * b.min - 1.0 + 2.0 * delta * g0
         )
 
         result_expr[name, t] = JuMP.AffExpr(0.0, z => 1.0)

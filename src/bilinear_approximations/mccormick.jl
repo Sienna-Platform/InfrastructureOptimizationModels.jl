@@ -173,6 +173,90 @@ function _add_mccormick_envelope!(
     return
 end
 
+"""
+    _add_mccormick_envelope!(container, C, names, time_steps, x_var, y_var, z_var, x_bounds, y_bounds, meta)
+
+Add McCormick envelope constraints for the bilinear product z ≈ x·y with per-name bounds.
+
+For each (name, t), adds 4 linear inequalities using bounds looked up by name index.
+
+# Arguments
+- `container::OptimizationContainer`: the optimization container
+- `::Type{C}`: component type
+- `names::Vector{String}`: component names
+- `time_steps::UnitRange{Int}`: time periods
+- `x_var`: container of x variables indexed by (name, t)
+- `y_var`: container of y variables indexed by (name, t)
+- `z_var`: container of z variables indexed by (name, t)
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
+- `meta::String`: identifier for container keys
+
+# Returns
+- Nothing. Constraints are added in-place.
+"""
+function _add_mccormick_envelope!(
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    x_var,
+    y_var,
+    z_var,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
+    meta::String;
+    lower_bounds::Bool = true,
+) where {C <: IS.InfrastructureSystemsComponent}
+    jump_model = get_jump_model(container)
+
+    mc_cons = add_constraints_container!(
+        container,
+        McCormickConstraint(),
+        C,
+        names,
+        1:4,
+        time_steps;
+        sparse = true,
+        meta,
+    )
+
+    for (i, name) in enumerate(names), t in time_steps
+        xb = x_bounds[i]
+        yb = y_bounds[i]
+        IS.@assert_op xb.max > xb.min
+        IS.@assert_op yb.max > yb.min
+        _add_mccormick_envelope!(
+            jump_model, mc_cons, (name, t),
+            x_var[name, t], y_var[name, t], z_var[name, t],
+            xb.min, xb.max, yb.min, yb.max;
+            lower_bounds,
+        )
+    end
+
+    return
+end
+
+function _add_mccormick_envelope!(
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    x_var,
+    z_var,
+    bounds::Vector{MinMax},
+    meta::String;
+    lower_bounds::Bool = true,
+) where {C <: IS.InfrastructureSystemsComponent}
+    _add_mccormick_envelope!(
+        container, C, names, time_steps,
+        x_var, x_var, z_var,
+        bounds, bounds,
+        meta; lower_bounds,
+    )
+    return
+end
+
 function _add_mccormick_envelope!(
     jump_model::JuMP.Model,
     cons,
@@ -265,12 +349,16 @@ function _add_reformulated_mccormick_bin2!(
 end
 
 """
-    _add_reformulated_mccormick!(container, C, names, time_steps, x_var, y_var, psq, xsq, ysq, x_min, x_max, y_min, y_max, meta)
+    _add_reformulated_mccormick!(container, C, names, time_steps, x_var, y_var, psq, xsq, ysq, x_bounds, y_bounds, meta)
 
 Add 4 reformulated McCormick cuts for Bin2 separable bilinear approximation.
 Substitutes z = ½(z_p1 − z_x − z_y) into the standard McCormick envelope.
 
 `psq`, `xsq`, `ysq` are expression containers for (x+y)², x², y² approximations.
+
+# Arguments
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
 function _add_reformulated_mccormick!(
     container::OptimizationContainer,
@@ -282,14 +370,10 @@ function _add_reformulated_mccormick!(
     psq,
     xsq,
     ysq,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    IS.@assert_op x_max > x_min
-    IS.@assert_op y_max > y_min
     jump_model = get_jump_model(container)
 
     mc_cons = add_constraints_container!(
@@ -303,12 +387,16 @@ function _add_reformulated_mccormick!(
         meta,
     )
 
-    for name in names, t in time_steps
+    for (i, name) in enumerate(names), t in time_steps
+        xb = x_bounds[i]
+        yb = y_bounds[i]
+        IS.@assert_op xb.max > xb.min
+        IS.@assert_op yb.max > yb.min
         _add_reformulated_mccormick_bin2!(
             jump_model, mc_cons, (name, t),
             x_var[name, t], y_var[name, t],
             psq[name, t], xsq[name, t], ysq[name, t],
-            x_min, x_max, y_min, y_max,
+            xb.min, xb.max, yb.min, yb.max,
         )
     end
 

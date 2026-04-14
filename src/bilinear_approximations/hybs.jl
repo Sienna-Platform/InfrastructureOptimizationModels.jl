@@ -28,9 +28,13 @@ HybSConfig(quad_config::QuadraticApproxConfig, epigraph_depth::Int) =
 # --- Unified HybS dispatch methods ---
 
 """
-    _add_bilinear_approx!(config::HybSConfig, container, C, names, time_steps, x_var, y_var, x_min, x_max, y_min, y_max, meta)
+    _add_bilinear_approx!(config::HybSConfig, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
 
 Approximate x·y using HybS (Hybrid Separable) relaxation with config-selected quadratic method.
+
+# Arguments
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
 function _add_bilinear_approx!(
     config::HybSConfig,
@@ -40,29 +44,27 @@ function _add_bilinear_approx!(
     time_steps::UnitRange{Int},
     x_var,
     y_var,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     xsq = _add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
-        x_var, x_min, x_max, meta * "_x",
+        x_var, x_bounds, meta * "_x",
     )
     ysq = _add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
-        y_var, y_min, y_max, meta * "_y",
+        y_var, y_bounds, meta * "_y",
     )
     return _add_bilinear_approx!(
         config, container, C, names, time_steps,
         xsq, ysq, x_var, y_var,
-        x_min, x_max, y_min, y_max, meta,
+        x_bounds, y_bounds, meta,
     )
 end
 
 """
-    _add_bilinear_approx!(config::HybSConfig, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_min, x_max, y_min, y_max, meta)
+    _add_bilinear_approx!(config::HybSConfig, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
 
 HybS bilinear approximation with pre-computed quadratic approximations for x² and y².
 
@@ -71,6 +73,10 @@ Combines Bin2 and Bin3 separable identities:
 - Bin3 upper bound: z ≤ ½(z_x + z_y − z_p2) where z_p2 lower-bounds (x−y)²
 
 The cross-terms (x+y)² and (x−y)² always use epigraph Q^{L1} (pure LP).
+
+# Arguments
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
 function _add_bilinear_approx!(
     config::HybSConfig,
@@ -82,19 +88,13 @@ function _add_bilinear_approx!(
     ysq,
     x_var,
     y_var,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    # Bounds for auxiliary variables
-    p1_min = x_min + y_min
-    p1_max = x_max + y_max
-    p2_min = x_min - y_max     # p2 = x − y, so min uses −y_max
-    p2_max = x_max - y_min     # and max uses −y_min
-    IS.@assert_op x_max > x_min
-    IS.@assert_op y_max > y_min
+    # Bounds for auxiliary variables (per-name)
+    p1_bounds = [MinMax((min = x_bounds[i].min + y_bounds[i].min, max = x_bounds[i].max + y_bounds[i].max)) for i in eachindex(x_bounds)]
+    p2_bounds = [MinMax((min = x_bounds[i].min - y_bounds[i].max, max = x_bounds[i].max - y_bounds[i].min)) for i in eachindex(x_bounds)]
 
     jump_model = get_jump_model(container)
 
@@ -139,12 +139,12 @@ function _add_bilinear_approx!(
     zp1_expr = _add_quadratic_approx!(
         epi_cfg,
         container, C, names, time_steps,
-        p1_expr, p1_min, p1_max, meta_p1,
+        p1_expr, p1_bounds, meta_p1,
     )
     zp2_expr = _add_quadratic_approx!(
         epi_cfg,
         container, C, names, time_steps,
-        p2_expr, p2_min, p2_max, meta_p2,
+        p2_expr, p2_bounds, meta_p2,
     )
 
     # --- Create z variable and two-sided HybS bounds ---
@@ -175,11 +175,14 @@ function _add_bilinear_approx!(
         meta,
     )
 
-    # Compute valid bounds for z ≈ x·y from variable bounds
-    z_lo = min(x_min * y_min, x_min * y_max, x_max * y_min, x_max * y_max)
-    z_hi = max(x_min * y_min, x_min * y_max, x_max * y_min, x_max * y_max)
+    for (i, name) in enumerate(names), t in time_steps
+        xb = x_bounds[i]
+        yb = y_bounds[i]
 
-    for name in names, t in time_steps
+        # Compute valid bounds for z ≈ x·y from variable bounds
+        z_lo = min(xb.min * yb.min, xb.min * yb.max, xb.max * yb.min, xb.max * yb.max)
+        z_hi = max(xb.min * yb.min, xb.min * yb.max, xb.max * yb.min, xb.max * yb.max)
+
         z =
             z_var[name, t] = JuMP.@variable(
                 jump_model,
@@ -212,7 +215,7 @@ function _add_bilinear_approx!(
         _add_mccormick_envelope!(
             container, C, names, time_steps,
             x_var, y_var, z_var,
-            x_min, x_max, y_min, y_max, meta,
+            x_bounds, y_bounds, meta,
         )
     end
 

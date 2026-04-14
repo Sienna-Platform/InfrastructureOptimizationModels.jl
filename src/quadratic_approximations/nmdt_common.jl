@@ -36,7 +36,7 @@ struct NMDTDiscretization
 end
 
 """
-    _discretize!(container, C, names, time_steps, x_var, x_min, x_max, depth, meta)
+    _discretize!(container, C, names, time_steps, x_var, bounds, depth, meta)
 
 Discretize the normalized variable xh = (x − x_min)/(x_max − x_min) using L binary variables.
 
@@ -50,8 +50,7 @@ returns an `NMDTDiscretization` struct holding all components.
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x domain
-- `x_max::Float64`: upper bound of x domain
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `depth::Int`: number of binary discretization levels L
 - `meta::String`: identifier encoding the original variable type being approximated
 """
@@ -61,12 +60,10 @@ function _discretize!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_var,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     depth::Int,
     meta::String;
 ) where {C <: IS.InfrastructureSystemsComponent}
-    IS.@assert_op x_max > x_min
     IS.@assert_op depth >= 1
     jump_model = get_jump_model(container)
 
@@ -106,7 +103,7 @@ function _discretize!(
 
     xh_expr = _normed_variable!(
         container, C, names, time_steps,
-        x_var, x_min, x_max, meta,
+        x_var, bounds, meta,
     )
 
     for name in names, t in time_steps
@@ -259,7 +256,8 @@ function _tighten_lower_bounds!(
     epi_expr = _add_quadratic_approx!(
         EpigraphQuadConfig(epigraph_depth),
         container, C, names, time_steps,
-        x_disc.norm_expr, 0.0, 1.0, meta * "_epi",
+        x_disc.norm_expr, fill(MinMax((min = 0.0, max = 1.0)), length(names)),
+        meta * "_epi",
     )
     epi_cons = add_constraints_container!(
         container,
@@ -341,7 +339,7 @@ function _residual_product!(
 end
 
 """
-    _assemble_product!(container, C, names, time_steps, terms, dz_var, x_disc, y_disc, meta; result_type)
+    _assemble_product!(container, C, names, time_steps, terms, dz_var, xh_norm, yh_norm, x_bounds, y_bounds, meta; result_type)
 
 Reconstruct the bilinear product x·y from normalized NMDT components.
 
@@ -363,10 +361,8 @@ Stores results in an expression container of type `result_type`.
 - `dz_var`: variable container for the residual product δ·y
 - `xh_norm`: normed expression container for x
 - `yh_norm`: normed expression container for y
-- `x_min::Float64`: original x min
-- `x_max::Float64`: original x max
-- `y_min::Float64`: original y min
-- `y_max::Float64`: original y max
+- `x_bounds::Vector{MinMax}`: per-name bounds for x
+- `y_bounds::Vector{MinMax}`: per-name bounds for y
 - `meta::String`: identifier encoding the original variable type being approximated
 - `result_type`: expression type to store results in (default: `NMDTResultExpression`)
 """
@@ -379,16 +375,11 @@ function _assemble_product!(
     dz_var,
     xh_expr,
     yh_expr,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String;
     result_type = NMDTResultExpression,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    lx = x_max - x_min
-    ly = y_max - y_min
-
     result_expr = add_expression_container!(
         container,
         result_type,
@@ -398,7 +389,12 @@ function _assemble_product!(
         meta,
     )
 
-    for name in names, t in time_steps
+    for (i, name) in enumerate(names), t in time_steps
+        xb = x_bounds[i]
+        yb = y_bounds[i]
+        lx = xb.max - xb.min
+        ly = yb.max - yb.min
+
         result = result_expr[name, t] = JuMP.AffExpr(0.0)
         zh = JuMP.AffExpr(0.0)
         for term in terms
@@ -407,16 +403,16 @@ function _assemble_product!(
         add_proportional_to_jump_expression!(zh, dz_var[name, t], 1.0)
 
         add_proportional_to_jump_expression!(result, zh, lx * ly)
-        add_proportional_to_jump_expression!(result, xh_expr[name, t], lx * y_min)
-        add_proportional_to_jump_expression!(result, yh_expr[name, t], ly * x_min)
-        add_constant_to_jump_expression!(result, x_min * y_min)
+        add_proportional_to_jump_expression!(result, xh_expr[name, t], lx * yb.min)
+        add_proportional_to_jump_expression!(result, yh_expr[name, t], ly * xb.min)
+        add_constant_to_jump_expression!(result, xb.min * yb.min)
     end
 
     return result_expr
 end
 
 """
-    _assemble_product!(container, C, names, time_steps, terms, dz_var, x_disc::NMDTDiscretization, y_disc::NMDTDiscretization, x_min, x_max, y_min, y_max, meta; result_type)
+    _assemble_product!(container, C, names, time_steps, terms, dz_var, x_disc::NMDTDiscretization, y_disc::NMDTDiscretization, x_bounds, y_bounds, meta; result_type)
 
 Convenience overload: extracts `norm_expr` from both discretizations and delegates to the core `_assemble_product!`.
 """
@@ -429,23 +425,21 @@ function _assemble_product!(
     dz_var,
     x_disc::NMDTDiscretization,
     y_disc::NMDTDiscretization,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String;
     result_type = NMDTResultExpression,
 ) where {C <: IS.InfrastructureSystemsComponent}
     return _assemble_product!(
         container, C, names, time_steps, terms, dz_var,
         x_disc.norm_expr, y_disc.norm_expr,
-        x_min, x_max, y_min, y_max,
+        x_bounds, y_bounds,
         meta; result_type,
     )
 end
 
 """
-    _assemble_product!(container, C, names, time_steps, terms, dz_var, x_disc::NMDTDiscretization, yh_expr, x_min, x_max, y_min, y_max, meta; result_type)
+    _assemble_product!(container, C, names, time_steps, terms, dz_var, x_disc::NMDTDiscretization, yh_expr, x_bounds, y_bounds, meta; result_type)
 
 Convenience overload: extracts `norm_expr` from x_disc and delegates to the core `_assemble_product!`.
 """
@@ -458,17 +452,15 @@ function _assemble_product!(
     dz_var,
     x_disc::NMDTDiscretization,
     yh_expr,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String;
     result_type = NMDTResultExpression,
 ) where {C <: IS.InfrastructureSystemsComponent}
     return _assemble_product!(
         container, C, names, time_steps, terms, dz_var,
         x_disc.norm_expr, yh_expr,
-        x_min, x_max, y_min, y_max,
+        x_bounds, y_bounds,
         meta; result_type,
     )
 end
@@ -497,6 +489,9 @@ container of type `result_type`.
 - `bx_dy_expr`: expression for β_x·δy binary-continuous products
 - `x_disc::NMDTDiscretization`: discretization for x
 - `y_disc::NMDTDiscretization`: discretization for y
+- `x_bounds::Vector{MinMax}`: per-name bounds for x
+- `y_bounds::Vector{MinMax}`: per-name bounds for y
+- `depth::Int`: number of binary discretization levels L
 - `meta::String`: identifier encoding the original variable type being approximated
 - `lambda::Float64`: convex combination weight for the two NMDT estimates (default: `DNMDT_LAMBDA` = 0.5)
 - `result_type`: expression type to store results in (default: `NMDTResultExpression`)
@@ -512,10 +507,8 @@ function _assemble_dnmdt!(
     bx_dy_expr,
     x_disc::NMDTDiscretization,
     y_disc::NMDTDiscretization,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     depth::Int,
     meta::String;
     lambda::Float64 = DNMDT_LAMBDA,
@@ -539,13 +532,13 @@ function _assemble_dnmdt!(
     z1_expr = _assemble_product!(
         container, C, names, time_steps,
         [bx_yh_expr, by_dx_expr], dz,
-        x_disc, y_disc, x_min, x_max, y_min, y_max,
+        x_disc, y_disc, x_bounds, y_bounds,
         meta * "_nmdt1",
     )
     z2_expr = _assemble_product!(
         container, C, names, time_steps,
         [by_xh_expr, bx_dy_expr], dz,
-        y_disc, x_disc, y_min, y_max, x_min, x_max,
+        y_disc, x_disc, y_bounds, x_bounds,
         meta * "_nmdt2",
     )
 

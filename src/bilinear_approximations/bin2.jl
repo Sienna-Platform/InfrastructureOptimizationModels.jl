@@ -34,9 +34,13 @@ Bin2Config(quad_config::QuadraticApproxConfig) = Bin2Config(quad_config, true)
 # --- Unified bilinear approximation dispatch ---
 
 """
-    _add_bilinear_approx!(config::Bin2Config, container, C, names, time_steps, x_var, y_var, x_min, x_max, y_min, y_max, meta)
+    _add_bilinear_approx!(config::Bin2Config, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
 
 Standard form: compute x² and y² quadratic approximations, then delegate to precomputed form.
+
+# Arguments
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
 function _add_bilinear_approx!(
     config::Bin2Config,
@@ -46,32 +50,34 @@ function _add_bilinear_approx!(
     time_steps::UnitRange{Int},
     x_var,
     y_var,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     xsq = _add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
-        x_var, x_min, x_max, meta * "_x",
+        x_var, x_bounds, meta * "_x",
     )
     ysq = _add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
-        y_var, y_min, y_max, meta * "_y",
+        y_var, y_bounds, meta * "_y",
     )
     return _add_bilinear_approx!(
         config, container, C, names, time_steps,
         xsq, ysq, x_var, y_var,
-        x_min, x_max, y_min, y_max, meta,
+        x_bounds, y_bounds, meta,
     )
 end
 
 """
-    _add_bilinear_approx!(config::Bin2Config, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_min, x_max, y_min, y_max, meta)
+    _add_bilinear_approx!(config::Bin2Config, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
 
 Precomputed form: Bin2 identity z = ½((x+y)² − x² − y²) with optional PWMCC concave cuts.
 Accepts pre-computed quadratic approximations `xsq` ≈ x² and `ysq` ≈ y².
+
+# Arguments
+- `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
+- `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
 function _add_bilinear_approx!(
     config::Bin2Config,
@@ -83,18 +89,14 @@ function _add_bilinear_approx!(
     ysq,
     x_var,
     y_var,
-    x_min::Float64,
-    x_max::Float64,
-    y_min::Float64,
-    y_max::Float64,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     # --- Bin2 identity: z = ½((x+y)² − x² − y²) ---
 
-    # Bounds for p = x + y
-    p_min = x_min + y_min
-    p_max = x_max + y_max
-    IS.@assert_op p_min <= p_max
+    # Bounds for p = x + y (per-name)
+    p_bounds = [MinMax((min = x_bounds[i].min + y_bounds[i].min, max = x_bounds[i].max + y_bounds[i].max)) for i in eachindex(x_bounds)]
 
     meta_plus = meta * "_plus"
 
@@ -116,7 +118,7 @@ function _add_bilinear_approx!(
     # Approximate p² = (x+y)² using the provided quadratic config
     psq = _add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
-        p_expr, p_min, p_max, meta_plus,
+        p_expr, p_bounds, meta_plus,
     )
 
     result_expr = add_expression_container!(
@@ -141,7 +143,7 @@ function _add_bilinear_approx!(
         _add_reformulated_mccormick!(
             container, C, names, time_steps,
             x_var, y_var, psq, xsq, ysq,
-            x_min, x_max, y_min, y_max, meta,
+            x_bounds, y_bounds, meta,
         )
     end
 

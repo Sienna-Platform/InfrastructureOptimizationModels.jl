@@ -32,11 +32,11 @@ struct PiecewiseMcCormickTangentLBL <: ConstraintType end
 struct PiecewiseMcCormickTangentLBR <: ConstraintType end
 
 """
-    _add_pwmcc_concave_cuts!(container, C, names, time_steps, v_var, q_expr, v_min, v_max, K, meta)
+    _add_pwmcc_concave_cuts!(container, C, names, time_steps, v_var, q_expr, bounds, K, meta)
 
 Add piecewise McCormick cuts on a concave term (-v^2) to tighten its SoS2 LP relaxation.
 
-Partitions [v_min, v_max] into K uniform sub-intervals and adds disaggregated
+Partitions each name's [v_min, v_max] into K uniform sub-intervals and adds disaggregated
 variables, binary interval selectors, and chord/tangent constraints that cut off
 the interior of the SoS2 relaxation polytope.
 
@@ -47,8 +47,7 @@ the interior of the SoS2 relaxation polytope.
 - `time_steps::UnitRange{Int}`: time periods
 - `v_var`: container of the original variable indexed by (name, t)
 - `q_expr`: expression container for the SoS2 approximation of v^2 (indexed by (name, t))
-- `v_min::Float64`: lower bound of v domain
-- `v_max::Float64`: upper bound of v domain
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of v domain
 - `K::Int`: number of sub-intervals (K=2 is the minimal useful choice)
 - `meta::String`: unique key prefix, e.g. "pwmcc_x" or "pwmcc_y"
 """
@@ -59,24 +58,13 @@ function _add_pwmcc_concave_cuts!(
     time_steps::UnitRange{Int},
     v_var,
     q_expr,
-    v_min::Float64,
-    v_max::Float64,
+    bounds::Vector{MinMax},
     K::Int,
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     IS.@assert_op K >= 1
-    IS.@assert_op v_min < v_max
 
     jump_model = get_jump_model(container)
-
-    # Pre-compute breakpoints and derived coefficients (depend only on k, not on name/t)
-    brk = [v_min + k * (v_max - v_min) / K for k in 0:K]
-    sum_brk = [brk[k] + brk[k + 1] for k in 1:K]
-    prod_brk = [brk[k] * brk[k + 1] for k in 1:K]
-    two_brk_l = [2.0 * brk[k] for k in 1:K]
-    sq_brk_l = [brk[k]^2 for k in 1:K]
-    two_brk_r = [2.0 * brk[k + 1] for k in 1:K]
-    sq_brk_r = [brk[k + 1]^2 for k in 1:K]
 
     # Create containers
     delta_var = add_variable_container!(container, PiecewiseMcCormickBinary, C; meta)
@@ -145,7 +133,21 @@ function _add_pwmcc_concave_cuts!(
     delta = Vector{JuMP.VariableRef}(undef, K)
     vd = Vector{JuMP.VariableRef}(undef, K)
 
-    for name in names, t in time_steps
+    for (idx, name) in enumerate(names), t in time_steps
+        b = bounds[idx]
+        IS.@assert_op b.min < b.max
+        v_min = b.min
+        v_max = b.max
+
+        # Compute breakpoints and derived coefficients for this name
+        brk = [v_min + k * (v_max - v_min) / K for k in 0:K]
+        sum_brk = [brk[k] + brk[k + 1] for k in 1:K]
+        prod_brk = [brk[k] * brk[k + 1] for k in 1:K]
+        two_brk_l = [2.0 * brk[k] for k in 1:K]
+        sq_brk_l = [brk[k]^2 for k in 1:K]
+        two_brk_r = [2.0 * brk[k + 1] for k in 1:K]
+        sq_brk_r = [brk[k + 1]^2 for k in 1:K]
+
         v = v_var[name, t]
         q = q_expr[name, t]
 
