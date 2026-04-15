@@ -67,10 +67,24 @@ function _add_pwmcc_concave_cuts!(
     jump_model = get_jump_model(container)
 
     # Create containers
-    delta_var = add_variable_container!(container, PiecewiseMcCormickBinary, C; meta)
-    vd_var =
-        add_variable_container!(container, PiecewiseMcCormickDisaggregated, C; meta)
-
+    delta_var = add_variable_container!(
+        container,
+        PiecewiseMcCormickBinary,
+        C,
+        names,
+        1:K,
+        time_steps;
+        meta
+    )
+    vd_var = add_variable_container!(
+        container,
+        PiecewiseMcCormickDisaggregated,
+        C,
+        names,
+        1:K,
+        time_steps;
+        meta
+    )
     selector_cons = add_constraints_container!(
         container,
         PiecewiseMcCormickSelectorSum(),
@@ -153,13 +167,13 @@ function _add_pwmcc_concave_cuts!(
 
         for k in 1:K
             delta[k] =
-                delta_var[(name, k, t)] = JuMP.@variable(
+                delta_var[name, k, t] = JuMP.@variable(
                     jump_model,
                     base_name = "PwMcCBin_$(C)_{$(name), $(k), $(t)}",
                     binary = true,
                 )
             vd[k] =
-                vd_var[(name, k, t)] = JuMP.@variable(
+                vd_var[name, k, t] = JuMP.@variable(
                     jump_model,
                     base_name = "PwMcCDis_$(C)_{$(name), $(k), $(t)}",
                 )

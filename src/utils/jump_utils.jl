@@ -428,6 +428,42 @@ function to_outputs_dataframe(
     )
 end
 
+function to_outputs_dataframe(
+    array::DenseAxisArray{
+        Float64,
+        3,
+        <:Tuple{Vector{String}, UnitRange{Int}, UnitRange{Int}},
+    },
+    ::Nothing,
+    ::Val{TableFormat.LONG},
+)
+    num_rows = length(array.data)
+    time_col = Vector{Int}(undef, num_rows)
+    name_col = Vector{String}(undef, num_rows)
+    name2_col = Vector{Int}(undef, num_rows)
+    vals = Vector{Float64}(undef, num_rows)
+
+    row_index = 1
+    for name in axes(array, 1)
+        for name2 in axes(array, 2)
+            for time_index in axes(array, 3)
+                time_col[row_index] = time_index
+                name_col[row_index] = name
+                name2_col[row_index] = name2
+                vals[row_index] = array[name, name2, time_index]
+                row_index += 1
+            end
+        end
+    end
+
+    return DataFrame(
+        :time_index => time_col,
+        :name => name_col,
+        :name2 => name2_col,
+        :value => vals,
+    )
+end
+
 function to_dataframe(array::SparseAxisArray{T, N, K}) where {T, N, K <: NTuple{N, Any}}
     columns = get_column_names_from_axis_array(array)
     return DataFrames.DataFrame(_to_matrix(array, columns), columns)

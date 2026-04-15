@@ -68,8 +68,15 @@ function _add_quadratic_approx!(
     jump_model = get_jump_model(container)
 
     # Create all containers upfront
-    lambda_var =
-        add_variable_container!(container, QuadraticVariable, C; meta)
+    lambda_var = add_variable_container!(
+        container,
+        QuadraticVariable,
+        C,
+        names,
+        1:n_points,
+        time_steps;
+        meta
+    )
     link_cons = add_constraints_container!(
         container,
         SOS2LinkingConstraint,
@@ -128,7 +135,7 @@ function _add_quadratic_approx!(
         lambda = Vector{JuMP.VariableRef}(undef, n_points)
         for i in 1:n_points
             lambda[i] =
-                lambda_var[(name, i, t)] = JuMP.@variable(
+                lambda_var[name, i, t] = JuMP.@variable(
                     jump_model,
                     base_name = "QuadraticVariable_$(C)_{$(name), pwl_$(i), $(t)}",
                     lower_bound = 0.0,

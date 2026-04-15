@@ -65,9 +65,24 @@ function _add_quadratic_approx!(
     jump_model = get_jump_model(container)
 
     # Create all containers upfront
-    lambda_container =
-        add_variable_container!(container, QuadraticVariable, C; meta)
-    z_container = add_variable_container!(container, ManualSOS2BinaryVariable, C; meta)
+    lambda_container = add_variable_container!(
+        container,
+        QuadraticVariable,
+        C,
+        names,
+        1:n_points,
+        time_steps;
+        meta
+    )
+    z_container = add_variable_container!(
+        container,
+        ManualSOS2BinaryVariable,
+        C,
+        names,
+        1:n_bins,
+        time_steps;
+        meta
+    )
     link_cons = add_constraints_container!(
         container,
         SOS2LinkingConstraint,
@@ -143,7 +158,7 @@ function _add_quadratic_approx!(
         lambda = Vector{JuMP.VariableRef}(undef, n_points)
         for i in 1:n_points
             lambda[i] =
-                lambda_container[(name, i, t)] = JuMP.@variable(
+                lambda_container[name, i, t] = JuMP.@variable(
                     jump_model,
                     base_name = "QuadraticVariable_$(C)_{$(name), pwl_$(i), $(t)}",
                     lower_bound = 0.0,
@@ -169,7 +184,7 @@ function _add_quadratic_approx!(
         z_vars = Vector{JuMP.VariableRef}(undef, n_bins)
         for j in 1:n_bins
             z_vars[j] =
-                z_container[(name, j, t)] = JuMP.@variable(
+                z_container[name, j, t] = JuMP.@variable(
                     jump_model,
                     base_name = "ManualSOS2Binary_$(C)_{$(name), $(j), $(t)}",
                     binary = true,
