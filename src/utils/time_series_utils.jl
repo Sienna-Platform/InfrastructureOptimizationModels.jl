@@ -29,7 +29,8 @@ apply_maybe_across_time_series(
     apply_maybe_across_time_series(fn, component, IS.get_time_series_key(tts))
 
 # case where the element isn't a time series
-apply_maybe_across_time_series(fn::Function, ::IS.InfrastructureSystemsComponent, elem) = fn(elem)
+apply_maybe_across_time_series(fn::Function, ::IS.InfrastructureSystemsComponent, elem) =
+    fn(elem)
 
 # success case
 _validate_eltype_helper(::Type{T}, element::T) where {T} = true
@@ -57,7 +58,12 @@ _validate_eltype(
         )
     end
 
-function _validate_eltype(::Type{T}, component::IS.InfrastructureSystemsComponent, element, msg = "") where {T}
+function _validate_eltype(
+    ::Type{T},
+    component::IS.InfrastructureSystemsComponent,
+    element,
+    msg = "",
+) where {T}
     component_name = get_name(component)
     output = _validate_eltype_helper(T, element)
     output || throw(

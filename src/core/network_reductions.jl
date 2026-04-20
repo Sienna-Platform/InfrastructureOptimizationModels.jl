@@ -150,7 +150,7 @@ Find the first device within a reduction entry that has the given time series.
 Delegates to PNM, which handles BranchesParallel, BranchesSeries,
 ThreeWindingTransformerWinding, and plain ACTransmission entries.
 """
-function get_device_with_time_series(
+function get_branch_with_time_series(
     branch::IS.InfrastructureSystemsComponent,
     ::Type{V},
     ts_name::String,
@@ -171,7 +171,7 @@ function get_branch_argument_parameter_axes(
     for (name, (arc, reduction)) in arc_map
         reduction_entry = net_reduction_data.all_branch_maps_by_type[reduction][T][arc]
         device_with_time_series =
-            get_device_with_time_series(reduction_entry, V, ts_name)
+            get_branch_with_time_series(reduction_entry, V, ts_name)
         if device_with_time_series !== nothing
             push!(name_axis, name)
             push!(

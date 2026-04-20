@@ -69,7 +69,9 @@ function assign_dual_variable!(
     constraint_type::Type{<:ConstraintType},
     devices::U,
     ::Type{<:AbstractDeviceFormulation},
-) where {U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}}} where {D <: IS.InfrastructureSystemsComponent}
+) where {
+    U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+} where {D <: IS.InfrastructureSystemsComponent}
     @assert !isempty(devices)
     time_steps = get_time_steps(container)
     add_dual_container!(
@@ -88,7 +90,9 @@ function assign_dual_variable!(
     constraint_type::Type{<:ConstraintType},
     devices::U,
     ::NetworkModel{<:AbstractPowerModel},
-) where {U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}}} where {D <: IS.InfrastructureSystemsComponent}
+) where {
+    U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+} where {D <: IS.InfrastructureSystemsComponent}
     @assert !isempty(devices)
     time_steps = get_time_steps(container)
     add_dual_container!(

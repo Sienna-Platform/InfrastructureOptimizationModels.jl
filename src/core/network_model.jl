@@ -1,4 +1,5 @@
-const DeviceModelForBranches = DeviceModel{<:IS.InfrastructureSystemsComponent, <:AbstractDeviceFormulation}
+const DeviceModelForBranches =
+    DeviceModel{<:IS.InfrastructureSystemsComponent, <:AbstractDeviceFormulation}
 const BranchModelContainer = Dict{Symbol, DeviceModelForBranches}
 
 function _check_pm_formulation(::Type{T}) where {T <: AbstractPowerModel}

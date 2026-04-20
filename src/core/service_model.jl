@@ -35,7 +35,10 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
     duals::Vector{DataType}
     time_series_names::Dict{Type{<:TimeSeriesParameter}, String}
     attributes::Dict{String, Any}
-    contributing_devices_map::Dict{Type{<:IS.InfrastructureSystemsComponent}, Vector{<:IS.InfrastructureSystemsComponent}}
+    contributing_devices_map::Dict{
+        Type{<:IS.InfrastructureSystemsComponent},
+        Vector{<:IS.InfrastructureSystemsComponent},
+    }
     subsystem::Union{Nothing, String}
     function ServiceModel(
         ::Type{D},
@@ -46,7 +49,10 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
         attributes = Dict{String, Any}(),
-        contributing_devices_map = Dict{Type{<:IS.InfrastructureSystemsComponent}, Vector{<:IS.InfrastructureSystemsComponent}}(),
+        contributing_devices_map = Dict{
+            Type{<:IS.InfrastructureSystemsComponent},
+            Vector{<:IS.InfrastructureSystemsComponent},
+        }(),
     ) where {D <: IS.InfrastructureSystemsComponent, B}
         attributes_for_model = get_default_attributes(D, B)
         for (k, v) in attributes

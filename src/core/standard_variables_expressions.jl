@@ -84,7 +84,10 @@ function add_expression_container!(
     axs...;
     sparse = false,
     meta = CONTAINER_KEY_EMPTY_META,
-) where {T <: ProductionCostExpression, U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer}}
+) where {
+    T <: ProductionCostExpression,
+    U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
+}
     expr_container =
         _add_container!(container, T, U, JuMP.QuadExpr, sparse, axs...; meta = meta)
     remove_undef!(expr_container)

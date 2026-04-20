@@ -166,6 +166,8 @@ function _add_generic_incremental_interpolation_constraint!(
     # Retrieve all required variables from the optimization container
     # Retrieve original variable for DCVoltage from the Bus
     x_var = if (R <: DCVoltage)
+        # FIXME component type cannot be abstract.
+        # why is this branch needed in the first place? Why not just pass
         get_variable(container, R, IS.InfrastructureSystemsComponent)  # Original variable (domain of function)
     else
         get_variable(container, R, W)  # Original variable (domain of function)

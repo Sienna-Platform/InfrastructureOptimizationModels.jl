@@ -145,7 +145,11 @@ function device_duration_look_ahead!(
     ::Type{C_up},
     ::Type{C_dn},
     ::Type{T},
-) where {C_up <: ConstraintType, C_dn <: ConstraintType, T <: IS.InfrastructureSystemsComponent}
+) where {
+    C_up <: ConstraintType,
+    C_dn <: ConstraintType,
+    T <: IS.InfrastructureSystemsComponent,
+}
     time_steps = get_time_steps(container)
     varon = get_variable(container, OnVariable, T)
     varstart = get_variable(container, StartVariable, T)

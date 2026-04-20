@@ -80,7 +80,10 @@ get_sos_status(attr::CostFunctionAttributes) = attr.sos_status
 get_variable_types(attr::CostFunctionAttributes) = attr.variable_types
 get_uses_compact_power(attr::CostFunctionAttributes) = attr.uses_compact_power
 
-struct EventParametersAttributes{T <: IS.InfrastructureSystemsComponent, U <: ParameterType} <: ParameterAttributes
+struct EventParametersAttributes{
+    T <: IS.InfrastructureSystemsComponent,
+    U <: ParameterType,
+} <: ParameterAttributes
     affected_devices::Vector{<:IS.InfrastructureSystemsComponent}
 end
 

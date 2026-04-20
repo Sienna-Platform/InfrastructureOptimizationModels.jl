@@ -338,7 +338,7 @@ export search_for_reduced_branch_parameter!
 export search_for_reduced_branch_argument!
 export get_branch_argument_parameter_axes
 export get_parameter_dict
-export get_device_with_time_series
+export get_branch_with_time_series
 # Container/variable helpers
 export add_variable_container!, add_constraint_dual!
 export add_to_objective_invariant_expression!, lazy_container_addition!

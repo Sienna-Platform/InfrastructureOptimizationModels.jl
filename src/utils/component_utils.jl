@@ -50,9 +50,10 @@ function get_available_components(
     sys::IS.InfrastructureSystemsContainer,
 ) where {T <: IS.InfrastructureSystemsComponent}
     subsystem = get_subsystem(model)
+    # FIXME have to patch thru to sys.data here
     return IS.get_components(
         T,
-        sys;
+        sys.data;
         subsystem_name = subsystem,
     )
 end

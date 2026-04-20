@@ -233,10 +233,11 @@ function init_model_store_params!(model::DecisionModel)
     num_executions = get_executions(model)
     horizon = get_horizon(model)
     system = get_system(model)
-    interval = IS.get_forecast_interval(system)
+    interval = IS.get_forecast_interval(system.data)
     resolution = get_resolution(model)
     base_power = get_base_power(system)
-    sys_uuid = IS.get_uuid(system)
+    # FIXME declare as stub
+    sys_uuid = IS.get_uuid(system.data.internal)
     store_params = ModelStoreParams(
         num_executions,
         horizon,
@@ -253,7 +254,7 @@ end
 function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
     sys = get_system(model)
     settings = get_settings(model)
-    available_resolutions = IS.get_time_series_resolutions(sys)
+    available_resolutions = IS.get_time_series_resolutions(sys.data)
 
     if get_resolution(settings) == UNSET_RESOLUTION && length(available_resolutions) != 1
         throw(
@@ -274,10 +275,10 @@ function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
     end
 
     if get_horizon(settings) == UNSET_HORIZON
-        set_horizon!(settings, IS.get_forecast_horizon(sys))
+        set_horizon!(settings, IS.get_forecast_horizon(sys.data))
     end
 
-    counts = IS.get_time_series_counts(sys)
+    counts = IS.get_time_series_counts(sys.data)
     if counts.forecast_count < 1
         error(
             "The system does not contain forecast data. A DecisionModel can't be built.",

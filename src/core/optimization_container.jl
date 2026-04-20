@@ -325,9 +325,13 @@ function init_optimization_container!(
     # NOTE: Simplified to avoid referencing concrete network model types (CopperPlatePowerModel, AreaBalancePowerModel)
     # PowerSimulations can implement more specific logic based on concrete types
     total_number_of_devices =
-        length(get_available_components(network_model, IS.InfrastructureSystemsComponent, sys))
+        length(
+            get_available_components(network_model, IS.InfrastructureSystemsComponent, sys),
+        )
     total_number_of_devices +=
-        length(get_available_components(network_model, IS.InfrastructureSystemsComponent, sys))
+        length(
+            get_available_components(network_model, IS.InfrastructureSystemsComponent, sys),
+        )
 
     # The 10e6 limit is based on the sizes of the lp benchmark problems http://plato.asu.edu/ftp/lpcom.html
     # The maximum numbers of constraints and variables in the benchmark problems is 1,918,399 and 1,259,121,
@@ -1288,7 +1292,10 @@ function _calculate_dual_variable_value!(
     container::OptimizationContainer,
     key::ConstraintKey{T, D},
     ::IS.InfrastructureSystemsContainer,
-) where {T <: ConstraintType, D <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer}}
+) where {
+    T <: ConstraintType,
+    D <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
+}
     constraint_duals = jump_value.(get_constraint(container, key))
     dual_variable_container = get_duals(container)[key]
 

@@ -211,7 +211,7 @@ end
 function validate_time_series!(model::EmulationModel{<:DefaultEmulationProblem})
     sys = get_system(model)
     settings = get_settings(model)
-    available_resolutions = IS.get_time_series_resolutions(sys)
+    available_resolutions = IS.get_time_series_resolutions(sys.data)
 
     if get_resolution(settings) == UNSET_RESOLUTION && length(available_resolutions) != 1
         throw(
@@ -236,7 +236,7 @@ function validate_time_series!(model::EmulationModel{<:DefaultEmulationProblem})
         set_horizon!(settings, get_resolution(settings))
     end
 
-    counts = IS.get_time_series_counts(sys)
+    counts = IS.get_time_series_counts(sys.data)
     if counts.static_time_series_count < 1
         error(
             "The system does not contain Static Time Series data. A EmulationModel can't be built.",
@@ -258,7 +258,8 @@ function init_model_store_params!(model::EmulationModel)
     settings = get_settings(model)
     horizon = interval = resolution = get_resolution(settings)
     base_power = get_base_power(system)
-    sys_uuid = IS.get_uuid(system)
+    # FIXME declare as stub
+    sys_uuid = IS.get_uuid(system.data.internal)
     set_store_params!(
         get_internal(model),
         ModelStoreParams(
