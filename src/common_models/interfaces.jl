@@ -135,7 +135,7 @@ end
 Extension point: Check if proportional cost term is time-variant.
 Returns true if the cost should be added to the variant objective expression.
 """
-is_time_variant_term(::IS.DeviceParameter) = false
+is_time_variant_proportional(::IS.DeviceParameter) = false
 
 # corresponds to get_must_run for thermals, but avoiding device specific code here.
 """

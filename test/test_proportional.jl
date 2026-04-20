@@ -36,8 +36,8 @@ InfrastructureOptimizationModels.proportional_cost(
     ::Int,
 ) = op_cost.proportional_term
 
-# is_time_variant_term: return the is_time_variant flag from MockOperationCost
-InfrastructureOptimizationModels.is_time_variant_term(op_cost::MockOperationCost) =
+# is_time_variant_proportional: return the is_time_variant flag from MockOperationCost
+InfrastructureOptimizationModels.is_time_variant_proportional(op_cost::MockOperationCost) =
     op_cost.is_time_variant
 
 # Helper to set up container with variables for devices

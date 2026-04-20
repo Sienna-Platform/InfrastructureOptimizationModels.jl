@@ -286,10 +286,5 @@ function _get_piecewise_curve_per_system_unit(
     return x_coords_normalized, y_coords_normalized
 end
 
-is_time_variant(::IS.TimeSeriesKey) = true
-is_time_variant(::IS.ValueCurve{<:IS.TimeSeriesFunctionData}) = true
-is_time_variant(
-    ::IS.ProductionVariableCostCurve{<:IS.ValueCurve{<:IS.TimeSeriesFunctionData}},
-) = true
-is_time_variant(::IS.TupleTimeSeries) = true
-is_time_variant(::Any) = false
+# Alias for IS.is_time_series_backed — kept as IOM-level name for historical call sites.
+is_time_variant(x) = IS.is_time_series_backed(x)

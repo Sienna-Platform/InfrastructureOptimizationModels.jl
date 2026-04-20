@@ -61,8 +61,8 @@ function add_proportional_cost_maybe_time_variant!(
     for d in devices
         op_cost_data = get_operation_cost(d)
         name = get_name(d)
-        # is_time_variant_term depends only on typeof(op_cost_data); hoist out of the time loop.
-        add_as_time_variant = is_time_variant_term(op_cost_data)
+        # is_time_variant_proportional depends only on op_cost_data; hoist out of the time loop.
+        add_as_time_variant = is_time_variant_proportional(op_cost_data)
         skip = skip_proportional_cost(d)
         for t in get_time_steps(container)
             cost_term = proportional_cost(container, op_cost_data, U, d, V, t)
