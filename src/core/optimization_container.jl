@@ -288,12 +288,9 @@ function finalize_jump_model!(container::OptimizationContainer, settings::Settin
     return
 end
 
-# Dispatch helpers so init_optimization_container! works with both PSY.System and mock containers.
-temp_set_units_base_system!(sys::PSY.System, base::String) =
-    PSY.set_units_base_system!(sys, base)
+# Dispatch extension points: default behavior is no-op / sentinel. Concrete system
+# implementations (e.g. PSY.System in POM) should add their own methods.
 temp_set_units_base_system!(::IS.InfrastructureSystemsContainer, ::String) = nothing
-temp_get_forecast_initial_timestamp(sys::PSY.System) =
-    PSY.get_forecast_initial_timestamp(sys)
 temp_get_forecast_initial_timestamp(::IS.InfrastructureSystemsContainer) =
     Dates.DateTime(1970)
 
@@ -302,17 +299,17 @@ function init_optimization_container!(
     network_model::NetworkModel{T},
     sys::IS.InfrastructureSystemsContainer,
 ) where {T <: AbstractPowerModel}
-    # PSY.set_units_base_system!(sys, "SYSTEM_BASE")
+    # set_units_base_system!(sys, "SYSTEM_BASE")
     temp_set_units_base_system!(sys, "SYSTEM_BASE")
     # The order of operations matter
     settings = get_settings(container)
 
     if get_initial_time(settings) == UNSET_INI_TIME
-        if get_default_time_series_type(container) <: PSY.AbstractDeterministic
-            # set_initial_time!(settings, PSY.get_forecast_initial_timestamp(sys))
+        if get_default_time_series_type(container) <: IS.AbstractDeterministic
+            # set_initial_time!(settings, IS.get_forecast_initial_timestamp(sys))
             set_initial_time!(settings, temp_get_forecast_initial_timestamp(sys))
-        elseif get_default_time_series_type(container) <: PSY.SingleTimeSeries
-            ini_time, _ = PSY.check_time_series_consistency(sys, PSY.SingleTimeSeries)
+        elseif get_default_time_series_type(container) <: IS.SingleTimeSeries
+            ini_time, _ = IS.check_time_series_consistency(sys, IS.SingleTimeSeries)
             set_initial_time!(settings, ini_time)
         end
     end
@@ -328,9 +325,9 @@ function init_optimization_container!(
     # NOTE: Simplified to avoid referencing concrete network model types (CopperPlatePowerModel, AreaBalancePowerModel)
     # PowerSimulations can implement more specific logic based on concrete types
     total_number_of_devices =
-        length(get_available_components(network_model, PSY.Device, sys))
+        length(get_available_components(network_model, IS.InfrastructureSystemsComponent, sys))
     total_number_of_devices +=
-        length(get_available_components(network_model, PSY.ACBranch, sys))
+        length(get_available_components(network_model, IS.InfrastructureSystemsComponent, sys))
 
     # The 10e6 limit is based on the sizes of the lp benchmark problems http://plato.asu.edu/ftp/lpcom.html
     # The maximum numbers of constraints and variables in the benchmark problems is 1,918,399 and 1,259,121,
@@ -1161,7 +1158,7 @@ function get_initial_conditions_variable(
     container::OptimizationContainer,
     type::VariableType,
     ::Type{T},
-) where {T <: Union{PSY.Component, PSY.System}}
+) where {T <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer}}
     return get_initial_conditions_variable(get_initial_conditions_data(container), type, T)
 end
 
@@ -1169,7 +1166,7 @@ function get_initial_conditions_aux_variable(
     container::OptimizationContainer,
     type::AuxVariableType,
     ::Type{T},
-) where {T <: Union{PSY.Component, PSY.System}}
+) where {T <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer}}
     return get_initial_conditions_aux_variable(
         get_initial_conditions_data(container),
         type,
@@ -1181,7 +1178,7 @@ function get_initial_conditions_dual(
     container::OptimizationContainer,
     type::ConstraintType,
     ::Type{T},
-) where {T <: Union{PSY.Component, PSY.System}}
+) where {T <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer}}
     return get_initial_conditions_dual(get_initial_conditions_data(container), type, T)
 end
 
@@ -1189,7 +1186,7 @@ function get_initial_conditions_parameter(
     container::OptimizationContainer,
     type::ParameterType,
     ::Type{T},
-) where {T <: Union{PSY.Component, PSY.System}}
+) where {T <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer}}
     return get_initial_conditions_parameter(get_initial_conditions_data(container), type, T)
 end
 
@@ -1274,8 +1271,8 @@ end
 # This should be defined in PowerSimulations if needed
 # function _calculate_dual_variable_value!(
 #     container::OptimizationContainer,
-#     key::ConstraintKey{CopperPlateBalanceConstraint, PSY.System},
-#     ::PSY.System,
+#     key::ConstraintKey{CopperPlateBalanceConstraint, IS.InfrastructureSystemsContainer},
+#     ::IS.InfrastructureSystemsContainer,
 # )
 #     constraint_container = get_constraint(container, key)
 #     dual_variable_container = get_duals(container)[key]
@@ -1290,8 +1287,8 @@ end
 function _calculate_dual_variable_value!(
     container::OptimizationContainer,
     key::ConstraintKey{T, D},
-    ::PSY.System,
-) where {T <: ConstraintType, D <: Union{PSY.Component, PSY.System}}
+    ::IS.InfrastructureSystemsContainer,
+) where {T <: ConstraintType, D <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer}}
     constraint_duals = jump_value.(get_constraint(container, key))
     dual_variable_container = get_duals(container)[key]
 
@@ -1305,7 +1302,7 @@ end
 
 function _calculate_dual_variables_continous_model!(
     container::OptimizationContainer,
-    system::PSY.System,
+    system::IS.InfrastructureSystemsContainer,
 )
     duals_vars = get_duals(container)
     for key in keys(duals_vars)
@@ -1316,7 +1313,7 @@ end
 
 function _calculate_dual_variables_discrete_model!(
     container::OptimizationContainer,
-    ::PSY.System,
+    ::IS.InfrastructureSystemsContainer,
 )
     return process_duals(container, container.settings.optimizer)
 end
@@ -1415,12 +1412,12 @@ end
 function get_time_series_initial_values!(
     container::OptimizationContainer,
     ::Type{T},
-    component::PSY.Component,
+    component::IS.InfrastructureSystemsComponent,
     time_series_name::AbstractString,
 ) where {T <: IS.TimeSeriesData}
     initial_time = get_initial_time(container)
     time_steps = get_time_steps(container)
-    forecast = PSY.get_time_series(
+    forecast = IS.get_time_series(
         T,
         component,
         time_series_name;

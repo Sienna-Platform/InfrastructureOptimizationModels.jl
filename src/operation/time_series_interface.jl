@@ -6,7 +6,7 @@ function get_time_series_values!(
     initial_time::Dates.DateTime,
     horizon::Int;
     ignore_scaling_factors = true,
-) where {T <: PSY.Forecast}
+) where {T <: IS.Forecast}
     if !use_time_series_cache(get_settings(model))
         return IS.get_time_series_values(
             T,
@@ -46,7 +46,7 @@ function get_time_series_values!(
     initial_time::Dates.DateTime,
     len::Int = 1;
     ignore_scaling_factors = true,
-) where {T <: PSY.StaticTimeSeries, U <: PSY.Component}
+) where {T <: IS.StaticTimeSeries, U <: IS.InfrastructureSystemsComponent}
     if !use_time_series_cache(get_settings(model))
         return IS.get_time_series_values(
             T,

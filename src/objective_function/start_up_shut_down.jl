@@ -11,8 +11,7 @@ _shutdown_cost_value(x::Float64) = x
 _shutdown_cost_value(x::IS.LinearCurve) = IS.get_proportional_term(x)
 
 # Trait: does this cost type store startup/shutdown in time-series parameters?
-# Overridden for PSY.MarketBidTimeSeriesCost; duck-typeable by mocks.
-_is_time_series_cost(::PSY.MarketBidTimeSeriesCost) = true
+# POM adds an override for PSY.MarketBidTimeSeriesCost; mocks can duck-type.
 _is_time_series_cost(::IS.DeviceParameter) = false
 
 #################################################################################

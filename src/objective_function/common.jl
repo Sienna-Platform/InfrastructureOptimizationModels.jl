@@ -43,7 +43,7 @@ function add_variable_cost!(
     V <: AbstractDeviceFormulation,
 }
     for d in devices
-        op_cost_data = PSY.get_operation_cost(d)
+        op_cost_data = get_operation_cost(d)
         add_variable_cost_to_objective!(container, U, d, op_cost_data, V)
         _add_vom_cost_to_objective!(container, U, d, op_cost_data, V)
     end
@@ -59,7 +59,7 @@ function _add_vom_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{T},
     component::C,
-    op_cost::PSY.OperationalCost,
+    op_cost::IS.DeviceParameter,
     ::Type{U},
 ) where {
     T <: VariableType,
@@ -67,8 +67,8 @@ function _add_vom_cost_to_objective!(
     C <: IS.InfrastructureSystemsComponent,
 }
     variable_cost_data = variable_cost(op_cost, T, C, U)
-    power_units = PSY.get_power_units(variable_cost_data)
-    cost_term = PSY.get_proportional_term(PSY.get_vom_cost(variable_cost_data))
+    power_units = IS.get_power_units(variable_cost_data)
+    cost_term = IS.get_proportional_term(IS.get_vom_cost(variable_cost_data))
     add_proportional_cost_invariant!(container, T, component, cost_term, power_units)
     return
 end
@@ -79,7 +79,7 @@ function add_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{T},
     component::C,
-    op_cost::PSY.OperationalCost,
+    op_cost::IS.DeviceParameter,
     ::Type{U},
 ) where {
     T <: VariableType,
@@ -127,30 +127,30 @@ end
 # currently: ThermalGen, ControllableLoad subtypes.
 
 # FIXME only called in POM, device specific code.
-function _onvar_cost(::PSY.CostCurve{PSY.PiecewisePointCurve})
+function _onvar_cost(::IS.CostCurve{IS.PiecewisePointCurve})
     # OnVariableCost is included in the Point itself for PiecewisePointCurve
     return 0.0
 end
 
 function _onvar_cost(
-    cost_function::Union{PSY.CostCurve{IS.LinearCurve}, PSY.CostCurve{IS.QuadraticCurve}},
+    cost_function::Union{IS.CostCurve{IS.LinearCurve}, IS.CostCurve{IS.QuadraticCurve}},
 )
-    value_curve = PSY.get_value_curve(cost_function)
-    cost_component = PSY.get_function_data(value_curve)
+    value_curve = IS.get_value_curve(cost_function)
+    cost_component = IS.get_function_data(value_curve)
     # Always in \$/h
-    constant_term = PSY.get_constant_term(cost_component)
+    constant_term = IS.get_constant_term(cost_component)
     return constant_term
 end
 
-function _onvar_cost(::PSY.CostCurve{PSY.PiecewiseIncrementalCurve})
+function _onvar_cost(::IS.CostCurve{IS.PiecewiseIncrementalCurve})
     # Input at min is used to transform to InputOutputCurve
     return 0.0
 end
 
 function _onvar_cost(
     ::OptimizationContainer,
-    cost_function::PSY.CostCurve{T},
-    ::PSY.Component,
+    cost_function::IS.CostCurve{T},
+    ::IS.InfrastructureSystemsComponent,
     ::Int,
 ) where {T <: IS.ValueCurve}
     return _onvar_cost(cost_function)

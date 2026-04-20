@@ -11,7 +11,7 @@ mutable struct BranchReductionOptimizationTracker
     constraint_map_by_type::Dict{
         Type{<:ConstraintType},
         Dict{
-            Type{<:PSY.ACTransmission},
+            Type{<:IS.InfrastructureSystemsComponent},
             SortedDict{String, Tuple{Tuple{Int, Int}, String}},
         },
     }
@@ -141,7 +141,7 @@ function get_branch_argument_parameter_axes(
     ::IS.FlattenIteratorWrapper{T},
     ::Type{V},
     ts_name::String,
-) where {T <: PSY.ACTransmission, V <: PSY.TimeSeriesData}
+) where {T <: IS.InfrastructureSystemsComponent, V <: IS.TimeSeriesData}
     return get_branch_argument_parameter_axes(net_reduction_data, T, V, ts_name)
 end
 
@@ -151,10 +151,10 @@ Delegates to PNM, which handles BranchesParallel, BranchesSeries,
 ThreeWindingTransformerWinding, and plain ACTransmission entries.
 """
 function get_device_with_time_series(
-    branch::PSY.ACTransmission,
+    branch::IS.InfrastructureSystemsComponent,
     ::Type{V},
     ts_name::String,
-) where {V <: PSY.TimeSeriesData}
+) where {V <: IS.TimeSeriesData}
     return PNM.get_device_with_time_series(branch, V, ts_name)
 end
 
@@ -163,7 +163,7 @@ function get_branch_argument_parameter_axes(
     ::Type{T},
     ::Type{V},
     ts_name::String,
-) where {T <: PSY.ACTransmission, V <: PSY.TimeSeriesData}
+) where {T <: IS.InfrastructureSystemsComponent, V <: IS.TimeSeriesData}
     name_axis = Vector{String}()
     ts_uuid_axis = Vector{String}()
     arc_map = get(net_reduction_data.name_to_arc_map, T, nothing)
@@ -186,32 +186,24 @@ end
 function get_branch_argument_variable_axis(
     net_reduction_data::PNM.NetworkReductionData,
     ::IS.FlattenIteratorWrapper{T},
-) where {T <: PSY.ACTransmission}
+) where {T <: IS.InfrastructureSystemsComponent}
     return get_branch_argument_variable_axis(net_reduction_data, T)
 end
 
 function get_branch_argument_variable_axis(
     net_reduction_data::PNM.NetworkReductionData,
     ::Type{T},
-) where {T <: PSY.ACTransmission}
+) where {T <: IS.InfrastructureSystemsComponent}
     name_axis = net_reduction_data.name_to_arc_map[T]
     return collect(keys(name_axis))
 end
-
-#= function get_branch_argument_variable_axis(
-    net_reduction_data::PNM.NetworkReductionData,
-    ::Type{PowerNetworkMatrices.ThreeWindingTransformerWinding{T}},
-) where {T <: PSY.ThreeWindingTransformer}
-    name_axis = net_reduction_data.name_to_arc_map[T]
-    return collect(keys(name_axis))
-end =#
 
 function get_branch_argument_constraint_axis(
     net_reduction_data::PNM.NetworkReductionData,
     reduced_branch_tracker::BranchReductionOptimizationTracker,
     ::IS.FlattenIteratorWrapper{T},
     ::Type{U},
-) where {T <: PSY.ACTransmission, U <: ConstraintType}
+) where {T <: IS.InfrastructureSystemsComponent, U <: ConstraintType}
     return get_branch_argument_constraint_axis(
         net_reduction_data,
         reduced_branch_tracker,
@@ -225,7 +217,7 @@ function get_branch_argument_constraint_axis(
     reduced_branch_tracker::BranchReductionOptimizationTracker,
     ::Type{T},
     ::Type{U},
-) where {T <: PSY.ACTransmission, U <: ConstraintType}
+) where {T <: IS.InfrastructureSystemsComponent, U <: ConstraintType}
     constraint_tracker = get_constraint_dict(reduced_branch_tracker)
     constraint_map_by_type = get_constraint_map_by_type(reduced_branch_tracker)
     name_axis = net_reduction_data.name_to_arc_map[T]
@@ -235,7 +227,7 @@ function get_branch_argument_constraint_axis(
         constraint_map_by_type,
         U,
         Dict{
-            Type{<:PSY.ACTransmission},
+            Type{<:IS.InfrastructureSystemsComponent},
             SortedDict{String, Tuple{Tuple{Int, Int}, String}},
         }(),
     )

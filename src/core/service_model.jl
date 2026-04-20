@@ -28,14 +28,14 @@ model at simulation time
 
 reserves = ServiceModel(PSY.VariableReserve{PSY.ReserveUp}, RangeReserve)
 """
-mutable struct ServiceModel{D <: PSY.Service, B}
+mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
     feedforwards::Vector{<:AbstractAffectFeedforward}
     service_name::String
     use_slacks::Bool
     duals::Vector{DataType}
     time_series_names::Dict{Type{<:TimeSeriesParameter}, String}
     attributes::Dict{String, Any}
-    contributing_devices_map::Dict{Type{<:PSY.Component}, Vector{<:PSY.Component}}
+    contributing_devices_map::Dict{Type{<:IS.InfrastructureSystemsComponent}, Vector{<:IS.InfrastructureSystemsComponent}}
     subsystem::Union{Nothing, String}
     function ServiceModel(
         ::Type{D},
@@ -46,8 +46,8 @@ mutable struct ServiceModel{D <: PSY.Service, B}
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
         attributes = Dict{String, Any}(),
-        contributing_devices_map = Dict{Type{<:PSY.Component}, Vector{<:PSY.Component}}(),
-    ) where {D <: PSY.Service, B}
+        contributing_devices_map = Dict{Type{<:IS.InfrastructureSystemsComponent}, Vector{<:IS.InfrastructureSystemsComponent}}(),
+    ) where {D <: IS.InfrastructureSystemsComponent, B}
         attributes_for_model = get_default_attributes(D, B)
         for (k, v) in attributes
             attributes_for_model[k] = v
@@ -70,10 +70,10 @@ end
 
 get_component_type(
     ::ServiceModel{D, B},
-) where {D <: PSY.Service, B} = D
+) where {D <: IS.InfrastructureSystemsComponent, B} = D
 get_formulation(
     ::ServiceModel{D, B},
-) where {D <: PSY.Service, B} = B
+) where {D <: IS.InfrastructureSystemsComponent, B} = B
 get_feedforwards(m::ServiceModel) = m.feedforwards
 get_service_name(m::ServiceModel) = m.service_name
 get_use_slacks(m::ServiceModel) = m.use_slacks
@@ -98,7 +98,7 @@ function ServiceModel(
     duals = Vector{DataType}(),
     time_series_names = get_default_time_series_names(D, B),
     attributes = get_default_attributes(D, B),
-) where {D <: PSY.Service, B}
+) where {D <: IS.InfrastructureSystemsComponent, B}
     # If more attributes are used later, move free form string to const and organize
     # attributes
     attributes_for_model = get_default_attributes(D, B)
@@ -131,7 +131,7 @@ end
 function set_model!(
     dict::Dict,
     model::ServiceModel{D, B},
-) where {D <: PSY.Service, B}
+) where {D <: IS.InfrastructureSystemsComponent, B}
     set_model!(dict, (get_service_name(model), Symbol(D)), model)
     return
 end

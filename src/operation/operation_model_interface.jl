@@ -40,7 +40,7 @@ function get_resolution(model::OperationModel)
     return resolution
 end
 
-get_problem_base_power(model::OperationModel) = PSY.get_base_power(model.sys)
+get_problem_base_power(model::OperationModel) = get_base_power(model.sys)
 get_settings(model::OperationModel) = get_optimization_container(model).settings
 
 get_optimizer_stats(model::OperationModel) =
@@ -126,7 +126,7 @@ function get_initial_conditions(
     model::OperationModel,
     ::T,
     ::U,
-) where {T <: InitialConditionType, U <: PSY.Device}
+) where {T <: InitialConditionType, U <: IS.InfrastructureSystemsComponent}
     return get_initial_conditions(get_optimization_container(model), T, U)
 end
 
@@ -199,8 +199,6 @@ function advance_execution_count!(model::OperationModel)
     internal.execution_count += 1
     return
 end
-
-const _TEMPLATE_VALIDATION_EXCLUSIONS = [PSY.Arc, PSY.Area, PSY.ACBus, PSY.LoadZone]
 
 function _check_numerical_bounds(model::OperationModel)
     variable_bounds = get_variable_numerical_bounds(model)

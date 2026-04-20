@@ -1,4 +1,4 @@
-function get_deterministic_time_series_type(sys::PSY.System)
+function get_deterministic_time_series_type(sys::IS.InfrastructureSystemsContainer)
     time_series_types = IS.get_time_series_counts_by_type(sys.data)
     existing_types = Set(d["type"] for d in time_series_types)
     if Set(["Deterministic", "DeterministicSingleTimeSeries"]) ∈ existing_types
@@ -7,9 +7,9 @@ function get_deterministic_time_series_type(sys::PSY.System)
         )
     end
     if "Deterministic" ∈ existing_types
-        return PSY.Deterministic
+        return IS.Deterministic
     elseif "DeterministicSingleTimeSeries" ∈ existing_types
-        return PSY.DeterministicSingleTimeSeries
+        return IS.DeterministicSingleTimeSeries
     else
         error(
             "The System does not contain any forecast data or transformed time series data.",
@@ -31,7 +31,7 @@ struct GenericOpProblem <: DefaultDecisionProblem end
 mutable struct DecisionModel{M <: DecisionProblem} <: OperationModel
     name::Symbol
     template::AbstractProblemTemplate
-    sys::PSY.System
+    sys::IS.InfrastructureSystemsContainer
     internal::Union{Nothing, ModelInternal}
     simulation_info::Union{Nothing, SimulationInfo}
     store::DecisionModelStore
@@ -41,7 +41,7 @@ end
 """
     DecisionModel{M}(
         template::AbstractProblemTemplate,
-        sys::PSY.System,
+        sys::IS.InfrastructureSystemsContainer,
         jump_model::Union{Nothing, JuMP.Model}=nothing;
         kwargs...) where {M<:DecisionProblem}
 
@@ -51,7 +51,7 @@ Build the optimization problem of type M with the specific system and template.
 
   - `::Type{M} where M<:DecisionProblem`: The abstract operation model type
   - `template::AbstractProblemTemplate`: The model reference made up of transmission, devices, branches, and services.
-  - `sys::PSY.System`: the system created using Power Systems
+  - `sys::IS.InfrastructureSystemsContainer`: the system created using Power Systems
   - `jump_model::Union{Nothing, JuMP.Model}`: Enables passing a custom JuMP model. Use with care
   - `name = nothing`: name of model, string or symbol; defaults to the type of template converted to a symbol.
   - `optimizer::Union{Nothing,MOI.OptimizerWithAttributes} = nothing` : The optimizer does
@@ -83,7 +83,7 @@ OpModel = DecisionModel(MockOperationProblem, template, system)
 """
 function DecisionModel{M}(
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     settings::Settings,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     name = nothing,
@@ -115,7 +115,7 @@ end
 
 function DecisionModel{M}(
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     name = nothing,
     optimizer = nothing,
@@ -172,7 +172,7 @@ Build the optimization problem of type M with the specific system and template
 
   - `::Type{M} where M<:DecisionProblem`: The abstract operation model type
   - `template::AbstractProblemTemplate`: The model reference made up of transmission, devices, branches, and services.
-  - `sys::PSY.System`: the system created using Power Systems
+  - `sys::IS.InfrastructureSystemsContainer`: the system created using Power Systems
   - `jump_model::Union{Nothing, JuMP.Model}` = nothing: Enables passing a custom JuMP model. Use with care.
 
 # Example
@@ -185,7 +185,7 @@ problem = DecisionModel(MyOpProblemType, template, system, optimizer)
 function DecisionModel(
     ::Type{M},
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     kwargs...,
 ) where {M <: DecisionProblem}
@@ -194,7 +194,7 @@ end
 
 function DecisionModel(
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     kwargs...,
 )
@@ -202,7 +202,7 @@ function DecisionModel(
 end
 
 function DecisionModel{M}(
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     kwargs...,
 ) where {M <: DefaultDecisionProblem}
@@ -233,9 +233,9 @@ function init_model_store_params!(model::DecisionModel)
     num_executions = get_executions(model)
     horizon = get_horizon(model)
     system = get_system(model)
-    interval = PSY.get_forecast_interval(system)
+    interval = IS.get_forecast_interval(system)
     resolution = get_resolution(model)
-    base_power = PSY.get_base_power(system)
+    base_power = get_base_power(system)
     sys_uuid = IS.get_uuid(system)
     store_params = ModelStoreParams(
         num_executions,
@@ -253,7 +253,7 @@ end
 function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
     sys = get_system(model)
     settings = get_settings(model)
-    available_resolutions = PSY.get_time_series_resolutions(sys)
+    available_resolutions = IS.get_time_series_resolutions(sys)
 
     if get_resolution(settings) == UNSET_RESOLUTION && length(available_resolutions) != 1
         throw(
@@ -274,10 +274,10 @@ function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
     end
 
     if get_horizon(settings) == UNSET_HORIZON
-        set_horizon!(settings, PSY.get_forecast_horizon(sys))
+        set_horizon!(settings, IS.get_forecast_horizon(sys))
     end
 
-    counts = PSY.get_time_series_counts(sys)
+    counts = IS.get_time_series_counts(sys)
     if counts.forecast_count < 1
         error(
             "The system does not contain forecast data. A DecisionModel can't be built.",

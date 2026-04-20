@@ -99,7 +99,7 @@ function proportional_cost(
     ::C,
     ::Type{F},
 ) where {
-    O <: PSY.OperationalCost,
+    O <: IS.DeviceParameter,
     V <: VariableType,
     C <: IS.InfrastructureSystemsComponent,
     F <: AbstractDeviceFormulation,
@@ -121,7 +121,7 @@ function proportional_cost(
     ::Type{F},
     ::Int,
 ) where {
-    O <: PSY.OperationalCost,
+    O <: IS.DeviceParameter,
     V <: VariableType,
     C <: IS.InfrastructureSystemsComponent,
     F <: AbstractDeviceFormulation,
@@ -135,7 +135,7 @@ end
 Extension point: Check if proportional cost term is time-variant.
 Returns true if the cost should be added to the variant objective expression.
 """
-is_time_variant_term(::PSY.OperationalCost) = false
+is_time_variant_term(::IS.DeviceParameter) = false
 
 # corresponds to get_must_run for thermals, but avoiding device specific code here.
 """
@@ -203,13 +203,19 @@ The one exception where it isn't just `get_variable(cost)`: storage devices, whe
 need to map `ActivePower{In/Out}` to {charge/discharge} variable cost.
 """
 function variable_cost(
-    cost::PSY.OperationalCost,
+    cost::IS.DeviceParameter,
     ::Type{<:VariableType},
     ::Type{<:IS.InfrastructureSystemsComponent},
     ::Type{<:AbstractDeviceFormulation},
 )
-    return PSY.get_variable(cost)
+    return get_variable_cost(cost)
 end
+
+"""
+Extension point: read the primary variable cost from an operation-cost object.
+POM provides methods (typically delegating to `PSY.get_variable`).
+"""
+function get_variable_cost end
 
 variable_cost(
     ::Nothing,
@@ -224,7 +230,7 @@ Concrete implementations in POM. Used for ramp constraints.
 """
 _get_initial_condition_type(
     X::Type{<:ConstraintType},
-    Y::Type{<:PSY.Component},
+    Y::Type{<:IS.InfrastructureSystemsComponent},
     Z::Type{<:AbstractDeviceFormulation},
 ) = error("`_get_initial_condition_type` not implemented for $X , $Y and $Z")
 

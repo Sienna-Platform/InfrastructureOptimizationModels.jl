@@ -106,7 +106,7 @@ src/
     file_utils.jl             # File I/O utilities
     logging.jl                # Logging setup
     indexing.jl               # Index/key utilities
-    powersystems_utils.jl     # PowerSystems integration utilities
+    component_utils.jl        # Component filtering and unit-system conversion helpers (IS-only)
     time_series_utils.jl      # Time series helpers
     generate_valid_formulations.jl # Formulation validation
     print_pt_v2.jl / print_pt_v3.jl   # Pretty-printing

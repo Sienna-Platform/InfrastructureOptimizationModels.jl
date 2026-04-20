@@ -117,7 +117,7 @@ function add_updown_constraints_containers!(
     ::Type{V},
     names,
     time_steps,
-) where {T <: ConstraintType, V <: PSY.Component}
+) where {T <: ConstraintType, V <: IS.InfrastructureSystemsComponent}
     return (
         up = add_constraints_container!(container, T, V, names, time_steps; meta = "up"),
         down = add_constraints_container!(

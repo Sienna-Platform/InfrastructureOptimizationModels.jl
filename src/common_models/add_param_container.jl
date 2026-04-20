@@ -90,7 +90,7 @@ function add_param_container!(
     axs...;
     sparse = false,
     meta = CONTAINER_KEY_EMPTY_META,
-) where {T <: EventParameter, U <: IS.InfrastructureSystemsComponent, V <: PSY.Contingency}
+) where {T <: EventParameter, U <: IS.InfrastructureSystemsComponent, V <: IS.InfrastructureSystemsComponent}
     param_key = ParameterKey(T, U, meta)
     attributes = EventParametersAttributes(V)
     return add_param_container_shared_axes!(

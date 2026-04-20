@@ -1,19 +1,19 @@
 function get_available_components(
     model::DeviceModel{T, <:AbstractDeviceFormulation},
-    sys::PSY.System,
-) where {T <: PSY.Component}
+    sys::IS.InfrastructureSystemsContainer,
+) where {T <: IS.InfrastructureSystemsComponent}
     subsystem = get_subsystem(model)
     filter_function = get_attribute(model, "filter_function")
     if filter_function === nothing
-        return PSY.get_components(
-            PSY.get_available,
+        return IS.get_components(
+            IS.get_available,
             T,
             sys;
             subsystem_name = subsystem,
         )
     else
-        return PSY.get_components(
-            x -> PSY.get_available(x) && filter_function(x),
+        return IS.get_components(
+            x -> IS.get_available(x) && filter_function(x),
             T,
             sys;
             subsystem_name = subsystem,
@@ -23,20 +23,20 @@ end
 
 function get_available_components(
     model::ServiceModel{T, <:AbstractServiceFormulation},
-    sys::PSY.System,
-) where {T <: PSY.Component}
+    sys::IS.InfrastructureSystemsContainer,
+) where {T <: IS.InfrastructureSystemsComponent}
     subsystem = get_subsystem(model)
     filter_function = get_attribute(model, "filter_function")
     if filter_function === nothing
-        return PSY.get_components(
-            PSY.get_available,
+        return IS.get_components(
+            IS.get_available,
             T,
             sys;
             subsystem_name = subsystem,
         )
     else
-        return PSY.get_components(
-            x -> PSY.get_available(x) && filter_function(x),
+        return IS.get_components(
+            x -> IS.get_available(x) && filter_function(x),
             T,
             sys;
             subsystem_name = subsystem,
@@ -44,48 +44,18 @@ function get_available_components(
     end
 end
 
-_filter_function(x::PSY.ACBus) =
-    PSY.get_bustype(x) != PSY.ACBusTypes.ISOLATED && PSY.get_available(x)
-
-function get_available_components(
-    model::NetworkModel,
-    ::Type{PSY.ACBus},
-    sys::PSY.System,
-)
-    subsystem = get_subsystem(model)
-    return PSY.get_components(
-        _filter_function,
-        PSY.ACBus,
-        sys;
-        subsystem_name = subsystem,
-    )
-end
-
 function get_available_components(
     model::NetworkModel,
     ::Type{T},
-    sys::PSY.System,
-) where {T <: PSY.Component}
+    sys::IS.InfrastructureSystemsContainer,
+) where {T <: IS.InfrastructureSystemsComponent}
     subsystem = get_subsystem(model)
-    return PSY.get_components(
+    return IS.get_components(
         T,
         sys;
         subsystem_name = subsystem,
     )
 end
-
-#=
-function get_available_components(
-    ::Type{PSY.RegulationDevice{T}},
-    sys::PSY.System,
-) where {T <: PSY.Component}
-    return PSY.get_components(
-        x -> (PSY.get_available(x) && PSY.has_service(x, PSY.AGC)),
-        PSY.RegulationDevice{T},
-        sys,
-    )
-end
-=#
 
 ##################################################
 ########### Cost Function Utilities ##############
@@ -189,8 +159,8 @@ Note that the costs (y-axis) are always in \$/h so
 they do not require transformation
 """
 function get_piecewise_pointcurve_per_system_unit(
-    cost_component::PSY.PiecewiseLinearData,
-    unit_system::PSY.UnitSystem,
+    cost_component::IS.PiecewiseLinearData,
+    unit_system::IS.UnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -203,8 +173,8 @@ function get_piecewise_pointcurve_per_system_unit(
 end
 
 function _get_piecewise_pointcurve_per_system_unit(
-    cost_component::PSY.PiecewiseLinearData,
-    ::Val{PSY.UnitSystem.SYSTEM_BASE},
+    cost_component::IS.PiecewiseLinearData,
+    ::Val{IS.UnitSystem.SYSTEM_BASE},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -212,8 +182,8 @@ function _get_piecewise_pointcurve_per_system_unit(
 end
 
 function _get_piecewise_pointcurve_per_system_unit(
-    cost_component::PSY.PiecewiseLinearData,
-    ::Val{PSY.UnitSystem.DEVICE_BASE},
+    cost_component::IS.PiecewiseLinearData,
+    ::Val{IS.UnitSystem.DEVICE_BASE},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -223,12 +193,12 @@ function _get_piecewise_pointcurve_per_system_unit(
         points_normalized[ix] =
             (x = point.x * (device_base_power / system_base_power), y = point.y)
     end
-    return PSY.PiecewiseLinearData(points_normalized)
+    return IS.PiecewiseLinearData(points_normalized)
 end
 
 function _get_piecewise_pointcurve_per_system_unit(
-    cost_component::PSY.PiecewiseLinearData,
-    ::Val{PSY.UnitSystem.NATURAL_UNITS},
+    cost_component::IS.PiecewiseLinearData,
+    ::Val{IS.UnitSystem.NATURAL_UNITS},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -237,7 +207,7 @@ function _get_piecewise_pointcurve_per_system_unit(
     for (ix, point) in enumerate(points)
         points_normalized[ix] = (x = point.x / system_base_power, y = point.y)
     end
-    return PSY.PiecewiseLinearData(points_normalized)
+    return IS.PiecewiseLinearData(points_normalized)
 end
 
 """
@@ -248,15 +218,15 @@ Note that the costs (y-axis) are in \$/MWh, \$/(sys pu h) or \$/(device pu h), s
 require transformation.
 """
 function get_piecewise_curve_per_system_unit(
-    cost_component::PSY.PiecewiseStepData,
-    unit_system::PSY.UnitSystem,
+    cost_component::IS.PiecewiseStepData,
+    unit_system::IS.UnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
 )
-    return PSY.PiecewiseStepData(
+    return IS.PiecewiseStepData(
         get_piecewise_curve_per_system_unit(
-            PSY.get_x_coords(cost_component),
-            PSY.get_y_coords(cost_component),
+            IS.get_x_coords(cost_component),
+            IS.get_y_coords(cost_component),
             unit_system,
             system_base_power,
             device_base_power,
@@ -267,7 +237,7 @@ end
 function get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    unit_system::PSY.UnitSystem,
+    unit_system::IS.UnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -283,7 +253,7 @@ end
 function _get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    ::Val{PSY.UnitSystem.SYSTEM_BASE},
+    ::Val{IS.UnitSystem.SYSTEM_BASE},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -293,7 +263,7 @@ end
 function _get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    ::Val{PSY.UnitSystem.DEVICE_BASE},
+    ::Val{IS.UnitSystem.DEVICE_BASE},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -306,7 +276,7 @@ end
 function _get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    ::Val{PSY.UnitSystem.NATURAL_UNITS},
+    ::Val{IS.UnitSystem.NATURAL_UNITS},
     system_base_power::Float64,
     device_base_power::Float64,
 )

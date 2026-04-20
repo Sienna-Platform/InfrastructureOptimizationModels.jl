@@ -28,12 +28,6 @@ struct DecrementalOffer <: OfferDirection end
 Base.string(::IncrementalOffer) = "incremental"
 Base.string(::DecrementalOffer) = "decremental"
 
-# Union type aliases for static + time-series cost variants
-const MBC_TYPES = Union{PSY.MarketBidCost, PSY.MarketBidTimeSeriesCost}
-const IEC_TYPES = Union{PSY.ImportExportCost, PSY.ImportExportTimeSeriesCost}
-const TS_OFFER_CURVE_COST_TYPES =
-    Union{PSY.MarketBidTimeSeriesCost, PSY.ImportExportTimeSeriesCost}
-
 # Type alias for decision model indices - used for indexing into output stores
 const DecisionModelIndexType = Dates.DateTime
 const EmulationModelIndexType = Int

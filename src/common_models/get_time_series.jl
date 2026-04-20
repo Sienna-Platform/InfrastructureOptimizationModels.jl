@@ -1,7 +1,7 @@
 # NOTE not included currently.
 function _get_time_series(
     container::OptimizationContainer,
-    component::PSY.Component,
+    component::IS.InfrastructureSystemsComponent,
     attributes::TimeSeriesAttributes{T},
 ) where {T <: IS.TimeSeriesData}
     return get_time_series_initial_values!(
@@ -17,7 +17,7 @@ function get_time_series(
     component::T,
     ::Type{P},
     meta = CONTAINER_KEY_EMPTY_META,
-) where {T <: PSY.Component, P <: TimeSeriesParameter}
+) where {T <: IS.InfrastructureSystemsComponent, P <: TimeSeriesParameter}
     parameter_container = get_parameter(container, P, T, meta)
     return _get_time_series(container, component, parameter_container.attributes)
 end
@@ -26,7 +26,7 @@ end
 # refactor is done.
 function get_time_series(
     container::OptimizationContainer,
-    component::PSY.Component,
+    component::IS.InfrastructureSystemsComponent,
     forecast_name::String,
 )
     ts_type = get_default_time_series_type(container)
