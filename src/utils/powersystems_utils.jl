@@ -484,8 +484,10 @@ Automatically transform `SingleTimeSeries` into `DeterministicSingleTimeSeries` 
 given (horizon, interval) when a DecisionModel is built with these settings and the
 system contains only static time series.
 
-Does nothing when the model's `horizon` or `interval` are unset, the system has no
-`SingleTimeSeries`, or the system already has forecasts at the requested interval.
+Does nothing when:
+  - The model's `horizon` or `interval` are unset.
+  - The system has no `SingleTimeSeries` to transform.
+  - The system has existing forecast data AND the requested interval is already present in those forecasts.
 """
 function auto_transform_time_series!(sys::PSY.System, settings::Settings)
     model_interval = get_interval(settings)
