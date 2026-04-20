@@ -280,7 +280,7 @@ end
 function validate_occ_component(::Type{<:StartupCostParameter}, device::PSY.StaticInjection)
     op_cost = PSY.get_operation_cost(device)
     # TS types are validated at parameter population time
-    op_cost isa PSY.MarketBidTimeSeriesCost && return
+    _is_time_series_cost(op_cost) && return
     startup = PSY.get_start_up(op_cost)
     if startup isa Union{NTuple{3, Float64}, StartUpStages}
         @warn "Multi-start costs detected for non-multi-start unit $(get_name(device)), will take the maximum"
@@ -300,7 +300,7 @@ function validate_occ_component(
 )
     op_cost = PSY.get_operation_cost(device)
     # TS types are validated at parameter population time
-    op_cost isa PSY.MarketBidTimeSeriesCost && return
+    _is_time_series_cost(op_cost) && return
     # Static MBC: shut_down is LinearCurve; ThermalGenerationCost: shut_down is Float64
     shutdown = PSY.get_shut_down(op_cost)
     if shutdown isa IS.LinearCurve
@@ -362,7 +362,7 @@ function process_import_export_parameters!(
     devices_in,
     model::DeviceModel,
 )
-    devices = filter(_has_import_export_cost, collect(devices_in))
+    devices = [d for d in devices_in if _has_import_export_cost(d)]
 
     for param in (
         IncrementalPiecewiseLinearSlopeParameter,
@@ -382,7 +382,7 @@ function process_market_bid_parameters!(
     incremental::Bool = true,
     decremental::Bool = false,
 )
-    devices = filter(_has_market_bid_cost, collect(devices_in))
+    devices = [d for d in devices_in if _has_market_bid_cost(d)]
     isempty(devices) && return
 
     for param in (
@@ -467,15 +467,21 @@ function _get_raw_pwl_data(
     slope_arr = get_parameter_array(container, SlopeParam, T)
     slope_mult = get_parameter_multiplier_array(container, SlopeParam, T)
     @assert size(slope_arr) == size(slope_mult)
-    slope_cost_component =
-        (slope_arr[name, :, time] .* slope_mult[name, :, time]).data
+    seg_axis = axes(slope_arr)[2]
+    slope_cost_component = Vector{Float64}(undef, length(seg_axis))
+    for (i, seg) in enumerate(seg_axis)
+        slope_cost_component[i] = slope_arr[name, seg, time] * slope_mult[name, seg, time]
+    end
 
     BreakpointParam = _breakpoint_param(dir)
     bp_arr = get_parameter_array(container, BreakpointParam, T)
     bp_mult = get_parameter_multiplier_array(container, BreakpointParam, T)
     @assert size(bp_arr) == size(bp_mult)
-    breakpoint_cost_component =
-        (bp_arr[name, :, time] .* bp_mult[name, :, time]).data
+    point_axis = axes(bp_arr)[2]
+    breakpoint_cost_component = Vector{Float64}(undef, length(point_axis))
+    for (i, pt) in enumerate(point_axis)
+        breakpoint_cost_component[i] = bp_arr[name, pt, time] * bp_mult[name, pt, time]
+    end
 
     @assert_op length(slope_cost_component) == length(breakpoint_cost_component) - 1
     return breakpoint_cost_component, slope_cost_component, PSY.get_power_units(cost_data)
@@ -523,8 +529,18 @@ function add_pwl_term_delta!(
     dt = Dates.value(resolution) / MILLISECONDS_IN_HOUR
     time_steps = get_time_steps(container)
     is_variant = is_time_variant(get_offer_curves(dir, component))
+    # Static offer curves are time-invariant: compute breakpoints/slopes once.
+    static_breakpoints, static_slopes = if is_variant
+        (Float64[], Float64[])
+    else
+        _get_pwl_data(dir, container, component, first(time_steps))
+    end
     for t in time_steps
-        breakpoints, slopes = _get_pwl_data(dir, container, component, t)
+        breakpoints, slopes = if is_variant
+            _get_pwl_data(dir, container, component, t)
+        else
+            (static_breakpoints, static_slopes)
+        end
         pwl_vars =
             add_pwl_variables_delta!(
                 container,
