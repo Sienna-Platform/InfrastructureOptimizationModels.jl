@@ -87,7 +87,7 @@ function _add_pwmcc_concave_cuts!(
     )
     selector_cons = add_constraints_container!(
         container,
-        PiecewiseMcCormickSelectorSum(),
+        PiecewiseMcCormickSelectorSum,
         C,
         names,
         time_steps;
