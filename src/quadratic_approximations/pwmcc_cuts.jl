@@ -85,7 +85,7 @@ function _add_pwmcc_concave_cuts!(
 
     selector_cons = add_constraints_container!(
         container,
-        PiecewiseMcCormickSelectorSum(),
+        PiecewiseMcCormickSelectorSum,
         C,
         names,
         time_steps;
@@ -93,7 +93,7 @@ function _add_pwmcc_concave_cuts!(
     )
     linking_cons = add_constraints_container!(
         container,
-        PiecewiseMcCormickLinking(),
+        PiecewiseMcCormickLinking,
         C,
         names,
         time_steps;
@@ -101,7 +101,7 @@ function _add_pwmcc_concave_cuts!(
     )
     interval_lb_cons = add_constraints_container!(
         container,
-        PiecewiseMcCormickIntervalLB(),
+        PiecewiseMcCormickIntervalLB,
         C,
         names,
         1:K,
@@ -110,7 +110,7 @@ function _add_pwmcc_concave_cuts!(
     )
     interval_ub_cons = add_constraints_container!(
         container,
-        PiecewiseMcCormickIntervalUB(),
+        PiecewiseMcCormickIntervalUB,
         C,
         names,
         1:K,
@@ -119,7 +119,7 @@ function _add_pwmcc_concave_cuts!(
     )
     chord_ub_cons = add_constraints_container!(
         container,
-        PiecewiseMcCormickChordUB(),
+        PiecewiseMcCormickChordUB,
         C,
         names,
         time_steps;
@@ -127,7 +127,7 @@ function _add_pwmcc_concave_cuts!(
     )
     tangent_lb_l_cons = add_constraints_container!(
         container,
-        PiecewiseMcCormickTangentLBL(),
+        PiecewiseMcCormickTangentLBL,
         C,
         names,
         time_steps;
@@ -135,7 +135,7 @@ function _add_pwmcc_concave_cuts!(
     )
     tangent_lb_r_cons = add_constraints_container!(
         container,
-        PiecewiseMcCormickTangentLBR(),
+        PiecewiseMcCormickTangentLBR,
         C,
         names,
         time_steps;

@@ -798,6 +798,72 @@ end
         @test JuMP.coefficient(invariant, var_y800) ≈ 2000.0 atol = 1e-10
     end
 
+    @testset "FuelCurve{PiecewisePointCurve} time-variant fuel cost goes to variant objective" begin
+        fuel_points = [
+            (x = 0.0, y = 0.0),
+            (x = 50.0, y = 400.0),
+            (x = 100.0, y = 900.0),
+        ]
+        time_steps = 1:2
+        fuel_prices = [3.0, 7.0]
+
+        # Create container + device. We pass a scalar fuel_cost for the operation cost mock
+        # but use a TimeSeriesKey in the FuelCurve itself.
+        op_cost = MockOperationCost(0.0, false, 5.0)
+        device = make_mock_thermal(
+            "gen_tv"; base_power = 100.0, operation_cost = op_cost,
+        )
+        container = setup_pwl_container_with_variables(time_steps, device)
+
+        # Pre-populate FuelCostParameter with time-varying fuel prices
+        add_test_parameter!(
+            container,
+            IOM.FuelCostParameter,
+            MockThermalGen,
+            ["gen_tv"],
+            time_steps,
+            reshape(Float64.(fuel_prices), 1, :),
+        )
+
+        # Build FuelCurve with a TimeSeriesKey as fuel_cost to trigger is_time_variant
+        ts_key = IS.StaticTimeSeriesKey(
+            IS.SingleTimeSeries,
+            "fuel_cost",
+            Dates.DateTime(2024, 1, 1),
+            Dates.Hour(1),
+            length(time_steps),
+            Dict{String, Any}(),
+        )
+        fuel_curve = IS.FuelCurve(
+            IS.InputOutputCurve(IS.PiecewiseLinearData(fuel_points)),
+            IS.UnitSystem.NATURAL_UNITS,
+            ts_key,
+        )
+
+        IOM.add_variable_cost_to_objective!(
+            container,
+            TestPWLVariable,
+            device,
+            fuel_curve,
+            TestPWLFormulation,
+        )
+
+        # Cost should be in the VARIANT objective, not invariant
+        obj = IOM.get_objective_expression(container)
+        variant = IOM.get_variant_terms(obj)
+        invariant = IOM.get_invariant_terms(obj)
+
+        pwl_var_container = IOM.get_variable(
+            container, IOM.PiecewiseLinearCostVariable, MockThermalGen,
+        )
+
+        # For t=1: y=400 point, fuel_price=3.0, dt=1.0 → cost coef = 400 * 3.0 = 1200
+        var_y400_t1 = pwl_var_container["gen_tv", 2, 1]
+        @test JuMP.coefficient(variant, var_y400_t1) ≈ 400.0 * fuel_prices[1] atol = 1e-10
+        # Invariant should NOT contain this term
+        @test JuMP.coefficient(invariant, var_y400_t1) ≈ 0.0 atol = 1e-10
+    end
+
     @testset "FuelCurve{PiecewiseIncrementalCurve} converts and produces correct objective" begin
         # FuelCurve with incremental (marginal heat rate) data
         # x_coords: [0, 50, 100] MW, slopes: [8, 10] MMBTU/MWh
@@ -892,5 +958,66 @@ end
         ]
         con_set = JuMP.constraint_object(linking_con).set
         @test con_set.value ≈ -P_min
+    end
+
+    @testset "_add_pwl_constraint_standard! with must_run=true forces bin=1.0" begin
+        P_min = 20.0
+        must_run_points =
+            [(x = 20.0, y = 0.0), (x = 60.0, y = 200.0), (x = 100.0, y = 800.0)]
+        (; container, device, break_points, power_var) =
+            setup_pwl_constraint_test(; time_steps = 1:1, points = must_run_points)
+
+        IOM._add_pwl_constraint_standard!(
+            container,
+            device,
+            break_points,
+            IOM.SOSStatusVariable.NO_VARIABLE,
+            1,
+            power_var,
+            true,  # must_run
+        )
+
+        # Normalization constraint RHS should be 1.0 (bin forced)
+        norm_con = IOM.get_constraint(
+            container,
+            IOM.PiecewiseLinearCostNormalizationConstraint,
+            MockThermalGen,
+        )[
+            "gen1",
+            1,
+        ]
+        norm_set = JuMP.constraint_object(norm_con).set
+        @test norm_set.value ≈ 1.0
+    end
+
+    @testset "_get_sos_value returns NO_VARIABLE when skip_proportional_cost" begin
+        # Temporarily override skip_proportional_cost for our mock type
+        IOM.skip_proportional_cost(::MockThermalGen) = true
+        try
+            setup = setup_pwl_test()
+            result = IOM._get_sos_value(
+                setup.container, TestPWLFormulation, setup.device,
+            )
+            @test result == IOM.SOSStatusVariable.NO_VARIABLE
+        finally
+            IOM.skip_proportional_cost(::MockThermalGen) = false
+        end
+    end
+
+    @testset "_get_sos_value returns PARAMETER when OnStatusParameter exists" begin
+        (; container, device) = setup_pwl_test(; time_steps = 1:1)
+
+        # Add OnStatusParameter container
+        add_test_parameter!(
+            container,
+            IOM.OnStatusParameter,
+            MockThermalGen,
+            ["gen1"],
+            1:1,
+            fill(1.0, 1, 1),
+        )
+
+        result = IOM._get_sos_value(container, TestPWLFormulation, device)
+        @test result == IOM.SOSStatusVariable.PARAMETER
     end
 end

@@ -39,6 +39,22 @@ struct MockVariableType <: ISOPT.VariableType end
         @test isnan(IOM.jump_value(y))
     end
 
+    @testset "jump_value with solved model" begin
+        model = JuMP.Model(HiGHS.Optimizer)
+        JuMP.set_silent(model)
+        @variable(model, x >= 5.0)
+        @objective(model, Min, x)
+        JuMP.optimize!(model)
+        @test JuMP.termination_status(model) == JuMP.OPTIMAL
+        @test IOM.jump_value(x) ≈ 5.0 atol = 1e-6
+    end
+
+    @testset "add_proportional_to_jump_expression! Float64×Float64" begin
+        expr = JuMP.AffExpr(1.0)
+        IOM.add_proportional_to_jump_expression!(expr, 3.0, 4.0)
+        @test JuMP.constant(expr) ≈ 13.0  # 1.0 + 3.0*4.0
+    end
+
     @testset "jump_fixed_value" begin
         model = JuMP.Model()
 
@@ -265,5 +281,30 @@ struct MockVariableType <: ISOPT.VariableType end
         @test :name2 in propertynames(df)
         @test :value in propertynames(df)
         @test nrow(df) == 12  # 2 * 2 * 3
+    end
+
+    @testset "_get_piecewise_pointcurve_per_system_unit DEVICE_BASE" begin
+        # Points in device base units: x coordinates should be scaled by
+        # device_base / system_base, y coordinates unchanged
+        points = [(x = 0.0, y = 0.0), (x = 1.0, y = 10.0), (x = 2.0, y = 30.0)]
+        pwl_data = IS.PiecewiseLinearData(points)
+        system_base = 100.0
+        device_base = 50.0
+
+        result = IOM._get_piecewise_pointcurve_per_system_unit(
+            pwl_data,
+            Val(IS.UnitSystem.DEVICE_BASE),
+            system_base,
+            device_base,
+        )
+        result_points = result.points
+        ratio = device_base / system_base  # 0.5
+        @test result_points[1].x ≈ 0.0 * ratio
+        @test result_points[2].x ≈ 1.0 * ratio
+        @test result_points[3].x ≈ 2.0 * ratio
+        # y-coordinates unchanged
+        @test result_points[1].y ≈ 0.0
+        @test result_points[2].y ≈ 10.0
+        @test result_points[3].y ≈ 30.0
     end
 end

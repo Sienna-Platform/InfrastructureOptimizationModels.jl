@@ -465,4 +465,56 @@ end
             expected_quadratic,
         )
     end
+
+    @testset "_check_quadratic_monotonicity warns for non-monotonic cost" begin
+        # derivative f'(x) = 2*quad*x + linear
+        # With quad=-1.0, linear=0.5: f'(0) = 0.5, f'(1) = -1.5 (negative → warning)
+        @test_logs (:warn, r"not monotonically increasing") InfrastructureOptimizationModels._check_quadratic_monotonicity(
+            "test_gen", -1.0, 0.5, 0.0, 1.0,
+        )
+        # Positive-definite case: no warning
+        @test_logs InfrastructureOptimizationModels._check_quadratic_monotonicity(
+            "test_gen", 1.0, 1.0, 0.0, 1.0,
+        )
+    end
+
+    @testset "_add_quadraticcurve_variable_term_to_model! populates ProductionCostExpression" begin
+        time_steps = 1:2
+        device = make_mock_thermal("gen_expr"; base_power = 100.0)
+        container =
+            setup_quadratic_test_container(time_steps, device; resolution = Dates.Hour(1))
+
+        # Add a ProductionCostExpression container so the branch is exercised
+        # Use QuadExpr type since the quadratic cost produces QuadExpr terms
+        InfrastructureOptimizationModels.add_expression_container!(
+            container,
+            InfrastructureOptimizationModels.ProductionCostExpression,
+            MockThermalGen,
+            ["gen_expr"],
+            time_steps;
+            expr_type = JuMP.QuadExpr,
+        )
+        expr_container = InfrastructureOptimizationModels.get_expression(
+            container,
+            InfrastructureOptimizationModels.ProductionCostExpression,
+            MockThermalGen,
+        )
+
+        quadratic_term = 2.0
+        linear_term = 5.0
+        InfrastructureOptimizationModels._add_quadraticcurve_variable_term_to_model!(
+            container,
+            TestActivePowerVariable,
+            device,
+            linear_term,
+            quadratic_term,
+            1,
+        )
+
+        # The expression at [name, t=1] should be non-zero (cost was added)
+        cost_expr = expr_container["gen_expr", 1]
+        # Should be a QuadExpr with non-trivial quadratic terms
+        @test cost_expr isa JuMP.GenericQuadExpr
+        @test !isempty(cost_expr.terms)
+    end
 end

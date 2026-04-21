@@ -650,4 +650,184 @@ const TEST_META = "TestVar"
             end
         end
     end
+
+    @testset "Sawtooth with epigraph tightening" begin
+        @testset "Epigraph brackets true x²" begin
+            # With epigraph, z is bounded: epigraph_lb ≤ z ≤ sawtooth_ub.
+            # min z = epigraph (underestimate), max z = sawtooth (overestimate).
+            # Together they bracket the true x² value.
+            x0 = 1.7
+            true_val = x0^2
+
+            setup = _setup_qa_test(["dev1"], 1:1)
+            JuMP.fix(setup.var_container["dev1", 1], x0; force = true)
+
+            IOM._add_quadratic_approx!(
+                IOM.SawtoothQuadConfig(3, 2),
+                setup.container,
+                MockThermalGen,
+                ["dev1"],
+                1:1,
+                setup.var_container,
+                0.0,
+                4.0,
+                TEST_META,
+            )
+            z_expr = IOM.get_expression(
+                setup.container,
+                IOM.QuadraticExpression,
+                MockThermalGen,
+                TEST_META,
+            )["dev1", 1]
+
+            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+            JuMP.set_silent(setup.jump_model)
+
+            # Minimize z → epigraph lower bound
+            JuMP.@objective(setup.jump_model, Min, z_expr)
+            JuMP.optimize!(setup.jump_model)
+            @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+            z_min = JuMP.objective_value(setup.jump_model)
+
+            # Maximize z → sawtooth upper bound
+            JuMP.@objective(setup.jump_model, Max, z_expr)
+            JuMP.optimize!(setup.jump_model)
+            @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+            z_max = JuMP.objective_value(setup.jump_model)
+
+            # z brackets true x²
+            @test z_min <= true_val + 1e-6
+            @test z_max >= true_val - 1e-6
+            # Bounds are non-trivial (gap is finite and positive)
+            @test z_max - z_min >= 0.0
+            @test z_max - z_min <= (4.0^2)  # gap smaller than full domain squared
+        end
+
+        @testset "Epigraph provides valid lower bound" begin
+            # With epigraph tightening, z is bounded: epigraph_lb ≤ z ≤ sawtooth_ub
+            setup = _setup_qa_test(["dev1"], 1:1)
+            x_var = setup.var_container["dev1", 1]
+            x0 = 2.5
+            JuMP.fix(x_var, x0; force = true)
+
+            IOM._add_quadratic_approx!(
+                IOM.SawtoothQuadConfig(3, 3),
+                setup.container,
+                MockThermalGen,
+                ["dev1"],
+                1:1,
+                setup.var_container,
+                0.0,
+                4.0,
+                TEST_META,
+            )
+            expr_container = IOM.get_expression(
+                setup.container,
+                IOM.QuadraticExpression,
+                MockThermalGen,
+                TEST_META,
+            )
+            z_expr = expr_container["dev1", 1]
+
+            # Minimize z — should still be a valid approximation (≤ true x² + ε)
+            JuMP.@objective(setup.jump_model, Min, z_expr)
+            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+            JuMP.set_silent(setup.jump_model)
+            JuMP.optimize!(setup.jump_model)
+            @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+            z_min = JuMP.objective_value(setup.jump_model)
+            @test z_min <= x0^2 + 1e-4  # upper bound on x²
+            @test z_min >= 0.0  # valid lower bound
+        end
+    end
+
+    @testset "Solver SOS2 with PWMCC concave cuts" begin
+        # Test with default pwmcc_segments=4 (the uncovered branch)
+        x0 = 1.3
+        true_val = x0^2
+
+        results = Dict{Symbol, Float64}()
+        for (label, config) in [
+            (:no_cuts, IOM.SolverSOS2QuadConfig(4, 0)),
+            (:with_cuts, IOM.SolverSOS2QuadConfig(4)),  # default pwmcc_segments=4
+        ]
+            setup = _setup_qa_test(["dev1"], 1:1)
+            x_var = setup.var_container["dev1", 1]
+            JuMP.fix(x_var, x0; force = true)
+
+            IOM._add_quadratic_approx!(
+                config,
+                setup.container,
+                MockThermalGen,
+                ["dev1"],
+                1:1,
+                setup.var_container,
+                0.0,
+                4.0,
+                TEST_META,
+            )
+            expr_container = IOM.get_expression(
+                setup.container,
+                IOM.QuadraticExpression,
+                MockThermalGen,
+                TEST_META,
+            )
+            z_expr = expr_container["dev1", 1]
+
+            # Maximize to test the overestimate tightening (PWMCC adds concave upper bound)
+            JuMP.@objective(setup.jump_model, Max, z_expr)
+            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+            JuMP.set_silent(setup.jump_model)
+            JuMP.optimize!(setup.jump_model)
+
+            @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+            results[label] = JuMP.objective_value(setup.jump_model)
+        end
+        # With cuts should give overestimate at least as tight (≤) as without
+        @test results[:with_cuts] <= results[:no_cuts] + 1e-6
+    end
+
+    @testset "Manual SOS2 with PWMCC concave cuts" begin
+        x0 = 1.3
+        true_val = x0^2
+
+        results = Dict{Symbol, Float64}()
+        for (label, config) in [
+            (:no_cuts, IOM.ManualSOS2QuadConfig(4, 0)),
+            (:with_cuts, IOM.ManualSOS2QuadConfig(4)),  # default pwmcc_segments=4
+        ]
+            setup = _setup_qa_test(["dev1"], 1:1)
+            x_var = setup.var_container["dev1", 1]
+            JuMP.fix(x_var, x0; force = true)
+
+            IOM._add_quadratic_approx!(
+                config,
+                setup.container,
+                MockThermalGen,
+                ["dev1"],
+                1:1,
+                setup.var_container,
+                0.0,
+                4.0,
+                TEST_META,
+            )
+            expr_container = IOM.get_expression(
+                setup.container,
+                IOM.QuadraticExpression,
+                MockThermalGen,
+                TEST_META,
+            )
+            z_expr = expr_container["dev1", 1]
+
+            JuMP.@objective(setup.jump_model, Max, z_expr)
+            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+            JuMP.set_silent(setup.jump_model)
+            JuMP.optimize!(setup.jump_model)
+
+            @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+            results[label] = JuMP.objective_value(setup.jump_model)
+        end
+        # With cuts should give overestimate at least as tight
+        @test results[:with_cuts] <= results[:no_cuts] + 1e-6
+    end
 end

@@ -521,4 +521,57 @@ end
             @test n_bin_hybs < n_bin_bin2
         end
     end
+
+    @testset "HybS with McCormick envelope tightens bounds" begin
+        # Compare HybSConfig(..., false) vs HybSConfig(..., true) at a fixed point
+        x0, y0 = 0.4, 0.7
+        true_product = x0 * y0
+
+        results = Dict{Symbol, NTuple{2, Float64}}()  # (min_z, max_z) for each config
+        for (label, add_mc) in [(:no_mc, false), (:with_mc, true)]
+            z_vals = Float64[]
+            for sense in [JuMP.MIN_SENSE, JuMP.MAX_SENSE]
+                setup = _setup_bilinear_test(["dev1"], 1:1)
+                JuMP.fix(setup.x_var_container["dev1", 1], x0; force = true)
+                JuMP.fix(setup.y_var_container["dev1", 1], y0; force = true)
+
+                IOM._add_bilinear_approx!(
+                    IOM.HybSConfig(IOM.SawtoothQuadConfig(2), 2, add_mc),
+                    setup.container,
+                    MockThermalGen,
+                    ["dev1"],
+                    1:1,
+                    setup.x_var_container,
+                    setup.y_var_container,
+                    0.0,
+                    1.0,
+                    0.0,
+                    1.0,
+                    HYBS_META,
+                )
+                expr_container = IOM.get_expression(
+                    setup.container,
+                    IOM.BilinearProductExpression,
+                    MockThermalGen,
+                    HYBS_META,
+                )
+                z_expr = expr_container["dev1", 1]
+
+                JuMP.@objective(setup.jump_model, sense, z_expr)
+                JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+                JuMP.set_silent(setup.jump_model)
+                JuMP.optimize!(setup.jump_model)
+                @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+                push!(z_vals, JuMP.objective_value(setup.jump_model))
+            end
+            results[label] = (z_vals[1], z_vals[2])  # (min_z, max_z)
+        end
+        # McCormick version should have gap at least as tight
+        no_mc_gap = results[:no_mc][2] - results[:no_mc][1]
+        with_mc_gap = results[:with_mc][2] - results[:with_mc][1]
+        @test with_mc_gap <= no_mc_gap + 1e-6
+        # Both should bracket the true product
+        @test results[:with_mc][1] <= true_product + 1e-6
+        @test results[:with_mc][2] >= true_product - 1e-6
+    end
 end

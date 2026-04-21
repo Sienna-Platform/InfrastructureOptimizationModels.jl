@@ -151,4 +151,65 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         expr_key = PSI.ExpressionKey(MockExpressionType, MockComponentType)
         @test haskey(PSI.get_expressions(container), expr_key)
     end
+
+    @testset "_assign_container! throws on duplicate key" begin
+        mock_sys = MockSystem(100.0)
+        settings = PSI.Settings(
+            mock_sys;
+            horizon = Dates.Hour(24),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        container = PSI.OptimizationContainer(
+            mock_sys,
+            settings,
+            nothing,
+            MockDeterministic,
+        )
+        PSI.set_time_steps!(container, 1:24)
+
+        # First assignment succeeds
+        PSI.add_variable_container!(
+            container,
+            PSI.ActivePowerVariable,
+            MockComponentType,
+            ["gen1"],
+            1:24,
+        )
+
+        # Second assignment with same key should throw.
+        # Suppress the @error log to avoid tripping the framework's zero-error assertion.
+        @test_throws IS.InvalidValue Logging.with_logger(Logging.NullLogger()) do
+            PSI.add_variable_container!(
+                container,
+                PSI.ActivePowerVariable,
+                MockComponentType,
+                ["gen1"],
+                1:24,
+            )
+        end
+    end
+
+    @testset "_get_entry throws on missing key" begin
+        mock_sys = MockSystem(100.0)
+        settings = PSI.Settings(
+            mock_sys;
+            horizon = Dates.Hour(24),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        container = PSI.OptimizationContainer(
+            mock_sys,
+            settings,
+            nothing,
+            MockDeterministic,
+        )
+
+        # Looking up a variable that was never added should throw
+        @test_throws IS.InvalidValue PSI.get_variable(
+            container,
+            PSI.ActivePowerVariable,
+            MockComponentType,
+        )
+    end
 end
