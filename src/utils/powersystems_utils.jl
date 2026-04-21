@@ -1,3 +1,19 @@
+"""
+Convert the internal `Dates.Millisecond` interval (where `UNSET_INTERVAL` means
+unset) to the `Union{Nothing, Dates.Period}` form the IS / PSY time-series API
+expects.
+"""
+_to_is_interval(interval::Dates.Millisecond) =
+    interval == UNSET_INTERVAL ? nothing : interval
+
+"""
+Convert the internal `Dates.Millisecond` resolution (where `UNSET_RESOLUTION`
+means unset) to the `Union{Nothing, Dates.Period}` form the IS / PSY
+time-series API expects.
+"""
+_to_is_resolution(resolution::Dates.Millisecond) =
+    resolution == UNSET_RESOLUTION ? nothing : resolution
+
 function get_available_components(
     model::DeviceModel{T, <:AbstractDeviceFormulation},
     sys::PSY.System,
@@ -419,4 +435,87 @@ function get_deterministic_time_series_type(sys::PSY.System)
             "The System does not contain any forecast data or transformed time series data.",
         )
     end
+end
+
+"""
+Return the set of distinct forecast intervals present in the system.
+"""
+function get_forecast_intervals(sys::PSY.System)
+    table = PSY.get_forecast_summary_table(sys)
+    return Set(row.interval for row in eachrow(table) if row.interval !== nothing)
+end
+
+"""
+Return `(initial_timestamp, length)` for the `SingleTimeSeries` in `sys` whose
+resolution matches `resolution`. Throws `IS.InvalidValue` when no match exists
+or when matching series disagree on either field.
+"""
+function get_single_time_series_consistency(
+    sys::PSY.System,
+    resolution::Dates.Period,
+)
+    table = PSY.get_static_time_series_summary_table(sys)
+    target = Dates.canonicalize(Dates.Millisecond(resolution))
+    filtered =
+        [row for row in eachrow(table) if row.resolution == target]
+    if isempty(filtered)
+        throw(
+            IS.InvalidValue(
+                "No SingleTimeSeries found at resolution $(target)",
+            ),
+        )
+    end
+    unique_pairs =
+        unique((row.initial_timestamp, row.time_step_count) for row in filtered)
+    if length(unique_pairs) > 1
+        throw(
+            IS.InvalidValue(
+                "SingleTimeSeries at resolution $(target) have inconsistent " *
+                "initial times and lengths: $(collect(unique_pairs))",
+            ),
+        )
+    end
+    ini_time_str, ts_length = first(unique_pairs)
+    return (Dates.DateTime(ini_time_str), ts_length)
+end
+
+"""
+Automatically transform `SingleTimeSeries` into `DeterministicSingleTimeSeries` for a
+given (horizon, interval) when a DecisionModel is built with these settings and the
+system contains only static time series.
+
+Does nothing when:
+  - The model's `horizon` or `interval` are unset.
+  - The system has no `SingleTimeSeries` to transform.
+  - The system has existing forecast data AND the requested interval is already present in those forecasts.
+"""
+function auto_transform_time_series!(sys::PSY.System, settings::Settings)
+    model_interval = get_interval(settings)
+    model_horizon = get_horizon(settings)
+    if model_interval == UNSET_INTERVAL || model_horizon == UNSET_HORIZON
+        return
+    end
+
+    counts = PSY.get_time_series_counts(sys)
+    if counts.static_time_series_count < 1
+        return
+    end
+    if counts.forecast_count > 0 && model_interval in get_forecast_intervals(sys)
+        return
+    end
+
+    model_resolution = get_resolution(settings)
+    resolution_kwarg =
+        model_resolution == UNSET_RESOLUTION ? (;) : (; resolution = model_resolution)
+
+    @info "Auto-transforming SingleTimeSeries to DeterministicSingleTimeSeries" horizon =
+        Dates.canonicalize(model_horizon) interval = Dates.canonicalize(model_interval)
+    PSY.transform_single_time_series!(
+        sys,
+        model_horizon,
+        model_interval;
+        delete_existing = false,
+        resolution_kwarg...,
+    )
+    return
 end

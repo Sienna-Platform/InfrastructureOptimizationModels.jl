@@ -7,6 +7,12 @@ function add_jump_parameter(jump_model::JuMP.Model, val::Number)
     return param
 end
 
+function get_hinted_aff_expr(size::Int)
+    expr = JuMP.AffExpr(0.0)
+    sizehint!(expr.terms, size)
+    return expr
+end
+
 function write_data(base_power::Float64, save_path::String)
     JSON3.write(joinpath(save_path, "base_power.json"), JSON3.json(base_power))
     return

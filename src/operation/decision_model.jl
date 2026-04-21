@@ -74,6 +74,7 @@ function DecisionModel{M}(
     elseif name isa String
         name = Symbol(name)
     end
+    auto_transform_time_series!(sys, settings)
     ts_type = get_deterministic_time_series_type(sys)
     internal = ModelInternal(
         OptimizationContainer(sys, settings, jump_model, ts_type),
@@ -102,6 +103,7 @@ function DecisionModel{M}(
     optimizer = nothing,
     horizon = UNSET_HORIZON,
     resolution = UNSET_RESOLUTION,
+    interval = UNSET_INTERVAL,
     warm_start = true,
     check_components = true,
     initialize_model = true,
@@ -124,6 +126,7 @@ function DecisionModel{M}(
         sys;
         horizon = horizon,
         resolution = resolution,
+        interval = interval,
         initial_time = initial_time,
         optimizer = optimizer,
         time_series_cache_size = time_series_cache_size,
@@ -214,7 +217,13 @@ function init_model_store_params!(model::DecisionModel)
     num_executions = get_executions(model)
     horizon = get_horizon(model)
     system = get_system(model)
-    interval = PSY.get_forecast_interval(system)
+    settings = get_settings(model)
+    model_interval = get_interval(settings)
+    if model_interval != UNSET_INTERVAL
+        interval = model_interval
+    else
+        interval = PSY.get_forecast_interval(system)
+    end
     resolution = get_resolution(model)
     base_power = PSY.get_base_power(system)
     sys_uuid = IS.get_uuid(system)
@@ -254,8 +263,30 @@ function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
         set_resolution!(settings, first(available_resolutions))
     end
 
+    model_interval = get_interval(settings)
+    available_intervals = get_forecast_intervals(sys)
+    if model_interval == UNSET_INTERVAL && length(available_intervals) > 1
+        throw(
+            IS.ConflictingInputsError(
+                "The system contains multiple forecast intervals $(available_intervals). " *
+                "The `interval` keyword argument must be provided to the DecisionModel constructor " *
+                "to select which interval to use.",
+            ),
+        )
+    elseif model_interval != UNSET_INTERVAL && !isempty(available_intervals)
+        if model_interval ∉ available_intervals
+            throw(
+                IS.ConflictingInputsError(
+                    "Interval $(Dates.canonicalize(model_interval)) is not available in the system data. " *
+                    "Available forecast intervals: $(available_intervals)",
+                ),
+            )
+        end
+    end
+    interval_kwarg =
+        model_interval == UNSET_INTERVAL ? (;) : (; interval = model_interval)
     if get_horizon(settings) == UNSET_HORIZON
-        set_horizon!(settings, PSY.get_forecast_horizon(sys))
+        set_horizon!(settings, PSY.get_forecast_horizon(sys; interval_kwarg...))
     end
 
     counts = PSY.get_time_series_counts(sys)

@@ -2,13 +2,15 @@
 function _get_time_series(
     container::OptimizationContainer,
     component::PSY.Component,
-    attributes::TimeSeriesAttributes{T},
+    attributes::TimeSeriesAttributes{T};
+    interval::Dates.Millisecond = UNSET_INTERVAL,
 ) where {T <: IS.TimeSeriesData}
     return get_time_series_initial_values!(
         container,
         T,
         component,
-        get_time_series_name(attributes),
+        get_time_series_name(attributes);
+        interval = interval,
     )
 end
 
@@ -16,10 +18,16 @@ function get_time_series(
     container::OptimizationContainer,
     component::T,
     ::Type{P},
-    meta = CONTAINER_KEY_EMPTY_META,
+    meta = CONTAINER_KEY_EMPTY_META;
+    interval::Dates.Millisecond = UNSET_INTERVAL,
 ) where {T <: PSY.Component, P <: TimeSeriesParameter}
     parameter_container = get_parameter(container, P, T, meta)
-    return _get_time_series(container, component, parameter_container.attributes)
+    return _get_time_series(
+        container,
+        component,
+        parameter_container.attributes;
+        interval = interval,
+    )
 end
 
 # This is just for temporary compatibility with current code. Needs to be eliminated once the time series
@@ -27,13 +35,15 @@ end
 function get_time_series(
     container::OptimizationContainer,
     component::PSY.Component,
-    forecast_name::String,
+    forecast_name::String;
+    interval::Dates.Millisecond = UNSET_INTERVAL,
 )
     ts_type = get_default_time_series_type(container)
     return _get_time_series(
         container,
         component,
-        TimeSeriesAttributes(ts_type, forecast_name),
+        TimeSeriesAttributes(ts_type, forecast_name);
+        interval = interval,
     )
 end
 

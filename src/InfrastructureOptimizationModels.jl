@@ -483,7 +483,7 @@ export DefaultEmulationProblem
 # Settings and Data Types
 export Settings
 export get_warm_start
-export get_horizon, get_initial_time, get_optimizer, get_ext
+export get_horizon, get_initial_time, get_optimizer, get_ext, get_interval
 export get_check_components, get_initialize_model, get_initialization_file
 export get_deserialize_initial_conditions, get_export_pwl_vars
 export get_check_numerical_bounds, get_allow_fails
