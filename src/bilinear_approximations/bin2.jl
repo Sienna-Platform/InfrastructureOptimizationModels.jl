@@ -96,7 +96,12 @@ function _add_bilinear_approx!(
     # --- Bin2 identity: z = ½((x+y)² − x² − y²) ---
 
     # Bounds for p = x + y (per-name)
-    p_bounds = [MinMax((min = x_bounds[i].min + y_bounds[i].min, max = x_bounds[i].max + y_bounds[i].max)) for i in eachindex(x_bounds)]
+    p_bounds = [
+        MinMax((
+            min = x_bounds[i].min + y_bounds[i].min,
+            max = x_bounds[i].max + y_bounds[i].max,
+        )) for i in eachindex(x_bounds)
+    ]
 
     meta_plus = meta * "_plus"
 

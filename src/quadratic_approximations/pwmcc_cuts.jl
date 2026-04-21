@@ -74,7 +74,7 @@ function _add_pwmcc_concave_cuts!(
         names,
         1:K,
         time_steps;
-        meta
+        meta,
     )
     vd_var = add_variable_container!(
         container,
@@ -83,7 +83,7 @@ function _add_pwmcc_concave_cuts!(
         names,
         1:K,
         time_steps;
-        meta
+        meta,
     )
     selector_cons = add_constraints_container!(
         container,

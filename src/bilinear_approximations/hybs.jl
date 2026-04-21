@@ -93,8 +93,18 @@ function _add_bilinear_approx!(
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     # Bounds for auxiliary variables (per-name)
-    p1_bounds = [MinMax((min = x_bounds[i].min + y_bounds[i].min, max = x_bounds[i].max + y_bounds[i].max)) for i in eachindex(x_bounds)]
-    p2_bounds = [MinMax((min = x_bounds[i].min - y_bounds[i].max, max = x_bounds[i].max - y_bounds[i].min)) for i in eachindex(x_bounds)]
+    p1_bounds = [
+        MinMax((
+            min = x_bounds[i].min + y_bounds[i].min,
+            max = x_bounds[i].max + y_bounds[i].max,
+        )) for i in eachindex(x_bounds)
+    ]
+    p2_bounds = [
+        MinMax((
+            min = x_bounds[i].min - y_bounds[i].max,
+            max = x_bounds[i].max - y_bounds[i].min,
+        )) for i in eachindex(x_bounds)
+    ]
 
     jump_model = get_jump_model(container)
 

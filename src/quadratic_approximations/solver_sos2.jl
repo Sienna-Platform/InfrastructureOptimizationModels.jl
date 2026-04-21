@@ -75,7 +75,7 @@ function _add_quadratic_approx!(
         names,
         1:n_points,
         time_steps;
-        meta
+        meta,
     )
     link_cons = add_constraints_container!(
         container,
