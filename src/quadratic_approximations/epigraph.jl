@@ -124,7 +124,7 @@ function _add_quadratic_approx!(
 
     for (i, name) in enumerate(names), t in time_steps
         b = bounds[i]
-        IS.@assert_op b.max > b.min
+        IS.@assert_op b.max > b.min "Invalid bounds for $(name): expected max > min, got min=$(b.min), max=$(b.max)"
         delta = b.max - b.min
         z_ub = max(b.min^2, b.max^2)
         x = x_var[name, t]

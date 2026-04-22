@@ -212,7 +212,7 @@ function _add_mccormick_envelope!(
 
     mc_cons = add_constraints_container!(
         container,
-        McCormickConstraint(),
+        McCormickConstraint,
         C,
         names,
         1:4,

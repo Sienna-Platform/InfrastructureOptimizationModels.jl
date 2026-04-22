@@ -188,6 +188,8 @@ function _add_bilinear_approx!(
     for (i, name) in enumerate(names), t in time_steps
         xb = x_bounds[i]
         yb = y_bounds[i]
+        IS.@assert_op xb.max > xb.min "Invalid bounds for $(name): expected max > min, got min=$(xb.min), max=$(xb.max)"
+        IS.@assert_op yb.max > yb.min "Invalid bounds for $(name): expected max > min, got min=$(yb.min), max=$(yb.max)"
 
         # Compute valid bounds for z ≈ x·y from variable bounds
         z_lo = min(xb.min * yb.min, xb.min * yb.max, xb.max * yb.min, xb.max * yb.max)
