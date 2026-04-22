@@ -76,7 +76,7 @@ Using `<:` inside a function body to branch on types is just `isa` with extra st
 
 ## Code Conventions
 
-Style guide: <https://nrel-sienna.github.io/InfrastructureSystems.jl/stable/style/>
+Style guide: <https://sienna-platform.github.io/InfrastructureSystems.jl/stable/style/>
 
 Formatter (JuliaFormatter): Use the formatter script provided in each package.
 
@@ -103,7 +103,7 @@ Key rules:
 
 Framework: [Diataxis](https://diataxis.fr/)
 
-Sienna guide: <https://nrel-sienna.github.io/InfrastructureSystems.jl/stable/docs_best_practices/explanation/>
+Sienna guide: <https://sienna-platform.github.io/InfrastructureSystems.jl/stable/docs_best_practices/explanation/>
 
 Docstring requirements:
 

@@ -1,3 +1,19 @@
+"""
+Convert the internal `Dates.Millisecond` interval (where `UNSET_INTERVAL` means
+unset) to the `Union{Nothing, Dates.Period}` form the IS / PSY time-series API
+expects.
+"""
+_to_is_interval(interval::Dates.Millisecond) =
+    interval == UNSET_INTERVAL ? nothing : interval
+
+"""
+Convert the internal `Dates.Millisecond` resolution (where `UNSET_RESOLUTION`
+means unset) to the `Union{Nothing, Dates.Period}` form the IS / PSY
+time-series API expects.
+"""
+_to_is_resolution(resolution::Dates.Millisecond) =
+    resolution == UNSET_RESOLUTION ? nothing : resolution
+
 function get_available_components(
     model::DeviceModel{T, <:AbstractDeviceFormulation},
     sys::IS.InfrastructureSystemsContainer,
@@ -286,5 +302,44 @@ function _get_piecewise_curve_per_system_unit(
     return x_coords_normalized, y_coords_normalized
 end
 
-# Alias for IS.is_time_series_backed — kept as IOM-level name for historical call sites.
 is_time_variant(x) = IS.is_time_series_backed(x)
+
+function get_forecast_intervals(sys::IS.InfrastructureSystemsContainer)
+    table = IS.get_forecast_summary_table(sys.data)
+    return Set(row.interval for row in eachrow(table) if row.interval !== nothing)
+end
+
+function auto_transform_time_series!(
+    sys::IS.InfrastructureSystemsContainer,
+    settings::Settings,
+)
+    model_interval = get_interval(settings)
+    model_horizon = get_horizon(settings)
+    if model_interval == UNSET_INTERVAL || model_horizon == UNSET_HORIZON
+        return
+    end
+
+    counts = IS.get_time_series_counts(sys.data)
+    if counts.static_time_series_count < 1
+        return
+    end
+    if counts.forecast_count > 0 && model_interval in get_forecast_intervals(sys)
+        return
+    end
+
+    model_resolution = get_resolution(settings)
+    resolution_kwarg =
+        model_resolution == UNSET_RESOLUTION ? (;) : (; resolution = model_resolution)
+
+    @info "Auto-transforming SingleTimeSeries to DeterministicSingleTimeSeries" horizon =
+        Dates.canonicalize(model_horizon) interval = Dates.canonicalize(model_interval)
+    IS.transform_single_time_series!(
+        sys.data,
+        IS.DeterministicSingleTimeSeries,
+        model_horizon,
+        model_interval;
+        delete_existing = false,
+        resolution_kwarg...,
+    )
+    return
+end
