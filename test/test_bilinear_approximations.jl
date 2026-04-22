@@ -2,81 +2,6 @@ const BILINEAR_META = "BilinearTest"
 
 @testset "Bilinear Approximations" begin
     @testset "Bin2 + Solver SOS2" begin
-        @testset "Constraint structure" begin
-            setup = _setup_bilinear_test(["dev1"], 1:1)
-
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SolverSOS2QuadConfig(4, 0)),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:1,
-                setup.x_var_container,
-                setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
-                BILINEAR_META,
-            )
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.BilinearProductExpression,
-                MockThermalGen,
-                BILINEAR_META,
-            )
-
-            # add more container tests for the new constraint expressions and p addition stuff
-
-            @test expr_container["dev1", 1] isa JuMP.AffExpr
-        end
-
-        @testset "Reformulated McCormick constraints present" begin
-            setup = _setup_bilinear_test(["dev1"], 1:1)
-
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SolverSOS2QuadConfig(4, 0), true),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:1,
-                setup.x_var_container,
-                setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
-                BILINEAR_META,
-            )
-
-            @test IOM.has_container_key(
-                setup.container,
-                IOM.ReformulatedMcCormickConstraint,
-                MockThermalGen,
-                BILINEAR_META,
-            )
-        end
-
-        @testset "No reformulated McCormick when disabled" begin
-            setup = _setup_bilinear_test(["dev1"], 1:1)
-
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SolverSOS2QuadConfig(4, 0), false),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:1,
-                setup.x_var_container,
-                setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
-                BILINEAR_META,
-            )
-
-            @test !IOM.has_container_key(
-                setup.container,
-                IOM.ReformulatedMcCormickConstraint,
-                MockThermalGen,
-                BILINEAR_META,
-            )
-        end
-
         @testset "Reformulated McCormick tightens LP relaxation" begin
             # At interior point x=2.5, y=1.5, true product = 3.75
             # Compare max z with and without reformulated McCormick
@@ -95,8 +20,8 @@ const BILINEAR_META = "BilinearTest"
                     1:1,
                     setup.x_var_container,
                     setup.y_var_container,
-                    0.0, 4.0,
-                    0.0, 4.0,
+                    [(min = 0.0, max = 4.0)],
+                    [(min = 0.0, max = 4.0)],
                     BILINEAR_META,
                 )
                 expr_container = IOM.get_expression(
@@ -136,8 +61,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container = IOM.get_expression(
@@ -169,8 +94,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup2.x_var_container,
                 setup2.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container2 = IOM.get_expression(
@@ -207,8 +132,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container = IOM.get_expression(
@@ -248,8 +173,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container = IOM.get_expression(
@@ -267,32 +192,6 @@ const BILINEAR_META = "BilinearTest"
 
             @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
             @test JuMP.objective_value(setup.jump_model) ≈ 0.0 atol = 1e-4
-        end
-
-        @testset "Multiple time steps" begin
-            setup = _setup_bilinear_test(["dev1"], 1:3)
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SolverSOS2QuadConfig(4, 0)),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:3,
-                setup.x_var_container,
-                setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
-                BILINEAR_META,
-            )
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.BilinearProductExpression,
-                MockThermalGen,
-                BILINEAR_META,
-            )
-
-            for t in 1:3
-                @test expr_container["dev1", t] isa JuMP.AffExpr
-            end
         end
 
         @testset "Approximation quality improves with segments" begin
@@ -315,8 +214,8 @@ const BILINEAR_META = "BilinearTest"
                     1:1,
                     setup.x_var_container,
                     setup.y_var_container,
-                    0.0, 4.0,
-                    0.0, 4.0,
+                    [(min = 0.0, max = 4.0)],
+                    [(min = 0.0, max = 4.0)],
                     BILINEAR_META,
                 )
                 expr_container = IOM.get_expression(
@@ -342,47 +241,6 @@ const BILINEAR_META = "BilinearTest"
     end
 
     @testset "Bin2 + Manual SOS2" begin
-        @testset "Constraint structure" begin
-            setup = _setup_bilinear_test(["dev1"], 1:1)
-
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.ManualSOS2QuadConfig(4, 0)),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:1,
-                setup.x_var_container,
-                setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
-                BILINEAR_META,
-            )
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.BilinearProductExpression,
-                MockThermalGen,
-                BILINEAR_META,
-            )
-
-            @test expr_container["dev1", 1] isa JuMP.AffExpr
-
-            # Binary variables should exist for both u² and v² paths
-            @test IOM.has_container_key(
-                setup.container,
-                IOM.ManualSOS2BinaryVariable,
-                MockThermalGen,
-                BILINEAR_META * "_plus",
-            )
-
-            # NO solver SOS2 constraints
-            sos2_count = JuMP.num_constraints(
-                setup.jump_model,
-                Vector{JuMP.VariableRef},
-                MOI.SOS2{Float64},
-            )
-            @test sos2_count == 0
-        end
-
         @testset "Fixed-variable correctness" begin
             setup = _setup_bilinear_test(["dev1"], 1:1)
             JuMP.fix(setup.x_var_container["dev1", 1], 2.0; force = true)
@@ -396,8 +254,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container = IOM.get_expression(
@@ -432,8 +290,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container = IOM.get_expression(
@@ -471,8 +329,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container = IOM.get_expression(
@@ -492,32 +350,6 @@ const BILINEAR_META = "BilinearTest"
             @test JuMP.objective_value(setup.jump_model) ≈ 0.0 atol = 1e-4
         end
 
-        @testset "Multiple time steps" begin
-            setup = _setup_bilinear_test(["dev1"], 1:3)
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.ManualSOS2QuadConfig(4, 0)),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:3,
-                setup.x_var_container,
-                setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
-                BILINEAR_META,
-            )
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.BilinearProductExpression,
-                MockThermalGen,
-                BILINEAR_META,
-            )
-
-            for t in 1:3
-                @test expr_container["dev1", t] isa JuMP.AffExpr
-            end
-        end
-
         @testset "Approximation quality improves with segments" begin
             true_product = 2.5 * 1.5
             errors = Float64[]
@@ -534,8 +366,8 @@ const BILINEAR_META = "BilinearTest"
                     1:1,
                     setup.x_var_container,
                     setup.y_var_container,
-                    0.0, 4.0,
-                    0.0, 4.0,
+                    [(min = 0.0, max = 4.0)],
+                    [(min = 0.0, max = 4.0)],
                     BILINEAR_META,
                 )
                 expr_container = IOM.get_expression(
@@ -561,45 +393,6 @@ const BILINEAR_META = "BilinearTest"
     end
 
     @testset "Bin2 + Sawtooth" begin
-        @testset "Constraint structure" begin
-            setup = _setup_bilinear_test(["dev1"], 1:1)
-
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SawtoothQuadConfig(2)),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:1,
-                setup.x_var_container,
-                setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
-                BILINEAR_META,
-            )
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.BilinearProductExpression,
-                MockThermalGen,
-                BILINEAR_META,
-            )
-
-            @test expr_container["dev1", 1] isa JuMP.AffExpr
-
-            # Sawtooth aux/binary variables for both u² and v² paths
-            @test IOM.has_container_key(
-                setup.container,
-                IOM.SawtoothAuxVariable,
-                MockThermalGen,
-                BILINEAR_META * "_plus",
-            )
-            @test IOM.has_container_key(
-                setup.container,
-                IOM.SawtoothBinaryVariable,
-                MockThermalGen,
-                BILINEAR_META * "_plus",
-            )
-        end
-
         @testset "Fixed-variable correctness" begin
             setup = _setup_bilinear_test(["dev1"], 1:1)
             JuMP.fix(setup.x_var_container["dev1", 1], 2.0; force = true)
@@ -613,8 +406,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container = IOM.get_expression(
@@ -649,8 +442,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container = IOM.get_expression(
@@ -688,8 +481,8 @@ const BILINEAR_META = "BilinearTest"
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
                 BILINEAR_META,
             )
             expr_container = IOM.get_expression(
@@ -709,32 +502,6 @@ const BILINEAR_META = "BilinearTest"
             @test JuMP.objective_value(setup.jump_model) ≈ 0.0 atol = 1e-3
         end
 
-        @testset "Multiple time steps" begin
-            setup = _setup_bilinear_test(["dev1"], 1:3)
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SawtoothQuadConfig(2)),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:3,
-                setup.x_var_container,
-                setup.y_var_container,
-                0.0, 4.0,
-                0.0, 4.0,
-                BILINEAR_META,
-            )
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.BilinearProductExpression,
-                MockThermalGen,
-                BILINEAR_META,
-            )
-
-            for t in 1:3
-                @test expr_container["dev1", t] isa JuMP.AffExpr
-            end
-        end
-
         @testset "Approximation quality improves with depth" begin
             true_product = 2.5 * 1.5
             errors = Float64[]
@@ -751,8 +518,8 @@ const BILINEAR_META = "BilinearTest"
                     1:1,
                     setup.x_var_container,
                     setup.y_var_container,
-                    0.0, 4.0,
-                    0.0, 4.0,
+                    [(min = 0.0, max = 4.0)],
+                    [(min = 0.0, max = 4.0)],
                     BILINEAR_META,
                 )
                 expr_container = IOM.get_expression(

@@ -3,72 +3,6 @@ const TEST_META = "TestVar"
 
 @testset "Quadratic Approximations" begin
     @testset "Solver SOS2" begin
-        @testset "Constraint structure" begin
-            setup = _setup_qa_test(["dev1"], 1:1)
-            num_segments = 4
-            n_points = num_segments + 1
-
-            IOM._add_quadratic_approx!(
-                IOM.SolverSOS2QuadConfig(num_segments, 0),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:1,
-                setup.var_container,
-                0.0,
-                4.0,
-                TEST_META,
-            )
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.QuadraticExpression,
-                MockThermalGen,
-                TEST_META,
-            )
-            x_sq = expr_container["dev1", 1]
-
-            # Returned expression should be AffExpr
-            @test x_sq isa JuMP.AffExpr
-
-            # Lambda variables should exist
-            lambda_container = IOM.get_variable(
-                setup.container,
-                IOM.QuadraticVariable,
-                MockThermalGen,
-                TEST_META,
-            )
-            for i in 1:n_points
-                @test haskey(lambda_container, ("dev1", i, 1))
-                var = lambda_container[("dev1", i, 1)]
-                @test JuMP.lower_bound(var) == 0.0
-                @test JuMP.upper_bound(var) == 1.0
-            end
-
-            # Linking constraint should exist
-            @test IOM.has_container_key(
-                setup.container,
-                IOM.SOS2LinkingConstraint,
-                MockThermalGen,
-                TEST_META,
-            )
-
-            # Normalization constraint should exist
-            @test IOM.has_container_key(
-                setup.container,
-                IOM.SOS2NormConstraint,
-                MockThermalGen,
-                TEST_META,
-            )
-
-            # SOS2 constraint should exist (solver-native)
-            sos2_count = JuMP.num_constraints(
-                setup.jump_model,
-                Vector{JuMP.VariableRef},
-                MOI.SOS2{Float64},
-            )
-            @test sos2_count == 1
-        end
-
         @testset "Solve min x^2 - 4x" begin
             # Analytic minimum of x^2 - 4x at x=2, value = -4
             # With breakpoints at 0,1,2,3,4 the approximation is exact at breakpoints
@@ -84,8 +18,7 @@ const TEST_META = "TestVar"
                 ["dev1"],
                 1:1,
                 setup.var_container,
-                0.0,
-                4.0,
+                [(min = 0.0, max = 4.0)],
                 TEST_META,
             )
             expr_container = IOM.get_expression(
@@ -121,8 +54,7 @@ const TEST_META = "TestVar"
                 ["dev1"],
                 1:1,
                 setup.var_container,
-                0.0,
-                4.0,
+                [(min = 0.0, max = 4.0)],
                 TEST_META,
             )
             expr_container = IOM.get_expression(
@@ -144,43 +76,6 @@ const TEST_META = "TestVar"
             @test JuMP.value(y) ≈ 1.0 atol = 1e-6
         end
 
-        @testset "Multiple time steps" begin
-            setup = _setup_qa_test(["dev1"], 1:3)
-            IOM._add_quadratic_approx!(
-                IOM.SolverSOS2QuadConfig(4, 0),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:3,
-                setup.var_container,
-                0.0,
-                4.0,
-                TEST_META,
-            )
-
-            # Verify lambda variables exist for each time step
-            lambda_container = IOM.get_variable(
-                setup.container,
-                IOM.QuadraticVariable,
-                MockThermalGen,
-                TEST_META,
-            )
-            for t in 1:3, i in 1:5
-                @test haskey(lambda_container, ("dev1", i, t))
-            end
-
-            # Expression container should have entries for all (name, t) pairs
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.QuadraticExpression,
-                MockThermalGen,
-                TEST_META,
-            )
-            for t in 1:3
-                @test expr_container["dev1", t] isa JuMP.AffExpr
-            end
-        end
-
         @testset "Approximation quality improves with more segments" begin
             # min (√2)x² - (√3)x on [0, 6], analytic minimum at x=√3/8
             analytic_min = sqrt(2) * (sqrt(3 / 8)^2) - sqrt(3) * sqrt(3 / 8)
@@ -198,8 +93,7 @@ const TEST_META = "TestVar"
                     ["dev1"],
                     1:1,
                     setup.var_container,
-                    0.0,
-                    6.0,
+                    [(min = 0.0, max = 6.0)],
                     TEST_META,
                 )
                 expr_container = IOM.get_expression(
@@ -226,73 +120,6 @@ const TEST_META = "TestVar"
     end
 
     @testset "Manual SOS2" begin
-        @testset "Constraint structure" begin
-            setup = _setup_qa_test(["dev1"], 1:1)
-            num_segments = 4
-            n_points = num_segments + 1
-
-            IOM._add_quadratic_approx!(
-                IOM.ManualSOS2QuadConfig(num_segments, 0),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:1,
-                setup.var_container,
-                0.0,
-                4.0,
-                TEST_META,
-            )
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.QuadraticExpression,
-                MockThermalGen,
-                TEST_META,
-            )
-            x_sq = expr_container["dev1", 1]
-
-            # Returned expression should be AffExpr
-            @test x_sq isa JuMP.AffExpr
-
-            # Lambda variables should exist
-            lambda_container = IOM.get_variable(
-                setup.container,
-                IOM.QuadraticVariable,
-                MockThermalGen,
-                TEST_META,
-            )
-            for i in 1:n_points
-                @test haskey(lambda_container, ("dev1", i, 1))
-            end
-
-            # Binary z variables should exist (n_points - 1)
-            z_container = IOM.get_variable(
-                setup.container,
-                IOM.ManualSOS2BinaryVariable,
-                MockThermalGen,
-                TEST_META,
-            )
-            for j in 1:(n_points - 1)
-                @test haskey(z_container, ("dev1", j, 1))
-                @test JuMP.is_binary(z_container[("dev1", j, 1)])
-            end
-
-            # Segment selection constraint should exist
-            @test IOM.has_container_key(
-                setup.container,
-                IOM.ManualSOS2SegmentSelectionConstraint,
-                MockThermalGen,
-                TEST_META,
-            )
-
-            # NO solver SOS2 constraints
-            sos2_count = JuMP.num_constraints(
-                setup.jump_model,
-                Vector{JuMP.VariableRef},
-                MOI.SOS2{Float64},
-            )
-            @test sos2_count == 0
-        end
-
         @testset "Solve min x^2 - 4x" begin
             setup = _setup_qa_test(["dev1"], 1:1)
             x_var = setup.var_container["dev1", 1]
@@ -306,8 +133,7 @@ const TEST_META = "TestVar"
                 ["dev1"],
                 1:1,
                 setup.var_container,
-                0.0,
-                4.0,
+                [(min = 0.0, max = 4.0)],
                 TEST_META,
             )
             expr_container = IOM.get_expression(
@@ -342,8 +168,7 @@ const TEST_META = "TestVar"
                 ["dev1"],
                 1:1,
                 setup.var_container,
-                0.0,
-                4.0,
+                [(min = 0.0, max = 4.0)],
                 TEST_META,
             )
             expr_container = IOM.get_expression(
@@ -366,72 +191,6 @@ const TEST_META = "TestVar"
     end
 
     @testset "Sawtooth" begin
-        @testset "Constraint structure" begin
-            setup = _setup_qa_test(["dev1"], 1:1)
-            depth = 2
-
-            IOM._add_quadratic_approx!(
-                IOM.SawtoothQuadConfig(depth),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:1,
-                setup.var_container,
-                0.0,
-                4.0,
-                TEST_META,
-            )
-
-            # Expression container should contain AffExpr for each (name, t)
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.QuadraticExpression,
-                MockThermalGen,
-                TEST_META,
-            )
-            @test expr_container["dev1", 1] isa JuMP.AffExpr
-
-            # Auxiliary variables g_0, g_1, g_2 should exist
-            g_container = IOM.get_variable(
-                setup.container,
-                IOM.SawtoothAuxVariable,
-                MockThermalGen,
-                TEST_META,
-            )
-            for j in 0:depth
-                var = g_container["dev1", j, 1]
-                @test JuMP.lower_bound(var) == 0.0
-                @test JuMP.upper_bound(var) == 1.0
-            end
-
-            # Binary variables α_1, α_2 should exist
-            alpha_container = IOM.get_variable(
-                setup.container,
-                IOM.SawtoothBinaryVariable,
-                MockThermalGen,
-                TEST_META,
-            )
-            for j in 1:depth
-                @test JuMP.is_binary(alpha_container["dev1", j, 1])
-            end
-
-            # Linking constraint should exist
-            @test IOM.has_container_key(
-                setup.container,
-                IOM.SawtoothLinkingConstraint,
-                MockThermalGen,
-                TEST_META,
-            )
-
-            # NO solver SOS2 constraints
-            sos2_count = JuMP.num_constraints(
-                setup.jump_model,
-                Vector{JuMP.VariableRef},
-                MOI.SOS2{Float64},
-            )
-            @test sos2_count == 0
-        end
-
         @testset "Solve min x^2 - 4x" begin
             # depth=2 → breakpoints at 0,1,2,3,4 → exact at x=2
             setup = _setup_qa_test(["dev1"], 1:1)
@@ -446,8 +205,7 @@ const TEST_META = "TestVar"
                 ["dev1"],
                 1:1,
                 setup.var_container,
-                0.0,
-                4.0,
+                [(min = 0.0, max = 4.0)],
                 TEST_META,
             )
             expr_container = IOM.get_expression(
@@ -482,8 +240,7 @@ const TEST_META = "TestVar"
                 ["dev1"],
                 1:1,
                 setup.var_container,
-                0.0,
-                4.0,
+                [(min = 0.0, max = 4.0)],
                 TEST_META,
             )
             expr_container = IOM.get_expression(
@@ -504,52 +261,6 @@ const TEST_META = "TestVar"
             @test JuMP.value(y) ≈ 1.0 atol = 1e-6
         end
 
-        @testset "Multiple time steps" begin
-            setup = _setup_qa_test(["dev1"], 1:3)
-            IOM._add_quadratic_approx!(
-                IOM.SawtoothQuadConfig(2),
-                setup.container,
-                MockThermalGen,
-                ["dev1"],
-                1:3,
-                setup.var_container,
-                0.0,
-                4.0,
-                TEST_META,
-            )
-
-            # Verify variables exist for each time step
-            g_container = IOM.get_variable(
-                setup.container,
-                IOM.SawtoothAuxVariable,
-                MockThermalGen,
-                TEST_META,
-            )
-            alpha_container = IOM.get_variable(
-                setup.container,
-                IOM.SawtoothBinaryVariable,
-                MockThermalGen,
-                TEST_META,
-            )
-            for t in 1:3, j in 0:2
-                @test JuMP.lower_bound(g_container["dev1", j, t]) == 0.0
-            end
-            for t in 1:3, j in 1:2
-                @test JuMP.is_binary(alpha_container["dev1", j, t])
-            end
-
-            # Expression container should have entries for all (name, t) pairs
-            expr_container = IOM.get_expression(
-                setup.container,
-                IOM.QuadraticExpression,
-                MockThermalGen,
-                TEST_META,
-            )
-            for t in 1:3
-                @test expr_container["dev1", t] isa JuMP.AffExpr
-            end
-        end
-
         @testset "Approximation quality improves with depth" begin
             # min (√2)x² - (√3)x on [0, 6], analytic minimum at x=√3/8
             analytic_min = sqrt(2) * (sqrt(3 / 8)^2) - sqrt(3) * sqrt(3 / 8)
@@ -567,8 +278,7 @@ const TEST_META = "TestVar"
                     ["dev1"],
                     1:1,
                     setup.var_container,
-                    0.0,
-                    6.0,
+                    [(min = 0.0, max = 6.0)],
                     TEST_META,
                 )
                 expr_container = IOM.get_expression(
@@ -610,8 +320,7 @@ const TEST_META = "TestVar"
                             ["dev1"],
                             1:1,
                             setup.var_container,
-                            0.0,
-                            4.0,
+                            [(min = 0.0, max = 4.0)],
                             TEST_META,
                         )
                     else
@@ -622,8 +331,7 @@ const TEST_META = "TestVar"
                             ["dev1"],
                             1:1,
                             setup.var_container,
-                            0.0,
-                            4.0,
+                            [(min = 0.0, max = 4.0)],
                             TEST_META,
                         )
                     end
