@@ -66,12 +66,7 @@ function get_available_components(
     sys::IS.InfrastructureSystemsContainer,
 ) where {T <: IS.InfrastructureSystemsComponent}
     subsystem = get_subsystem(model)
-    # FIXME have to patch thru to sys.data here
-    return IS.get_components(
-        T,
-        sys.data;
-        subsystem_name = subsystem,
-    )
+    return get_subsystem_components(T, sys; subsystem_name = subsystem)
 end
 
 ##################################################
@@ -305,7 +300,7 @@ end
 is_time_variant(x) = IS.is_time_series_backed(x)
 
 function get_forecast_intervals(sys::IS.InfrastructureSystemsContainer)
-    table = IS.get_forecast_summary_table(sys.data)
+    table = get_forecast_summary_table(sys)
     return Set(row.interval for row in eachrow(table) if row.interval !== nothing)
 end
 
@@ -319,7 +314,7 @@ function auto_transform_time_series!(
         return
     end
 
-    counts = IS.get_time_series_counts(sys.data)
+    counts = get_time_series_counts(sys)
     if counts.static_time_series_count < 1
         return
     end
@@ -333,9 +328,8 @@ function auto_transform_time_series!(
 
     @info "Auto-transforming SingleTimeSeries to DeterministicSingleTimeSeries" horizon =
         Dates.canonicalize(model_horizon) interval = Dates.canonicalize(model_interval)
-    IS.transform_single_time_series!(
-        sys.data,
-        IS.DeterministicSingleTimeSeries,
+    transform_single_time_series!(
+        sys,
         model_horizon,
         model_interval;
         delete_existing = false,

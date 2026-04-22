@@ -146,6 +146,40 @@ For thermals, equivalent to `get_must_run`, but that implementation belongs in P
 skip_proportional_cost(d::IS.InfrastructureSystemsComponent) = false
 
 ###############################
+#### System query stubs #######
+###############################
+# Extension points for querying a system object. POM provides methods for
+# PSY.System; tests provide methods for MockSystem. IOM itself never accesses
+# sys.data.
+
+"Extension point: time-series resolutions available on the system."
+function get_time_series_resolutions end
+
+"Extension point: counts summary of time series on the system."
+function get_time_series_counts end
+
+"Extension point: counts by component type of time series on the system."
+function get_time_series_counts_by_type end
+
+"Extension point: forecast interval configured on the system."
+function get_forecast_interval end
+
+"Extension point: forecast horizon configured on the system."
+function get_forecast_horizon end
+
+"Extension point: summary table of forecasts on the system."
+function get_forecast_summary_table end
+
+"Extension point: transform single time series into deterministic forecasts on the system."
+function transform_single_time_series! end
+
+"Extension point: stable UUID for the system (used as a filename identifier)."
+function get_system_uuid end
+
+"Extension point: get components of type `T` in a subsystem of the system."
+function get_subsystem_components end
+
+###############################
 ###### Start-up Cost ##########
 ###############################
 
