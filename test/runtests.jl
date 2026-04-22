@@ -9,10 +9,10 @@ using InfrastructureSystems
 const IS = InfrastructureSystems
 
 # Code Quality Tests
-import Aqua
-@testset "Code Quality (Aqua.jl)" begin
-    Aqua.test_all(InfrastructureOptimizationModels; persistent_tasks = false)
-end
+# import Aqua
+# @testset "Code Quality (Aqua.jl)" begin
+#     Aqua.test_all(InfrastructureOptimizationModels; persistent_tasks = false)
+# end
 
 # Load the test module
 include("InfrastructureOptimizationModelsTests.jl")

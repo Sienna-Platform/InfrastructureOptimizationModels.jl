@@ -141,7 +141,7 @@ function _add_quadratic_approx!(
 
     for (i, name) in enumerate(names), t in time_steps
         b = bounds[i]
-        IS.@assert_op b.max > b.min "Invalid bounds for $(name): expected max > min, got min=$(b.min), max=$(b.max)"
+        IS.@assert_op b.max > b.min
         delta = b.max - b.min
         saw_coeffs = [delta * delta * (2.0^(-2 * j)) for j in alpha_levels]
         z_min = (b.min <= 0.0 <= b.max) ? 0.0 : min(b.min * b.min, b.max * b.max)
