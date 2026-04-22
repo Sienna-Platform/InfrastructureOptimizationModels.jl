@@ -13,16 +13,16 @@ end
 function _get_ramp_constraint_devices(
     container::OptimizationContainer,
     devices::Union{Vector{U}, IS.FlattenIteratorWrapper{U}},
-) where {U <: PSY.Component}
+) where {U <: IS.InfrastructureSystemsComponent}
     minutes_per_period = _get_minutes_per_period(container)
     filtered_device = Vector{U}()
     for d in devices
-        ramp_limits = PSY.get_ramp_limits(d)
+        ramp_limits = get_ramp_limits(d)
         if ramp_limits !== nothing
-            p_lims = PSY.get_active_power_limits(d)
+            p_lims = get_active_power_limits(d)
             max_rate = abs(p_lims.min - p_lims.max) / minutes_per_period
             if (ramp_limits.up >= max_rate) & (ramp_limits.down >= max_rate)
-                @debug "Generator has a nonbinding ramp limits. Constraints Skipped" PSY.get_name(
+                @debug "Generator has a nonbinding ramp limits. Constraints Skipped" IS.get_name(
                     d,
                 )
                 continue
@@ -39,7 +39,7 @@ function _get_ramp_slack_vars(
     model::DeviceModel{V, W},
     name::String,
     t::Int,
-) where {V <: PSY.Component, W <: AbstractDeviceFormulation}
+) where {V <: IS.InfrastructureSystemsComponent, W <: AbstractDeviceFormulation}
     if get_use_slacks(model)
         slack_up = get_variable(container, RateofChangeConstraintSlackUp, V)
         slack_dn = get_variable(container, RateofChangeConstraintSlackDown, V)
@@ -81,7 +81,7 @@ function add_linear_ramp_constraints!(
     ::Type{<:AbstractPowerModel},
 ) where {
     S <: Union{PowerAboveMinimumVariable, ActivePowerVariable},
-    V <: PSY.Component,
+    V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
 }
     # common setup for all ramp constraints
@@ -92,7 +92,7 @@ function add_linear_ramp_constraints!(
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
     jump_model = get_jump_model(container)
-    device_name_set = PSY.get_name.(ramp_devices)
+    device_name_set = IS.get_name.(ramp_devices)
     cons = add_updown_constraints_containers!(container, T, V, device_name_set, time_steps)
 
     expr_dn = get_expression(container, ActivePowerRangeExpressionLB, V)
@@ -102,7 +102,7 @@ function add_linear_ramp_constraints!(
         name = get_component_name(ic)
         # This is to filter out devices that dont need a ramping constraint
         name ∉ device_name_set && continue
-        ramp_limits = PSY.get_ramp_limits(get_component(ic))
+        ramp_limits = get_ramp_limits(get_component(ic))
         ic_power = get_value(ic)
         @debug "add rate_of_change_constraint" name ic_power
 
@@ -132,7 +132,7 @@ function _add_linear_ramp_constraints_impl!(
     U::Type{<:VariableType},
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
-) where {V <: PSY.Component, W <: AbstractDeviceFormulation}
+) where {V <: IS.InfrastructureSystemsComponent, W <: AbstractDeviceFormulation}
     # common setup for all ramp constraints
     time_steps = get_time_steps(container)
     variable = get_variable(container, U, V)
@@ -141,7 +141,7 @@ function _add_linear_ramp_constraints_impl!(
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
     jump_model = get_jump_model(container)
-    device_name_set = PSY.get_name.(ramp_devices)
+    device_name_set = IS.get_name.(ramp_devices)
     cons = add_updown_constraints_containers!(container, T, V, device_name_set, time_steps)
 
     parameters = built_for_recurrent_solves(container)
@@ -150,7 +150,7 @@ function _add_linear_ramp_constraints_impl!(
         name = get_component_name(ic)
         # This is to filter out devices that dont need a ramping constraint
         name ∉ device_name_set && continue
-        ramp_limits = PSY.get_ramp_limits(get_component(ic))
+        ramp_limits = get_ramp_limits(get_component(ic))
         ic_power = get_value(ic)
         @debug "add rate_of_change_constraint" name ic_power
         @assert (parameters && isa(ic_power, JuMP.VariableRef)) || !parameters
@@ -179,7 +179,7 @@ function add_linear_ramp_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     X::Type{<:AbstractPowerModel},
-) where {V <: PSY.Component, W <: AbstractDeviceFormulation}
+) where {V <: IS.InfrastructureSystemsComponent, W <: AbstractDeviceFormulation}
     return _add_linear_ramp_constraints_impl!(container, T, U, devices, model)
 end
 
@@ -194,7 +194,7 @@ function add_linear_ramp_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     X::Type{<:AbstractPowerModel},
-) where {V <: PSY.ThermalGen, W <: AbstractThermalDispatchFormulation}
+) where {V <: IS.InfrastructureSystemsComponent, W <: AbstractThermalDispatchFormulation}
 
     # Fallback to generic implementation if OnStatusParameter is not present
     if !has_container_key(container, OnStatusParameter, V)
@@ -209,7 +209,7 @@ function add_linear_ramp_constraints!(
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
     jump_model = get_jump_model(container)
-    device_name_set = [PSY.get_name(r) for r in ramp_devices]
+    device_name_set = [IS.get_name(r) for r in ramp_devices]
     cons = add_updown_constraints_containers!(container, T, V, device_name_set, time_steps)
 
     # Commitment path from UC as a PARAMETER (fixed 0/1)
@@ -221,9 +221,9 @@ function add_linear_ramp_constraints!(
     )
 
     for dev in ramp_devices
-        name = PSY.get_name(dev)
-        ramp_limits = PSY.get_ramp_limits(dev)
-        power_limits = PSY.get_active_power_limits(dev)
+        name = IS.get_name(dev)
+        ramp_limits = get_ramp_limits(dev)
+        power_limits = get_active_power_limits(dev)
 
         # --- t = 1: Use ic_power to determine starting ramp condition
         ic_power = ic_power_by_name[name]
@@ -285,7 +285,7 @@ function add_semicontinuous_ramp_constraints!(
     ::Type{<:AbstractPowerModel},
 ) where {
     S <: Union{PowerAboveMinimumVariable, ActivePowerVariable},
-    V <: PSY.Component,
+    V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
 }
     # common setup for all ramp constraints
@@ -296,7 +296,7 @@ function add_semicontinuous_ramp_constraints!(
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
     jump_model = get_jump_model(container)
-    device_name_set = PSY.get_name.(ramp_devices)
+    device_name_set = IS.get_name.(ramp_devices)
     cons = add_updown_constraints_containers!(container, T, V, device_name_set, time_steps)
 
     varstart = get_variable(container, StartVariable, V)
@@ -309,12 +309,12 @@ function add_semicontinuous_ramp_constraints!(
         # This is to filter out devices that dont need a ramping constraint
         name ∉ device_name_set && continue
         device = get_component(ic)
-        ramp_limits = PSY.get_ramp_limits(device)
-        power_limits = PSY.get_active_power_limits(device)
+        ramp_limits = get_ramp_limits(device)
+        power_limits = get_active_power_limits(device)
         ic_power = get_value(ic)
         @debug "add rate_of_change_constraint" name ic_power
 
-        must_run = hasmethod(PSY.get_must_run, Tuple{V}) && PSY.get_must_run(device)
+        must_run = hasmethod(get_must_run, Tuple{V}) && get_must_run(device)
 
         for t in time_steps
             slack = _get_ramp_slack_vars(container, model, name, t)

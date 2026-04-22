@@ -104,6 +104,11 @@ get_optimizer_stats(res::OptimizationProblemOutputs) = res.optimizer_stats
 get_parameter_values(res::OptimizationProblemOutputs) = res.parameter_values
 get_source_data(res::OptimizationProblemOutputs) = res.source_data
 
+# FIXME get_uuid declare as stub
+make_system_filename(sys::IS.InfrastructureSystemsContainer) =
+    make_system_filename(IS.get_uuid(sys.data.internal))
+make_system_filename(sys_uuid::Union{Base.UUID, AbstractString}) = "system-$(sys_uuid).json"
+
 """
 Load the system from disk if not already set, and return it.
 
@@ -113,7 +118,7 @@ function load_system(res::OptimizationProblemOutputs; kwargs...)
     !isnothing(get_source_data(res)) && return
     file = joinpath(get_outputs_dir(res), make_system_filename(get_source_data_uuid(res)))
     if isfile(file)
-        sys = PSY.System(file; time_series_read_only = true)
+        sys = IS.InfrastructureSystemsContainer(file; time_series_read_only = true)
         @info "De-serialized the system from files."
     else
         error("Could not locate system file: $file")
@@ -512,7 +517,7 @@ Accepts a vector of keys for the return of the values.
 # Arguments
 
 - `res::OptimizationProblemOutputs`: Optimization problem outputs
-- `variable::Tuple{Type{<:VariableType}, Type{<:PSY.Component}`: Tuple with variable type
+- `variable::Tuple{Type{<:VariableType}, Type{<:IS.InfrastructureSystemsComponent}`: Tuple with variable type
   and device type for the desired outputs
 - `start_time::Dates.DateTime`: Start time of the requested outputs
 - `len::Int`: length of outputs
@@ -558,7 +563,7 @@ Accepts a vector of keys for the return of the values.
 
 # Arguments
 
-  - `variables::Vector{Tuple{Type{<:VariableType}, Type{<:PSY.Component}}` : Tuple with variable type and device type for the desired outputs
+  - `variables::Vector{Tuple{Type{<:VariableType}, Type{<:IS.InfrastructureSystemsComponent}}` : Tuple with variable type and device type for the desired outputs
   - `start_time::Dates.DateTime` : initial time of the requested outputs
   - `len::Int`: length of outputs
 """
@@ -609,7 +614,7 @@ Accepts a vector of keys for the return of the values.
 
 # Arguments
 
-  - `dual::Tuple{Type{<:ConstraintType}, Type{<:PSY.Component}` : Tuple with dual type and device type for the desired outputs
+  - `dual::Tuple{Type{<:ConstraintType}, Type{<:IS.InfrastructureSystemsComponent}` : Tuple with dual type and device type for the desired outputs
   - `start_time::Dates.DateTime` : initial time of the requested outputs
   - `len::Int`: length of outputs
 """
@@ -648,7 +653,7 @@ Accepts a vector of keys for the return of the values.
 
 # Arguments
 
-  - `duals::Vector{Tuple{Type{<:ConstraintType}, Type{<:PSY.Component}}` : Tuple with dual type and device type for the desired outputs
+  - `duals::Vector{Tuple{Type{<:ConstraintType}, Type{<:IS.InfrastructureSystemsComponent}}` : Tuple with dual type and device type for the desired outputs
   - `start_time::Dates.DateTime` : initial time of the requested outputs
   - `len::Int`: length of outputs
 """
@@ -698,7 +703,7 @@ Accepts a vector of keys for the return of the values.
 
 # Arguments
 
-  - `parameter::Tuple{Type{<:ParameterType}, Type{<:PSY.Component}` : Tuple with parameter type and device type for the desired outputs
+  - `parameter::Tuple{Type{<:ParameterType}, Type{<:IS.InfrastructureSystemsComponent}` : Tuple with parameter type and device type for the desired outputs
   - `start_time::Dates.DateTime` : initial time of the requested outputs
   - `len::Int`: length of outputs
 """
@@ -737,7 +742,7 @@ Accepts a vector of keys for the return of the values.
 
 # Arguments
 
-  - `parameters::Vector{Tuple{Type{<:ParameterType}, Type{<:PSY.Component}}` : Tuple with parameter type and device type for the desired outputs
+  - `parameters::Vector{Tuple{Type{<:ParameterType}, Type{<:IS.InfrastructureSystemsComponent}}` : Tuple with parameter type and device type for the desired outputs
   - `start_time::Dates.DateTime` : initial time of the requested outputs
   - `len::Int`: length of outputs
 """
@@ -789,7 +794,7 @@ Accepts a vector of keys for the return of the values.
 
 # Arguments
 
-  - `aux_variable::Tuple{Type{<:AuxVariableType}, Type{<:PSY.Component}` : Tuple with aux_variable type and device type for the desired outputs
+  - `aux_variable::Tuple{Type{<:AuxVariableType}, Type{<:IS.InfrastructureSystemsComponent}` : Tuple with aux_variable type and device type for the desired outputs
   - `start_time::Dates.DateTime` : initial time of the requested outputs
   - `len::Int`: length of outputs
 """
@@ -828,7 +833,7 @@ Accepts a vector of keys for the return of the values.
 
 # Arguments
 
-  - `aux_variables::Vector{Tuple{Type{<:AuxVariableType}, Type{<:PSY.Component}}` : Tuple with aux_variable type and device type for the desired outputs
+  - `aux_variables::Vector{Tuple{Type{<:AuxVariableType}, Type{<:IS.InfrastructureSystemsComponent}}` : Tuple with aux_variable type and device type for the desired outputs
   - `start_time::Dates.DateTime` : initial time of the requested outputs
   - `len::Int`: length of outputs
 """
@@ -881,7 +886,7 @@ Accepts a vector of keys for the return of the values.
 
 # Arguments
 
-  - `expression::Tuple{Type{<:ExpressionType}, Type{<:PSY.Component}` : Tuple with expression type and device type for the desired outputs
+  - `expression::Tuple{Type{<:ExpressionType}, Type{<:IS.InfrastructureSystemsComponent}` : Tuple with expression type and device type for the desired outputs
   - `start_time::Dates.DateTime` : initial time of the requested outputs
   - `len::Int`: length of outputs
 """
@@ -920,7 +925,7 @@ Accepts a vector of keys for the return of the values.
 
 # Arguments
 
-  - `expressions::Vector{Tuple{Type{<:ExpressionType}, Type{<:PSY.Component}}` : Tuple with expression type and device type for the desired outputs
+  - `expressions::Vector{Tuple{Type{<:ExpressionType}, Type{<:IS.InfrastructureSystemsComponent}}` : Tuple with expression type and device type for the desired outputs
   - `start_time::Dates.DateTime` : initial time of the requested outputs
   - `len::Int`: length of outputs
 """

@@ -7,7 +7,7 @@ function get_time_series_values!(
     horizon::Int;
     ignore_scaling_factors = true,
     interval::Dates.Millisecond = UNSET_INTERVAL,
-) where {T <: PSY.Forecast}
+) where {T <: IS.Forecast}
     is_interval = _to_is_interval(interval)
     settings = get_settings(model)
     resolution = get_resolution(settings)
@@ -54,7 +54,7 @@ function get_time_series_values!(
     len::Int = 1;
     ignore_scaling_factors = true,
     resolution::Dates.Millisecond = UNSET_RESOLUTION,
-) where {T <: PSY.StaticTimeSeries, U <: PSY.Component}
+) where {T <: IS.StaticTimeSeries, U <: IS.InfrastructureSystemsComponent}
     settings = get_settings(model)
     key_resolution =
         resolution == UNSET_RESOLUTION ? get_resolution(settings) : resolution

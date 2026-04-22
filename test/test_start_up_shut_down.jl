@@ -30,27 +30,24 @@ IOM.start_up_cost(
     ::Type{TestDeviceFormulation},
 ) = cost
 
-# Helper to create a MockThermalGen with specified startup/shutdown costs
+# MockTimeSeriesOperationCost is the mock equivalent of MarketBidTimeSeriesCost
+IOM._is_time_series_cost(::MockTimeSeriesOperationCost) = true
+
+# Helper to create a MockThermalGen with specified startup/shutdown costs (static)
 function make_thermal_with_costs(
     name::String;
-    startup_cost::Union{Float64, IS.TimeSeriesKey} = 0.0,
-    shutdown_cost::Union{Float64, IS.TimeSeriesKey} = 0.0,
+    startup_cost::Float64 = 0.0,
+    shutdown_cost::Float64 = 0.0,
     must_run::Bool = false,
 )
     op_cost = MockOperationCost(0.0, false, 0.0, startup_cost, shutdown_cost)
     return make_mock_thermal(name; operation_cost = op_cost, must_run = must_run)
 end
 
-# Helper to create a dummy TimeSeriesKey for triggering the time-variant path
-function make_dummy_ts_key()
-    return IS.StaticTimeSeriesKey(
-        IS.SingleTimeSeries,
-        "cost",
-        Dates.DateTime(2024, 1, 1),
-        Dates.Hour(1),
-        3,
-        Dict{String, Any}(),
-    )
+# Helper to create a MockThermalGen with time-series operation cost
+function make_thermal_with_ts_costs(name::String; must_run::Bool = false)
+    op_cost = MockTimeSeriesOperationCost()
+    return make_mock_thermal(name; operation_cost = op_cost, must_run = must_run)
 end
 
 # Helper to set up container with variables for mock devices
@@ -343,8 +340,7 @@ end
 
     @testset "add_shut_down_cost! time-variant path" begin
         time_steps = 1:3
-        ts_key = make_dummy_ts_key()
-        device = make_thermal_with_costs("gen1"; shutdown_cost = ts_key)
+        device = make_thermal_with_ts_costs("gen1")
         devices = [device]
         container = setup_startup_shutdown_test_container(
             time_steps,
@@ -385,8 +381,7 @@ end
 
     @testset "add_start_up_cost! time-variant path" begin
         time_steps = 1:3
-        ts_key = make_dummy_ts_key()
-        device = make_thermal_with_costs("gen1"; startup_cost = ts_key)
+        device = make_thermal_with_ts_costs("gen1")
         devices = [device]
         container = setup_startup_shutdown_test_container(
             time_steps,

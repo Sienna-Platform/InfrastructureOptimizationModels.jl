@@ -1,7 +1,7 @@
 # NOTE not included currently.
 function _get_time_series(
     container::OptimizationContainer,
-    component::PSY.Component,
+    component::IS.InfrastructureSystemsComponent,
     attributes::TimeSeriesAttributes{T};
     interval::Dates.Millisecond = UNSET_INTERVAL,
 ) where {T <: IS.TimeSeriesData}
@@ -20,7 +20,7 @@ function get_time_series(
     ::Type{P},
     meta = CONTAINER_KEY_EMPTY_META;
     interval::Dates.Millisecond = UNSET_INTERVAL,
-) where {T <: PSY.Component, P <: TimeSeriesParameter}
+) where {T <: IS.InfrastructureSystemsComponent, P <: TimeSeriesParameter}
     parameter_container = get_parameter(container, P, T, meta)
     return _get_time_series(
         container,
@@ -34,7 +34,7 @@ end
 # refactor is done.
 function get_time_series(
     container::OptimizationContainer,
-    component::PSY.Component,
+    component::IS.InfrastructureSystemsComponent,
     forecast_name::String;
     interval::Dates.Millisecond = UNSET_INTERVAL,
 )

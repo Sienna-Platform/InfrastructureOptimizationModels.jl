@@ -1,3 +1,23 @@
+function get_deterministic_time_series_type(sys::IS.InfrastructureSystemsContainer)
+    time_series_types = IS.get_time_series_counts_by_type(sys.data)
+    existing_types = Set(d["type"] for d in time_series_types)
+    if ("Deterministic" in existing_types) &&
+       ("DeterministicSingleTimeSeries" in existing_types)
+        error(
+            "The System contains a combination of forecast data and transformed time series data. Currently this is not supported.",
+        )
+    end
+    if "Deterministic" ∈ existing_types
+        return IS.Deterministic
+    elseif "DeterministicSingleTimeSeries" ∈ existing_types
+        return IS.DeterministicSingleTimeSeries
+    else
+        error(
+            "The System does not contain any forecast data or transformed time series data.",
+        )
+    end
+end
+
 """
 Abstract type for models that use default InfrastructureOptimizationModels formulations. For custom decision problems
     use DecisionProblem as the super type.
@@ -12,7 +32,7 @@ struct GenericOpProblem <: DefaultDecisionProblem end
 mutable struct DecisionModel{M <: DecisionProblem} <: OperationModel
     name::Symbol
     template::AbstractProblemTemplate
-    sys::PSY.System
+    sys::IS.InfrastructureSystemsContainer
     internal::Union{Nothing, ModelInternal}
     simulation_info::Union{Nothing, SimulationInfo}
     store::DecisionModelStore
@@ -22,7 +42,7 @@ end
 """
     DecisionModel{M}(
         template::AbstractProblemTemplate,
-        sys::PSY.System,
+        sys::IS.InfrastructureSystemsContainer,
         jump_model::Union{Nothing, JuMP.Model}=nothing;
         kwargs...) where {M<:DecisionProblem}
 
@@ -32,7 +52,7 @@ Build the optimization problem of type M with the specific system and template.
 
   - `::Type{M} where M<:DecisionProblem`: The abstract operation model type
   - `template::AbstractProblemTemplate`: The model reference made up of transmission, devices, branches, and services.
-  - `sys::PSY.System`: the system created using Power Systems
+  - `sys::IS.InfrastructureSystemsContainer`: the system created using Power Systems
   - `jump_model::Union{Nothing, JuMP.Model}`: Enables passing a custom JuMP model. Use with care
   - `name = nothing`: name of model, string or symbol; defaults to the type of template converted to a symbol.
   - `optimizer::Union{Nothing,MOI.OptimizerWithAttributes} = nothing` : The optimizer does
@@ -64,7 +84,7 @@ OpModel = DecisionModel(MockOperationProblem, template, system)
 """
 function DecisionModel{M}(
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     settings::Settings,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     name = nothing,
@@ -97,7 +117,7 @@ end
 
 function DecisionModel{M}(
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     name = nothing,
     optimizer = nothing,
@@ -156,7 +176,7 @@ Build the optimization problem of type M with the specific system and template
 
   - `::Type{M} where M<:DecisionProblem`: The abstract operation model type
   - `template::AbstractProblemTemplate`: The model reference made up of transmission, devices, branches, and services.
-  - `sys::PSY.System`: the system created using Power Systems
+  - `sys::IS.InfrastructureSystemsContainer`: the system created using Power Systems
   - `jump_model::Union{Nothing, JuMP.Model}` = nothing: Enables passing a custom JuMP model. Use with care.
 
 # Example
@@ -169,7 +189,7 @@ problem = DecisionModel(MyOpProblemType, template, system, optimizer)
 function DecisionModel(
     ::Type{M},
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     kwargs...,
 ) where {M <: DecisionProblem}
@@ -178,7 +198,7 @@ end
 
 function DecisionModel(
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     kwargs...,
 )
@@ -186,7 +206,7 @@ function DecisionModel(
 end
 
 function DecisionModel{M}(
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     kwargs...,
 ) where {M <: DefaultDecisionProblem}
@@ -222,11 +242,12 @@ function init_model_store_params!(model::DecisionModel)
     if model_interval != UNSET_INTERVAL
         interval = model_interval
     else
-        interval = PSY.get_forecast_interval(system)
+        interval = IS.get_forecast_interval(system.data)
     end
     resolution = get_resolution(model)
-    base_power = PSY.get_base_power(system)
-    sys_uuid = IS.get_uuid(system)
+    base_power = get_base_power(system)
+    # FIXME declare as stub
+    sys_uuid = IS.get_uuid(system.data.internal)
     store_params = ModelStoreParams(
         num_executions,
         horizon,
@@ -243,7 +264,7 @@ end
 function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
     sys = get_system(model)
     settings = get_settings(model)
-    available_resolutions = PSY.get_time_series_resolutions(sys)
+    available_resolutions = IS.get_time_series_resolutions(sys.data)
 
     if get_resolution(settings) == UNSET_RESOLUTION && length(available_resolutions) != 1
         throw(
@@ -283,13 +304,14 @@ function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
             )
         end
     end
-    interval_kwarg =
-        model_interval == UNSET_INTERVAL ? (;) : (; interval = model_interval)
     if get_horizon(settings) == UNSET_HORIZON
-        set_horizon!(settings, PSY.get_forecast_horizon(sys; interval_kwarg...))
+        set_horizon!(
+            settings,
+            IS.get_forecast_horizon(sys.data; interval = _to_is_interval(model_interval)),
+        )
     end
 
-    counts = PSY.get_time_series_counts(sys)
+    counts = IS.get_time_series_counts(sys.data)
     if counts.forecast_count < 1
         error(
             "The system does not contain forecast data. A DecisionModel can't be built.",

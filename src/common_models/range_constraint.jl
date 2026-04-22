@@ -94,14 +94,14 @@ function _add_bound_range_constraints_impl!(
     W <: AbstractDeviceFormulation,
 }
     time_steps = get_time_steps(container)
-    device_names = PSY.get_name.(devices)
+    device_names = IS.get_name.(devices)
     jump_model = get_jump_model(container)
 
     con = add_constraints_container!(
         container, T, V, device_names, time_steps; meta = constraint_meta(dir))
 
     for device in devices, t in time_steps
-        ci_name = PSY.get_name(device)
+        ci_name = IS.get_name(device)
         limits = get_min_max_limits(device, T, W)
         add_range_bound_constraint!(
             dir, jump_model, con, ci_name, t, array[ci_name, t], get_bound(dir, limits))
@@ -209,47 +209,18 @@ function _add_semicontinuous_bound_range_constraints_impl!(
     W <: AbstractDeviceFormulation,
 }
     time_steps = get_time_steps(container)
-    names = PSY.get_name.(devices)
+    names = IS.get_name.(devices)
     jump_model = get_jump_model(container)
     con = add_constraints_container!(
         container, T, V, names, time_steps; meta = constraint_meta(dir))
     varbin = get_variable(container, OnVariable, V)
 
     for device in devices, t in time_steps
-        ci_name = PSY.get_name(device)
+        ci_name = IS.get_name(device)
         limits = get_min_max_limits(device, T, W)
         add_range_bound_constraint!(
             dir, jump_model, con, ci_name, t,
             array[ci_name, t], get_bound(dir, limits), varbin[ci_name, t])
-    end
-    return
-end
-
-# ThermalGen version - checks must_run to decide whether to use binary variable
-function _add_semicontinuous_bound_range_constraints_impl!(
-    container::OptimizationContainer,
-    ::Type{T},
-    dir::BoundDirection,
-    array,
-    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    ::DeviceModel{V, W},
-) where {T <: ConstraintType, V <: PSY.ThermalGen, W <: AbstractDeviceFormulation}
-    time_steps = get_time_steps(container)
-    names = PSY.get_name.(devices)
-    jump_model = get_jump_model(container)
-    con = add_constraints_container!(
-        container, T, V, names, time_steps; meta = constraint_meta(dir))
-    varbin = get_variable(container, OnVariable, V)
-
-    for device in devices
-        ci_name = PSY.get_name(device)
-        limits = get_min_max_limits(device, T, W)
-        for t in time_steps
-            bin = PSY.get_must_run(device) ? 1.0 : varbin[ci_name, t]
-            add_range_bound_constraint!(
-                dir, jump_model, con, ci_name, t,
-                array[ci_name, t], get_bound(dir, limits), bin)
-        end
     end
     return
 end
@@ -270,7 +241,7 @@ function add_reserve_bound_range_constraints!(
     W <: AbstractDeviceFormulation,
 }
     time_steps = get_time_steps(container)
-    names = PSY.get_name.(devices)
+    names = IS.get_name.(devices)
     jump_model = get_jump_model(container)
 
     con = add_constraints_container!(
@@ -278,7 +249,7 @@ function add_reserve_bound_range_constraints!(
     varbin = get_variable(container, ReservationVariable, V)
 
     for device in devices, t in time_steps
-        ci_name = PSY.get_name(device)
+        ci_name = IS.get_name(device)
         limits = get_min_max_limits(device, T, W)
         bin = invert_binary ? (1 - varbin[ci_name, t]) : varbin[ci_name, t]
         add_range_bound_constraint!(
@@ -416,7 +387,7 @@ function _add_parameterized_bound_range_constraints_impl!(
     ts_name = get_time_series_names(model)[P]
     ts_type = get_default_time_series_type(container)
     # PERF: compilation hotspot. Switch to TSC.
-    names = [PSY.get_name(d) for d in devices if PSY.has_time_series(d, ts_type, ts_name)]
+    names = [IS.get_name(d) for d in devices if IS.has_time_series(d, ts_type, ts_name)]
     if isempty(names)
         @debug "There are no $V devices with time series data $ts_type, $ts_name"
         return
@@ -445,7 +416,7 @@ function _add_parameterized_bound_range_constraints_impl!(
     W <: AbstractDeviceFormulation,
 }
     time_steps = get_time_steps(container)
-    names = PSY.get_name.(devices)
+    names = IS.get_name.(devices)
     constraint = add_constraints_container!(
         container, T, V, names, time_steps; meta = constraint_meta(dir))
 
@@ -473,7 +444,7 @@ function _bound_range_with_parameter!(
     jump_model = get_jump_model(container)
     time_steps = axes(constraint_container)[2]
     for device in devices, t in time_steps
-        name = PSY.get_name(device)
+        name = IS.get_name(device)
         rhs = param_multiplier[name, t] * param_array[name, t]
         constraint_container[name, t] =
             _make_bound_constraint(dir, jump_model, lhs_array[name, t], rhs)
@@ -503,8 +474,8 @@ function _bound_range_with_parameter!(
     jump_model = get_jump_model(container)
     time_steps = axes(constraint_container)[2]
     for device in devices, t in time_steps
-        ub = PSY.get_max_active_power(device)
-        name = PSY.get_name(device)
+        ub = get_max_active_power(device)
+        name = IS.get_name(device)
         rhs = ub * param_array[name, t]
         constraint_container[name, t] =
             _make_bound_constraint(dir, jump_model, lhs_array[name, t], rhs)
@@ -533,8 +504,8 @@ function _bound_range_with_parameter!(
     ts_name = get_time_series_names(model)[P]
     ts_type = get_default_time_series_type(container)
     for device in devices
-        name = PSY.get_name(device)
-        if !(PSY.has_time_series(device, ts_type, ts_name))
+        name = IS.get_name(device)
+        if !(IS.has_time_series(device, ts_type, ts_name))
             continue
         end
         param_col = get_parameter_column_refs(param_container, name)

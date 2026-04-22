@@ -17,13 +17,16 @@ const IS = InfrastructureSystems
 struct TestDeviceFormulation <: PSI.AbstractDeviceFormulation end
 struct TestPowerModel <: IS.Optimization.AbstractPowerModel end
 
-# Mock operation cost for testing proportional cost functions
-struct MockOperationCost
+# Mock operation costs for testing objective function construction.
+# Mirrors the PSY pattern: separate static and time-series types.
+
+"Static mock cost — all fields are scalars."
+struct MockOperationCost <: IS.DeviceParameter
     proportional_term::Float64
     is_time_variant::Bool
     fuel_cost::Float64
-    start_up::Union{Float64, IS.TimeSeriesKey}
-    shut_down::Union{Float64, IS.TimeSeriesKey}
+    start_up::Float64
+    shut_down::Float64
 end
 
 MockOperationCost(proportional_term::Float64) =
@@ -35,6 +38,24 @@ MockOperationCost(proportional_term::Float64, is_time_variant::Bool, fuel_cost::
 
 IOM.get_start_up(c::MockOperationCost) = c.start_up
 IOM.get_shut_down(c::MockOperationCost) = c.shut_down
+
+"""
+Time-series mock cost, paralleling PSY.MarketBidTimeSeriesCost. Has no fields because all
+cost data (startup, shutdown, offer curves) lives in parameter containers populated
+externally — by POM in real use, or by `add_test_parameter!` in the tests.
+"""
+struct MockTimeSeriesOperationCost <: IS.DeviceParameter end
+
+# Startup/shutdown values aren't stored on the cost object; they live in parameter containers.
+# Return sentinel values that would error if accidentally used as costs.
+IOM.get_start_up(::MockTimeSeriesOperationCost) =
+    error(
+        "MockTimeSeriesOperationCost: start_up should be read from parameters, not the cost object",
+    )
+IOM.get_shut_down(::MockTimeSeriesOperationCost) =
+    error(
+        "MockTimeSeriesOperationCost: shut_down should be read from parameters, not the cost object",
+    )
 
 # Abstract mock device type for testing rejection of abstract types in DeviceModel
 # Subtypes IS.InfrastructureSystemsComponent so they work with DeviceModel and container keys
@@ -52,6 +73,8 @@ get_name(b::MockBus) = b.name
 get_number(b::MockBus) = b.number
 get_bustype(b::MockBus) = b.bustype
 
+const MockOperationCostTypes = Union{MockOperationCost, MockTimeSeriesOperationCost}
+
 # Mock Thermal Generator
 struct MockThermalGen <: AbstractMockGenerator
     name::String
@@ -59,7 +82,7 @@ struct MockThermalGen <: AbstractMockGenerator
     bus::MockBus
     active_power_limits::NamedTuple{(:min, :max), Tuple{Float64, Float64}}
     base_power::Float64
-    operation_cost::MockOperationCost
+    operation_cost::MockOperationCostTypes
     must_run::Bool
 end
 
@@ -78,7 +101,9 @@ IOM.get_active_power_limits(g::MockThermalGen) = g.active_power_limits
 IOM.get_base_power(g::MockThermalGen) = g.base_power
 IOM.get_operation_cost(g::MockThermalGen) = g.operation_cost
 IOM.get_must_run(g::MockThermalGen) = g.must_run
-IS.get_fuel_cost(g::MockThermalGen) = g.operation_cost.fuel_cost
+IS.get_fuel_cost(g::MockThermalGen) = _mock_fuel_cost(g.operation_cost)
+_mock_fuel_cost(c::MockOperationCost) = c.fuel_cost
+_mock_fuel_cost(::MockTimeSeriesOperationCost) = 0.0
 
 # Mock Renewable Generator
 struct MockRenewableGen <: AbstractMockGenerator

@@ -16,7 +16,7 @@ function add_variables!(
         container,
         T,
         D,
-        PSY.get_name.(devices),
+        IS.get_name.(devices),
         time_steps,
     )
     return

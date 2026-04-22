@@ -14,7 +14,7 @@ struct GenericEmulationProblem <: DefaultEmulationProblem end
 """
     EmulationModel{M}(
         template::AbstractProblemTemplate,
-        sys::PSY.System,
+        sys::IS.InfrastructureSystemsContainer,
         jump_model::Union{Nothing, JuMP.Model}=nothing;
         kwargs...) where {M<:EmulationProblem}
 
@@ -24,7 +24,7 @@ Build the optimization problem of type M with the specific system and template.
 
   - `::Type{M} where M<:EmulationProblem`: The abstract Emulation model type
   - `template::AbstractProblemTemplate`: The model reference made up of transmission, devices, branches, and services.
-  - `sys::PSY.System`: the system created using Power Systems
+  - `sys::IS.InfrastructureSystemsContainer`: the system created using Power Systems
   - `jump_model::Union{Nothing, JuMP.Model}`: Enables passing a custom JuMP model. Use with care
   - `name = nothing`: name of model, string or symbol; defaults to the type of template converted to a symbol.
   - `optimizer::Union{Nothing,MOI.OptimizerWithAttributes} = nothing` : The optimizer does
@@ -54,7 +54,7 @@ OpModel = EmulationModel(MockEmulationProblem, template, system)
 mutable struct EmulationModel{M <: EmulationProblem} <: OperationModel
     name::Symbol
     template::AbstractProblemTemplate
-    sys::PSY.System
+    sys::IS.InfrastructureSystemsContainer
     internal::ModelInternal
     simulation_info::SimulationInfo
     store::EmulationModelStore # might be extended to other stores for simulation
@@ -62,7 +62,7 @@ mutable struct EmulationModel{M <: EmulationProblem} <: OperationModel
 
     function EmulationModel{M}(
         template::AbstractProblemTemplate,
-        sys::PSY.System,
+        sys::IS.InfrastructureSystemsContainer,
         settings::Settings,
         jump_model::Union{Nothing, JuMP.Model} = nothing;
         name = nothing,
@@ -74,7 +74,7 @@ mutable struct EmulationModel{M <: EmulationProblem} <: OperationModel
         end
         finalize_template!(template, sys)
         internal = ModelInternal(
-            OptimizationContainer(sys, settings, jump_model, PSY.SingleTimeSeries),
+            OptimizationContainer(sys, settings, jump_model, IS.SingleTimeSeries),
         )
         new{M}(
             name,
@@ -90,7 +90,7 @@ end
 
 function EmulationModel{M}(
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     resolution = UNSET_RESOLUTION,
     name = nothing,
@@ -145,7 +145,7 @@ Build the optimization problem of type M with the specific system and template
   - `::Type{M} where M<:EmulationProblem`: The abstract Emulation model type
   - `template::AbstractProblemTemplate`: The model reference made up of transmission, devices,
     branches, and services.
-  - `sys::PSY.System`: the system created using Power Systems
+  - `sys::IS.InfrastructureSystemsContainer`: the system created using Power Systems
   - `jump_model::Union{Nothing, JuMP.Model}`: Enables passing a custom JuMP model. Use with care
 
 # Example
@@ -158,7 +158,7 @@ problem = EmulationModel(MyEmProblemType, template, system, optimizer)
 function EmulationModel(
     ::Type{M},
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     kwargs...,
 ) where {M <: EmulationProblem}
@@ -167,7 +167,7 @@ end
 
 function EmulationModel(
     template::AbstractProblemTemplate,
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     kwargs...,
 )
@@ -181,7 +181,7 @@ emulation models that do not require a template.
 # Arguments
 
   - `::Type{M} where M<:EmulationProblem`: The abstract operation model type
-  - `sys::PSY.System`: the system created using Power Systems
+  - `sys::IS.InfrastructureSystemsContainer`: the system created using Power Systems
   - `jump_model::Union{Nothing, JuMP.Model}` = nothing: Enables passing a custom JuMP model. Use with care.
 
 # Example
@@ -191,7 +191,7 @@ problem = EmulationModel(system, optimizer)
 ```
 """
 function EmulationModel{M}(
-    sys::PSY.System,
+    sys::IS.InfrastructureSystemsContainer,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
     kwargs...,
 ) where {M <: EmulationProblem}
@@ -211,7 +211,7 @@ end
 function validate_time_series!(model::EmulationModel{<:DefaultEmulationProblem})
     sys = get_system(model)
     settings = get_settings(model)
-    available_resolutions = PSY.get_time_series_resolutions(sys)
+    available_resolutions = IS.get_time_series_resolutions(sys.data)
 
     if get_resolution(settings) == UNSET_RESOLUTION && length(available_resolutions) != 1
         throw(
@@ -236,7 +236,7 @@ function validate_time_series!(model::EmulationModel{<:DefaultEmulationProblem})
         set_horizon!(settings, get_resolution(settings))
     end
 
-    counts = PSY.get_time_series_counts(sys)
+    counts = IS.get_time_series_counts(sys.data)
     if counts.static_time_series_count < 1
         error(
             "The system does not contain Static Time Series data. A EmulationModel can't be built.",
@@ -257,8 +257,9 @@ function init_model_store_params!(model::EmulationModel)
     system = get_system(model)
     settings = get_settings(model)
     horizon = interval = resolution = get_resolution(settings)
-    base_power = PSY.get_base_power(system)
-    sys_uuid = IS.get_uuid(system)
+    base_power = get_base_power(system)
+    # FIXME declare as stub
+    sys_uuid = IS.get_uuid(system.data.internal)
     set_store_params!(
         get_internal(model),
         ModelStoreParams(
@@ -333,7 +334,7 @@ function update_parameter_values!(
     model::EmulationModel,
     key::ParameterKey{T, U},
     input::DatasetContainer{InMemoryDataset},
-) where {T <: ParameterType, U <: PSY.Component}
+) where {T <: ParameterType, U <: IS.InfrastructureSystemsComponent}
     # Enable again for detailed debugging
     # TimerOutputs.@timeit RUN_SIMULATION_TIMER "$T $U Parameter Update" begin
     optimization_container = get_optimization_container(model)
