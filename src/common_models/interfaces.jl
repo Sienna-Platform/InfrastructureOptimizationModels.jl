@@ -245,3 +245,15 @@ Only called in `emulation_model.jl`: that file's contents and this function shou
 likely be moved to POM or PSI.
 """
 function update_container_parameter_values! end
+
+"""
+Component type associated with network duals. Returns ACBus when passed in `nothing`.
+Only called in a single spot in `add_constraint_dual!` for the network model.
+"""
+function component_for_network_dual end
+
+"""
+Component type associated with hvdc interpolation constraints. Returns DCBus when passed in
+`nothing`. Only called in a single spot in `incremental.jl`.
+"""
+function component_for_hvdc_interpolation end
