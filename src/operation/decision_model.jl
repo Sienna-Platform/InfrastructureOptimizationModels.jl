@@ -303,10 +303,11 @@ function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
             )
         end
     end
-    interval_kwarg =
-        model_interval == UNSET_INTERVAL ? (;) : (; interval = model_interval)
     if get_horizon(settings) == UNSET_HORIZON
-        set_horizon!(settings, IS.get_forecast_horizon(sys.data; interval_kwarg...))
+        set_horizon!(
+            settings,
+            IS.get_forecast_horizon(sys.data; interval = _to_is_interval(model_interval)),
+        )
     end
 
     counts = IS.get_time_series_counts(sys.data)
