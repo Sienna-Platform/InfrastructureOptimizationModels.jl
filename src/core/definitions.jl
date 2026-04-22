@@ -92,6 +92,7 @@ const UNSET_HORIZON = Dates.Millisecond(0)
 const UNSET_RESOLUTION = Dates.Millisecond(0)
 const UNSET_INTERVAL = Dates.Millisecond(0)
 const UNSET_INI_TIME = Dates.DateTime(0)
+const UNSET_FORECAST_INI_TIME = Dates.DateTime(1970)
 
 # Tolerance of comparisons
 # MIP gap tolerances in most solvers are set to 1e-4

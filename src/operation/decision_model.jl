@@ -1,7 +1,8 @@
 function get_deterministic_time_series_type(sys::IS.InfrastructureSystemsContainer)
     time_series_types = IS.get_time_series_counts_by_type(sys.data)
     existing_types = Set(d["type"] for d in time_series_types)
-    if Set(["Deterministic", "DeterministicSingleTimeSeries"]) ∈ existing_types
+    if ("Deterministic" in existing_types) &&
+       ("DeterministicSingleTimeSeries" in existing_types)
         error(
             "The System contains a combination of forecast data and transformed time series data. Currently this is not supported.",
         )

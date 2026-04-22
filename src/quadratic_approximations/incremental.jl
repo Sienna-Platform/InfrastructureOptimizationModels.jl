@@ -165,6 +165,7 @@ function _add_generic_incremental_interpolation_constraint!(
 
     # Retrieve all required variables from the optimization container
     # Retrieve original variable for DCVoltage from the Bus
+    # FIXME edge case: DCVoltage. W is InterconnectingConverter but key says DCBus.
     x_var = get_variable(container, R, W)  # Original variable (domain of function)
     y_var = get_variable(container, S, W)  # Approximated variable (range of function)
     δ_var = get_variable(container, T, W)  # Interpolation variables (weights for segments)

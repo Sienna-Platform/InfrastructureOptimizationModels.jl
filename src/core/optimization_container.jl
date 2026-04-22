@@ -292,7 +292,7 @@ end
 # implementations (e.g. PSY.System in POM) should add their own methods.
 temp_set_units_base_system!(::IS.InfrastructureSystemsContainer, ::String) = nothing
 temp_get_forecast_initial_timestamp(::IS.InfrastructureSystemsContainer) =
-    Dates.DateTime(1970)
+    UNSET_FORECAST_INI_TIME
 
 function init_optimization_container!(
     container::OptimizationContainer,
@@ -325,10 +325,6 @@ function init_optimization_container!(
     # NOTE: Simplified to avoid referencing concrete network model types (CopperPlatePowerModel, AreaBalancePowerModel)
     # PowerSimulations can implement more specific logic based on concrete types
     total_number_of_devices =
-        length(
-            get_available_components(network_model, IS.InfrastructureSystemsComponent, sys),
-        )
-    total_number_of_devices +=
         length(
             get_available_components(network_model, IS.InfrastructureSystemsComponent, sys),
         )
