@@ -98,7 +98,6 @@ const NMDT_BILINEAR_META = "NMDTBilinearTest"
             @test maximum(gaps) <= theoretical_bound + 1e-6
         end
     end
-
 end
 
 @testset "T-D-NMDT Tightening" begin
@@ -274,7 +273,6 @@ end
         end
     end
 
-
     # @testset "McCormick toggle" begin
     #     setup = _setup_bilinear_test(["dev1"], 1:1)
 
@@ -314,7 +312,6 @@ end
         @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
         @test JuMP.objective_value(setup.jump_model) ≈ 6.0 atol = 0.5
     end
-
 
     @testset "D-NMDT vs HybS comparison" begin
         true_product = 0.4 * 0.7
@@ -634,7 +631,8 @@ end
                             IOM.NMDTBilinearConfig(L),
                             setup.container, MockThermalGen, ["dev1"], 1:1,
                             setup.x_var_container, setup.y_var_container,
-                            [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], NMDT_BILINEAR_META,
+                            [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)],
+                            NMDT_BILINEAR_META,
                         )
                         expr = IOM.get_expression(
                             setup.container, IOM.BilinearProductExpression,
