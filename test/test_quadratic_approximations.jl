@@ -678,7 +678,10 @@ const TEST_META = "TestVar"
                 IOM.QuadraticExpression,
                 MockThermalGen,
                 TEST_META,
-            )["dev1", 1]
+            )[
+                "dev1",
+                1,
+            ]
 
             JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
             JuMP.set_silent(setup.jump_model)
