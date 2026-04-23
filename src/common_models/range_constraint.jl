@@ -195,14 +195,18 @@ function add_semicontinuous_range_constraints!(
     return
 end
 
-# Generic component version - always uses binary variable
+# Generic component version - always uses binary variable.
+# `meta_suffix` is appended to the default constraint meta so callers can stack a second
+# OnVariable-keyed bound alongside another bound constraint (e.g. a reservation-keyed
+# one) on the same `(T, V)` without a meta collision — see `add_commitment_bound_range_constraints!`.
 function _add_semicontinuous_bound_range_constraints_impl!(
     container::OptimizationContainer,
     ::Type{T},
     dir::BoundDirection,
     array,
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    ::DeviceModel{V, W},
+    ::DeviceModel{V, W};
+    meta_suffix::String = "",
 ) where {
     T <: ConstraintType,
     V <: IS.InfrastructureSystemsComponent,
@@ -212,7 +216,7 @@ function _add_semicontinuous_bound_range_constraints_impl!(
     names = IS.get_name.(devices)
     jump_model = get_jump_model(container)
     con = add_constraints_container!(
-        container, T, V, names, time_steps; meta = constraint_meta(dir))
+        container, T, V, names, time_steps; meta = constraint_meta(dir) * meta_suffix)
     varbin = get_variable(container, OnVariable, V)
 
     for device in devices, t in time_steps
@@ -224,6 +228,21 @@ function _add_semicontinuous_bound_range_constraints_impl!(
     end
     return
 end
+
+# Exported wrapper: use this from downstream packages to add an OnVariable-keyed bound
+# alongside another bound constraint on the same `(T, V)` key — pass `meta_suffix = "_aux"`
+# (or similar) to avoid colliding with the default "lb"/"ub" meta.
+add_commitment_bound_range_constraints!(
+    container::OptimizationContainer,
+    ::Type{T},
+    dir::BoundDirection,
+    array,
+    devices,
+    model::DeviceModel;
+    meta_suffix::String = "",
+) where {T <: ConstraintType} =
+    _add_semicontinuous_bound_range_constraints_impl!(
+        container, T, dir, array, devices, model; meta_suffix)
 
 # Unified reserve range constraints impl
 # invert_binary: true for InputActivePower (uses 1-varbin), false for others (uses varbin)
