@@ -87,10 +87,10 @@ function add_service_variables!(
     ::Type{F},
 ) where {
     T <: VariableType,
-    U <: PSY.Service,
+    U <: IS.InfrastructureSystemsComponent,
     V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
     F <: AbstractServiceFormulation,
-} where {D <: PSY.Component}
+} where {D <: IS.InfrastructureSystemsComponent}
     @assert !isempty(contributing_devices)
     time_steps = get_time_steps(container)
 
@@ -100,16 +100,16 @@ function add_service_variables!(
         container,
         T,
         U,
-        PSY.get_name(service),
-        [PSY.get_name(d) for d in contributing_devices],
+        IS.get_name(service),
+        [IS.get_name(d) for d in contributing_devices],
         time_steps,
     )
 
     for t in time_steps, d in contributing_devices
-        name = PSY.get_name(d)
+        name = IS.get_name(d)
         variable[name, t] = JuMP.@variable(
             get_jump_model(container),
-            base_name = "$(T)_$(U)_$(PSY.get_name(service))_{$(name), $(t)}",
+            base_name = "$(T)_$(U)_$(IS.get_name(service))_{$(name), $(t)}",
             binary = binary
         )
 

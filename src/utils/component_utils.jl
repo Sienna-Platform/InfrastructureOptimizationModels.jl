@@ -16,20 +16,20 @@ _to_is_resolution(resolution::Dates.Millisecond) =
 
 function get_available_components(
     model::DeviceModel{T, <:AbstractDeviceFormulation},
-    sys::PSY.System,
-) where {T <: PSY.Component}
+    sys::IS.InfrastructureSystemsContainer,
+) where {T <: IS.InfrastructureSystemsComponent}
     subsystem = get_subsystem(model)
     filter_function = get_attribute(model, "filter_function")
     if filter_function === nothing
-        return PSY.get_components(
-            PSY.get_available,
+        return IS.get_components(
+            IS.get_available,
             T,
             sys;
             subsystem_name = subsystem,
         )
     else
-        return PSY.get_components(
-            x -> PSY.get_available(x) && filter_function(x),
+        return IS.get_components(
+            x -> IS.get_available(x) && filter_function(x),
             T,
             sys;
             subsystem_name = subsystem,
@@ -39,20 +39,20 @@ end
 
 function get_available_components(
     model::ServiceModel{T, <:AbstractServiceFormulation},
-    sys::PSY.System,
-) where {T <: PSY.Component}
+    sys::IS.InfrastructureSystemsContainer,
+) where {T <: IS.InfrastructureSystemsComponent}
     subsystem = get_subsystem(model)
     filter_function = get_attribute(model, "filter_function")
     if filter_function === nothing
-        return PSY.get_components(
-            PSY.get_available,
+        return IS.get_components(
+            IS.get_available,
             T,
             sys;
             subsystem_name = subsystem,
         )
     else
-        return PSY.get_components(
-            x -> PSY.get_available(x) && filter_function(x),
+        return IS.get_components(
+            x -> IS.get_available(x) && filter_function(x),
             T,
             sys;
             subsystem_name = subsystem,
@@ -60,107 +60,18 @@ function get_available_components(
     end
 end
 
-"""
-Default implementation for validating that a device model has available devices.
-Can be extended in downstream packages for additional validation logic.
-"""
-function validate_available_devices(
-    model::DeviceModel{T, <:AbstractDeviceFormulation},
-    sys::PSY.System,
-) where {T <: PSY.Component}
-    devices = get_available_components(model, sys)
-    if isempty(devices)
-        return false
-    end
-    PSY.check_components(sys, devices)
-    return true
-end
-
-_filter_function(x::PSY.ACBus) =
-    PSY.get_bustype(x) != PSY.ACBusTypes.ISOLATED && PSY.get_available(x)
-
-function get_available_components(
-    model::NetworkModel,
-    ::Type{PSY.ACBus},
-    sys::PSY.System,
-)
-    subsystem = get_subsystem(model)
-    return PSY.get_components(
-        _filter_function,
-        PSY.ACBus,
-        sys;
-        subsystem_name = subsystem,
-    )
-end
-
 function get_available_components(
     model::NetworkModel,
     ::Type{T},
-    sys::PSY.System,
-) where {T <: PSY.Component}
+    sys::IS.InfrastructureSystemsContainer,
+) where {T <: IS.InfrastructureSystemsComponent}
     subsystem = get_subsystem(model)
-    return PSY.get_components(
+    # FIXME have to patch thru to sys.data here
+    return IS.get_components(
         T,
-        sys;
+        sys.data;
         subsystem_name = subsystem,
     )
-end
-
-#=
-function get_available_components(
-    ::Type{PSY.RegulationDevice{T}},
-    sys::PSY.System,
-) where {T <: PSY.Component}
-    return PSY.get_components(
-        x -> (PSY.get_available(x) && PSY.has_service(x, PSY.AGC)),
-        PSY.RegulationDevice{T},
-        sys,
-    )
-end
-=#
-
-make_system_filename(sys::PSY.System) = make_system_filename(IS.get_uuid(sys))
-make_system_filename(sys_uuid::Union{Base.UUID, AbstractString}) = "system-$(sys_uuid).json"
-
-function check_hvdc_line_limits_consistency(
-    d::Union{PSY.TwoTerminalHVDC, PSY.TModelHVDCLine},
-)
-    from_min = PSY.get_active_power_limits_from(d).min
-    to_min = PSY.get_active_power_limits_to(d).min
-    from_max = PSY.get_active_power_limits_from(d).max
-    to_max = PSY.get_active_power_limits_to(d).max
-
-    if from_max < to_min
-        throw(
-            IS.ConflictingInputsError(
-                "From Max $(from_max) can't be a smaller value than To Min $(to_min)",
-            ),
-        )
-    elseif to_max < from_min
-        throw(
-            IS.ConflictingInputsError(
-                "To Max $(to_max) can't be a smaller value than From Min $(from_min)",
-            ),
-        )
-    end
-    return
-end
-
-function check_hvdc_line_limits_unidirectional(d::PSY.TwoTerminalHVDC)
-    from_min = PSY.get_active_power_limits_from(d).min
-    to_min = PSY.get_active_power_limits_to(d).min
-    from_max = PSY.get_active_power_limits_from(d).max
-    to_max = PSY.get_active_power_limits_to(d).max
-
-    if from_min < 0 || to_min < 0 || from_max < 0 || to_max < 0
-        throw(
-            IS.ConflictingInputsError(
-                "Changing flow direction on HVDC Line $(PSY.get_name(d)) is not compatible with non-linear network formulations. \
-                Bi-directional models with losses are only compatible with linear network models like DCPPowerModel.",
-            ),
-        )
-    end
-    return
 end
 
 ##################################################
@@ -265,8 +176,8 @@ Note that the costs (y-axis) are always in \$/h so
 they do not require transformation
 """
 function get_piecewise_pointcurve_per_system_unit(
-    cost_component::PSY.PiecewiseLinearData,
-    unit_system::PSY.UnitSystem,
+    cost_component::IS.PiecewiseLinearData,
+    unit_system::IS.UnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -279,8 +190,8 @@ function get_piecewise_pointcurve_per_system_unit(
 end
 
 function _get_piecewise_pointcurve_per_system_unit(
-    cost_component::PSY.PiecewiseLinearData,
-    ::Val{PSY.UnitSystem.SYSTEM_BASE},
+    cost_component::IS.PiecewiseLinearData,
+    ::Val{IS.UnitSystem.SYSTEM_BASE},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -288,8 +199,8 @@ function _get_piecewise_pointcurve_per_system_unit(
 end
 
 function _get_piecewise_pointcurve_per_system_unit(
-    cost_component::PSY.PiecewiseLinearData,
-    ::Val{PSY.UnitSystem.DEVICE_BASE},
+    cost_component::IS.PiecewiseLinearData,
+    ::Val{IS.UnitSystem.DEVICE_BASE},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -299,12 +210,12 @@ function _get_piecewise_pointcurve_per_system_unit(
         points_normalized[ix] =
             (x = point.x * (device_base_power / system_base_power), y = point.y)
     end
-    return PSY.PiecewiseLinearData(points_normalized)
+    return IS.PiecewiseLinearData(points_normalized)
 end
 
 function _get_piecewise_pointcurve_per_system_unit(
-    cost_component::PSY.PiecewiseLinearData,
-    ::Val{PSY.UnitSystem.NATURAL_UNITS},
+    cost_component::IS.PiecewiseLinearData,
+    ::Val{IS.UnitSystem.NATURAL_UNITS},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -313,7 +224,7 @@ function _get_piecewise_pointcurve_per_system_unit(
     for (ix, point) in enumerate(points)
         points_normalized[ix] = (x = point.x / system_base_power, y = point.y)
     end
-    return PSY.PiecewiseLinearData(points_normalized)
+    return IS.PiecewiseLinearData(points_normalized)
 end
 
 """
@@ -324,15 +235,15 @@ Note that the costs (y-axis) are in \$/MWh, \$/(sys pu h) or \$/(device pu h), s
 require transformation.
 """
 function get_piecewise_curve_per_system_unit(
-    cost_component::PSY.PiecewiseStepData,
-    unit_system::PSY.UnitSystem,
+    cost_component::IS.PiecewiseStepData,
+    unit_system::IS.UnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
 )
-    return PSY.PiecewiseStepData(
+    return IS.PiecewiseStepData(
         get_piecewise_curve_per_system_unit(
-            PSY.get_x_coords(cost_component),
-            PSY.get_y_coords(cost_component),
+            IS.get_x_coords(cost_component),
+            IS.get_y_coords(cost_component),
             unit_system,
             system_base_power,
             device_base_power,
@@ -343,7 +254,7 @@ end
 function get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    unit_system::PSY.UnitSystem,
+    unit_system::IS.UnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -359,7 +270,7 @@ end
 function _get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    ::Val{PSY.UnitSystem.SYSTEM_BASE},
+    ::Val{IS.UnitSystem.SYSTEM_BASE},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -369,7 +280,7 @@ end
 function _get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    ::Val{PSY.UnitSystem.DEVICE_BASE},
+    ::Val{IS.UnitSystem.DEVICE_BASE},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -382,7 +293,7 @@ end
 function _get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    ::Val{PSY.UnitSystem.NATURAL_UNITS},
+    ::Val{IS.UnitSystem.NATURAL_UNITS},
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -391,112 +302,24 @@ function _get_piecewise_curve_per_system_unit(
     return x_coords_normalized, y_coords_normalized
 end
 
-is_time_variant(::IS.TimeSeriesKey) = true
-is_time_variant(::Any) = false
+is_time_variant(x) = IS.is_time_series_backed(x)
 
-function create_temporary_cost_function_in_system_per_unit(
-    original_cost_function::PSY.CostCurve,
-    new_data::PSY.PiecewiseLinearData,
-)
-    return PSY.CostCurve(
-        PSY.PiecewisePointCurve(new_data),
-        PSY.UnitSystem.SYSTEM_BASE,
-        PSY.get_vom_cost(original_cost_function),
-    )
-end
-
-function create_temporary_cost_function_in_system_per_unit(
-    original_cost_function::PSY.FuelCurve,
-    new_data::PSY.PiecewiseLinearData,
-)
-    return PSY.FuelCurve(
-        PSY.PiecewisePointCurve(new_data),
-        PSY.UnitSystem.SYSTEM_BASE,
-        PSY.get_fuel_cost(original_cost_function),
-        IS.LinearCurve(0.0),  # setting fuel offtake cost to default value of 0
-        PSY.get_vom_cost(original_cost_function),
-    )
-end
-
-function get_deterministic_time_series_type(sys::PSY.System)
-    time_series_types = IS.get_time_series_counts_by_type(sys.data)
-    existing_types = Set(d["type"] for d in time_series_types)
-    if Set(["Deterministic", "DeterministicSingleTimeSeries"]) ∈ existing_types
-        error(
-            "The System contains a combination of forecast data and transformed time series data. Currently this is not supported.",
-        )
-    end
-    if "Deterministic" ∈ existing_types
-        return PSY.Deterministic
-    elseif "DeterministicSingleTimeSeries" ∈ existing_types
-        return PSY.DeterministicSingleTimeSeries
-    else
-        error(
-            "The System does not contain any forecast data or transformed time series data.",
-        )
-    end
-end
-
-"""
-Return the set of distinct forecast intervals present in the system.
-"""
-function get_forecast_intervals(sys::PSY.System)
-    table = PSY.get_forecast_summary_table(sys)
+function get_forecast_intervals(sys::IS.InfrastructureSystemsContainer)
+    table = IS.get_forecast_summary_table(sys.data)
     return Set(row.interval for row in eachrow(table) if row.interval !== nothing)
 end
 
-"""
-Return `(initial_timestamp, length)` for the `SingleTimeSeries` in `sys` whose
-resolution matches `resolution`. Throws `IS.InvalidValue` when no match exists
-or when matching series disagree on either field.
-"""
-function get_single_time_series_consistency(
-    sys::PSY.System,
-    resolution::Dates.Period,
+function auto_transform_time_series!(
+    sys::IS.InfrastructureSystemsContainer,
+    settings::Settings,
 )
-    table = PSY.get_static_time_series_summary_table(sys)
-    target = Dates.canonicalize(Dates.Millisecond(resolution))
-    filtered =
-        [row for row in eachrow(table) if row.resolution == target]
-    if isempty(filtered)
-        throw(
-            IS.InvalidValue(
-                "No SingleTimeSeries found at resolution $(target)",
-            ),
-        )
-    end
-    unique_pairs =
-        unique((row.initial_timestamp, row.time_step_count) for row in filtered)
-    if length(unique_pairs) > 1
-        throw(
-            IS.InvalidValue(
-                "SingleTimeSeries at resolution $(target) have inconsistent " *
-                "initial times and lengths: $(collect(unique_pairs))",
-            ),
-        )
-    end
-    ini_time_str, ts_length = first(unique_pairs)
-    return (Dates.DateTime(ini_time_str), ts_length)
-end
-
-"""
-Automatically transform `SingleTimeSeries` into `DeterministicSingleTimeSeries` for a
-given (horizon, interval) when a DecisionModel is built with these settings and the
-system contains only static time series.
-
-Does nothing when:
-  - The model's `horizon` or `interval` are unset.
-  - The system has no `SingleTimeSeries` to transform.
-  - The system has existing forecast data AND the requested interval is already present in those forecasts.
-"""
-function auto_transform_time_series!(sys::PSY.System, settings::Settings)
     model_interval = get_interval(settings)
     model_horizon = get_horizon(settings)
     if model_interval == UNSET_INTERVAL || model_horizon == UNSET_HORIZON
         return
     end
 
-    counts = PSY.get_time_series_counts(sys)
+    counts = IS.get_time_series_counts(sys.data)
     if counts.static_time_series_count < 1
         return
     end
@@ -510,8 +333,9 @@ function auto_transform_time_series!(sys::PSY.System, settings::Settings)
 
     @info "Auto-transforming SingleTimeSeries to DeterministicSingleTimeSeries" horizon =
         Dates.canonicalize(model_horizon) interval = Dates.canonicalize(model_interval)
-    PSY.transform_single_time_series!(
-        sys,
+    IS.transform_single_time_series!(
+        sys.data,
+        IS.DeterministicSingleTimeSeries,
         model_horizon,
         model_interval;
         delete_existing = false,

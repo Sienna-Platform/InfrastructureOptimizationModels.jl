@@ -1,3 +1,45 @@
+# The predefined HTML table format recipe was removed in PrettyTables v3.
+# This CSS recipe mirrors PT v2 for simple HTML tables.
+const tf_html_simple = PrettyTables.HtmlTableFormat(;
+    css = """
+    table, td, th {
+        border-collapse: collapse;
+        font-family: sans-serif;
+    }
+
+    td, th {
+        border-bottom: 0;
+        padding: 4px
+    }
+
+    tr:nth-child(odd) {
+        background: #eee;
+    }
+
+    tr:nth-child(even) {
+        background: #fff;
+    }
+
+    tr.header {
+        background: #fff !important;
+        font-weight: bold;
+    }
+
+    tr.subheader {
+        background: #fff !important;
+        color: dimgray;
+    }
+
+    tr.headerLastRow {
+        border-bottom: 2px solid black;
+    }
+
+    th.rowNumber, td.rowNumber {
+        text-align: right;
+    }
+    """,
+)
+
 function Base.show(io::IO, container::OptimizationContainer)
     show(io, get_jump_model(container))
 end
@@ -7,8 +49,7 @@ function Base.show(io::IO, ::MIME"text/plain", input::Union{ServiceModel, Device
 end
 
 function Base.show(io::IO, ::MIME"text/html", input::Union{ServiceModel, DeviceModel})
-    # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = PSY.tf_html_simple)
+    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
 function _show_method(
@@ -124,7 +165,7 @@ end
 
 function Base.show(io::IO, ::MIME"text/html", input::NetworkModel)
     # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = PSY.tf_html_simple)
+    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
 function _show_method(io::IO, network_model::NetworkModel, backend::Symbol; kwargs...)
@@ -153,7 +194,7 @@ end
 
 function Base.show(io::IO, ::MIME"text/html", input::OperationModel)
     # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = PSY.tf_html_simple)
+    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
 function _show_method(io::IO, model::OperationModel, backend::Symbol; kwargs...)
@@ -166,7 +207,7 @@ end
 
 function Base.show(io::IO, ::MIME"text/html", input::SimulationModels)
     # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = PSY.tf_html_simple)
+    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
 _get_model_type(::DecisionModel{T}) where {T <: DecisionProblem} = T
@@ -224,7 +265,7 @@ end
 
 function Base.show(io::IO, ::MIME"text/html", input::SimulationSequence)
     # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = PSY.tf_html_simple)
+    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
 function _show_method(io::IO, sequence::SimulationSequence, backend::Symbol; kwargs...)
@@ -290,7 +331,7 @@ end
 
 function Base.show(io::IO, ::MIME"text/html", input::Simulation)
     # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = PSY.tf_html_simple)
+    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
 function _get_initial_time_for_show(sim::Simulation)
@@ -349,7 +390,7 @@ end
 
 function Base.show(io::IO, ::MIME"text/html", input::SimulationOutputs)
     # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = PSY.tf_html_simple)
+    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
 function _show_method(io::IO, outputs::SimulationOutputs, backend::Symbol; kwargs...)
@@ -396,7 +437,7 @@ end
 
 function Base.show(io::IO, ::MIME"text/html", input::ProblemOutputsTypes)
     # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = PSY.tf_html_simple)
+    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
 function _show_method(

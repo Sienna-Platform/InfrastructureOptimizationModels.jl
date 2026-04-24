@@ -56,10 +56,9 @@ _sos_status(
 
 """
 Trait function: does device type `T` use commitment (on/off) variables?
-Defaults to `false`; specialized for `PSY.ThermalGen`.
+Defaults to `false`; POM specializes for thermal device types.
 """
 uses_commitment_variables(::Type{<:IS.InfrastructureSystemsComponent}) = false
-uses_commitment_variables(::Type{<:PSY.ThermalGen}) = true
 
 function _sos_status(
     ::Type{T}, ::Type{<:AbstractThermalUnitCommitment},

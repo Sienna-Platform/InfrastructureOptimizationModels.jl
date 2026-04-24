@@ -11,7 +11,7 @@ function update_initial_conditions!(
     model::OperationModel,
     key::InitialConditionKey{T, U},
     source,
-) where {T <: InitialConditionType, U <: PSY.Component}
+) where {T <: InitialConditionType, U <: IS.InfrastructureSystemsComponent}
     if get_execution_count(model) < 1
         return
     end

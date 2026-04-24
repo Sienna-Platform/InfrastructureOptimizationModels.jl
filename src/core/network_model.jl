@@ -1,4 +1,5 @@
-const DeviceModelForBranches = DeviceModel{<:PSY.Branch, <:AbstractDeviceFormulation}
+const DeviceModelForBranches =
+    DeviceModel{<:IS.InfrastructureSystemsComponent, <:AbstractDeviceFormulation}
 const BranchModelContainer = Dict{Symbol, DeviceModelForBranches}
 
 function _check_pm_formulation(::Type{T}) where {T <: AbstractPowerModel}
@@ -60,7 +61,7 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
     PTDF_matrix::Union{Nothing, PNM.PowerNetworkMatrix}
     LODF_matrix::Union{Nothing, PNM.PowerNetworkMatrix}
     subnetworks::Dict{Int, Set{Int}}
-    bus_area_map::Dict{PSY.ACBus, Int}
+    bus_area_map::Dict{IS.InfrastructureSystemsComponent, Int}
     duals::Vector{DataType}
     network_reduction::PNM.NetworkReductionData
     reduce_radial_branches::Bool
@@ -92,7 +93,7 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
             PTDF_matrix,
             LODF_matrix,
             subnetworks,
-            Dict{PSY.ACBus, Int}(),
+            Dict{IS.InfrastructureSystemsComponent, Int}(),
             duals,
             PNM.NetworkReductionData(),
             reduce_radial_branches,

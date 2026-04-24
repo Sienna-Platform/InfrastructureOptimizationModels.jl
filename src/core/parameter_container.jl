@@ -80,13 +80,16 @@ get_sos_status(attr::CostFunctionAttributes) = attr.sos_status
 get_variable_types(attr::CostFunctionAttributes) = attr.variable_types
 get_uses_compact_power(attr::CostFunctionAttributes) = attr.uses_compact_power
 
-struct EventParametersAttributes{T <: PSY.Outage, U <: ParameterType} <: ParameterAttributes
-    affected_devices::Vector{<:PSY.Component}
+struct EventParametersAttributes{
+    T <: IS.InfrastructureSystemsComponent,
+    U <: ParameterType,
+} <: ParameterAttributes
+    affected_devices::Vector{<:IS.InfrastructureSystemsComponent}
 end
 
 function get_param_type(
     ::EventParametersAttributes{T, U},
-) where {T <: PSY.Outage, U <: ParameterType}
+) where {T <: IS.InfrastructureSystemsComponent, U <: ParameterType}
     return U
 end
 

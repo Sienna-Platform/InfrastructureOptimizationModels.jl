@@ -270,7 +270,7 @@ implements:
 | Validate device-specific constraints   | Generic validation                               | Device-specific overloads (e.g., multi-start units) |
 | Populate parameter containers          | —                                                | `add_parameters!` implementations                   |
 | Read parameters during objective build | `add_pwl_term!`, `add_cost_term_variant!`        | —                                                   |
-| Determine if cost is time-varying      | —                                                | `is_time_variant_term` implementations              |
+| Determine if cost is time-varying      | —                                                | `is_time_variant_proportional` implementations      |
 | Extract proportional cost per step     | —                                                | `proportional_cost` implementations                 |
 
 ```mermaid

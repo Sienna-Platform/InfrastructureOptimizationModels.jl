@@ -29,10 +29,10 @@ Fields:
 - `beta_var`: binary variables β_i ∈ {0,1} indexed by (name, i, t)
 - `delta_var`: residual variables δ ∈ [0, 2^{−depth}] indexed by (name, t)
 """
-struct NMDTDiscretization
-    norm_expr::Any
-    beta_var::Any
-    delta_var::Any
+struct NMDTDiscretization{NE, BV, DV}
+    norm_expr::NE
+    beta_var::BV
+    delta_var::DV
 end
 
 """

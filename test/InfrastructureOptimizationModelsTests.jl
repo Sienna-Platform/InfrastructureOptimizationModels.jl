@@ -41,17 +41,8 @@ include(joinpath(TEST_DIR, "test_utils/qa_bilinear_helpers.jl"))
 
 # Environment flags for test selection
 const RUN_UNIT_TESTS = get(ENV, "IOM_RUN_UNIT_TESTS", "true") == "true"
-const RUN_INTEGRATION_TESTS = get(ENV, "IOM_RUN_INTEGRATION_TESTS", "true") == "true"
 
-# Heavy dependencies - only load if we need tests that use them
-if RUN_INTEGRATION_TESTS
-    using PowerSystems
-    const PSY = PowerSystems
-    using PowerSystemCaseBuilder
-    const PSB = PowerSystemCaseBuilder
-    # only requires JuMP, SCS, HiGHS
-    include(joinpath(TEST_DIR, "test_utils/solver_definitions.jl"))
-end
+include(joinpath(TEST_DIR, "test_utils/solver_definitions.jl"))
 
 const LOG_FILE = "power-optimization-models-test.log"
 
@@ -87,7 +78,6 @@ function run_tests()
 
         @info "Running InfrastructureOptimizationModels.jl tests"
         @info "Unit tests: $RUN_UNIT_TESTS"
-        @info "Integration tests: $RUN_INTEGRATION_TESTS"
 
         if RUN_UNIT_TESTS
             @info "Starting unit tests..."
@@ -151,26 +141,14 @@ function run_tests()
 
                 #=
                 ============================================================================
-                BROKEN/NEEDS-WORK TEST FILES (not included)
+                BROKEN/NEEDS-WORK TEST FILES (not included — rewrite with mocks)
                 ============================================================================
-                - test_basic_model_structs.jl: Uses PSY types directly, 2 failures (missing types?)
-                - test_model_decision.jl: uses PowerModels.jl types, needs rework or move to POM
-                - test_model_emulation.jl: uses PowerModels.jl types, needs rework or move to POM
+                - test_basic_model_structs.jl, test_model_decision.jl, test_model_emulation.jl:
+                  previously used PSY/PowerModels types; rewrite with mocks before re-enabling.
+                - test_model_store.jl, test_offer_curve_cost.jl: PSY/PSB-backed integration tests
+                  removed when IOM dropped PSY/PSB dependencies; rewrite with mocks.
                 ============================================================================
                 =#
-            end
-        end
-
-        #=
-        ============================================================================
-        INTEGRATION TESTS (require PowerSystems types)
-        ============================================================================
-        =#
-        if RUN_INTEGRATION_TESTS
-            @time @testset "InfrastructureOptimizationModels Integration Tests" begin
-                @info "Starting integration tests..."
-                # --- operation/ subfolder ---
-                include(joinpath(TEST_DIR, "test_model_store.jl"))
             end
         end
 

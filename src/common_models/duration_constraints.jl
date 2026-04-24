@@ -40,7 +40,7 @@ function device_duration_retrospective!(
     initial_duration::Matrix{InitialCondition},
     ::Type{C},
     ::Type{T},
-) where {C <: ConstraintType, T <: PSY.Component}
+) where {C <: ConstraintType, T <: IS.InfrastructureSystemsComponent}
     time_steps = get_time_steps(container)
 
     varon = get_variable(container, OnVariable, T)
@@ -145,7 +145,11 @@ function device_duration_look_ahead!(
     ::Type{C_up},
     ::Type{C_dn},
     ::Type{T},
-) where {C_up <: ConstraintType, C_dn <: ConstraintType, T <: PSY.Component}
+) where {
+    C_up <: ConstraintType,
+    C_dn <: ConstraintType,
+    T <: IS.InfrastructureSystemsComponent,
+}
     time_steps = get_time_steps(container)
     varon = get_variable(container, OnVariable, T)
     varstart = get_variable(container, StartVariable, T)
@@ -243,7 +247,7 @@ function device_duration_parameters!(
     initial_duration::Matrix{InitialCondition},
     ::Type{C},
     ::Type{T},
-) where {C <: ConstraintType, T <: PSY.Component}
+) where {C <: ConstraintType, T <: IS.InfrastructureSystemsComponent}
     time_steps = get_time_steps(container)
 
     varon = get_variable(container, OnVariable, T)
@@ -365,7 +369,7 @@ function device_duration_compact_retrospective!(
     initial_duration::Matrix{InitialCondition},
     ::Type{C},
     ::Type{T},
-) where {C <: ConstraintType, T <: PSY.Component}
+) where {C <: ConstraintType, T <: IS.InfrastructureSystemsComponent}
     time_steps = get_time_steps(container)
 
     varon = get_variable(container, OnVariable, T)

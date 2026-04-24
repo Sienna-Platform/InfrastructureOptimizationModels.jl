@@ -5,13 +5,13 @@ mutable struct InitialCondition{
     T <: InitialConditionType,
     U <: Union{JuMP.VariableRef, Float64, Nothing},
 }
-    component::PSY.Component
+    component::IS.InfrastructureSystemsComponent
     value::U
 end
 
 function InitialCondition(
     ::Type{T},
-    component::PSY.Component,
+    component::IS.InfrastructureSystemsComponent,
     value::U,
 ) where {T <: InitialConditionType, U <: Union{JuMP.VariableRef, Float64}}
     return InitialCondition{T, U}(component, value)
@@ -23,7 +23,7 @@ function InitialCondition(
     value::V,
 ) where {
     T <: InitialConditionType,
-    U <: PSY.Component,
+    U <: IS.InfrastructureSystemsComponent,
     V <: Union{JuMP.VariableRef, Float64},
 }
     return InitialCondition{T, U}(component, value)
@@ -47,7 +47,7 @@ end
 
 get_component(ic::InitialCondition) = ic.component
 get_value(ic::InitialCondition) = ic.value
-get_component_name(ic::InitialCondition) = PSY.get_name(ic.component)
+get_component_name(ic::InitialCondition) = IS.get_name(ic.component)
 get_component_type(ic::InitialCondition) = typeof(ic.component)
 get_ic_type(
     ::Type{InitialCondition{T, U}},

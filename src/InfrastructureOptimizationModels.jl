@@ -14,7 +14,6 @@ import JuMP.Containers: DenseAxisArray, SparseAxisArray
 import MathOptInterface
 import LinearAlgebra
 import JSON3
-import PowerSystems
 import InfrastructureSystems
 import PowerNetworkMatrices
 import PowerNetworkMatrices: PTDF, VirtualPTDF, LODF, VirtualLODF
@@ -90,22 +89,30 @@ import InfrastructureSystems:
     InvalidValue,
     ConflictingInputsError
 
-# PowerSystems imports
-import PowerSystems:
+# IS re-exports of generic component/time-series accessors
+import InfrastructureSystems:
     get_components,
     get_component,
     get_available_components,
     get_available_component,
     get_groups,
     get_available_groups,
-    stores_time_series_in_memory,
-    get_base_power,
-    get_active_power_limits,
-    get_start_up,
-    get_shut_down,
-    get_must_run,
-    get_operation_cost
-import PowerSystems: StartUpStages
+    stores_time_series_in_memory
+
+# Extension-point stubs for accessors that downstream packages (e.g. POM) provide
+# methods for when operating on PSY types.
+function get_base_power end
+function get_active_power_limits end
+function get_max_active_power end
+function get_ramp_limits end
+function get_start_up end
+function get_shut_down end
+function get_must_run end
+function get_operation_cost end
+function get_dc_bus end
+function get_bustype end
+function has_service end
+function set_units_base_system! end
 
 import TimerOutputs
 
@@ -131,7 +138,6 @@ import PrettyTables
 ################################################################################
 # Type Aliases
 
-const PSY = PowerSystems
 const POM = InfrastructureOptimizationModels
 const IS = InfrastructureSystems
 const ISOPT = InfrastructureSystems.Optimization
@@ -168,7 +174,6 @@ export get_power_flow_evaluation, has_subnetworks, get_subsystem
 export set_subsystem!, add_dual!
 export requires_all_branch_models, supports_branch_filtering, ignores_branch_filtering
 export validate_network_model
-export validate_available_devices
 export BranchReductionOptimizationTracker
 export get_variable_dict, get_constraint_dict, get_constraint_map_by_type
 export get_number_of_steps, set_number_of_steps!
@@ -225,7 +230,6 @@ export add_pwl_linking_constraint!
 export add_pwl_normalization_constraint!
 export add_pwl_sos2_constraint!
 export get_pwl_cost_expression_delta
-export process_market_bid_parameters!
 
 ## Outputs interfaces
 export get_variable_values
@@ -334,13 +338,12 @@ export search_for_reduced_branch_parameter!
 export search_for_reduced_branch_argument!
 export get_branch_argument_parameter_axes
 export get_parameter_dict
-export get_device_with_time_series
+export get_branch_with_time_series
 # Container/variable helpers
 export add_variable_container!, add_constraint_dual!
 export add_to_objective_invariant_expression!, lazy_container_addition!
 export get_parameter_multiplier_array, get_aux_variable, get_condition
 export supports_milp, get_quadratic_cost_per_system_unit
-export check_hvdc_line_limits_unidirectional, check_hvdc_line_limits_consistency
 export add_sparse_pwl_interpolation_variables!
 export JuMPOrFloat
 # Constraint helpers
@@ -362,7 +365,6 @@ export get_min_max_limits
 export AbstractThermalDispatchFormulation, AbstractThermalUnitCommitment
 # Service/misc helpers
 # NOTE: get_time_series NOT exported — conflicts with IS.get_time_series. Use IOM.get_time_series.
-export process_import_export_parameters!, process_market_bid_parameters!
 # Extension point functions
 export add_service_variables!, requires_initialization
 # End bulk-added
@@ -377,7 +379,7 @@ export get_incompatible_devices
 export OptimizationContainer, OperationModel, AbstractPowerFlowEvaluationModel
 export ArgumentConstructStage, ModelConstructStage
 export EmulationModelStore, DeviceModelForBranches
-export StartUpStages, SOSStatusVariable
+export SOSStatusVariable
 # Parameter types
 export FuelCostParameter, VariableValueParameter, FixValueParameter
 # Offer curve types (parameter, variable, constraint)
@@ -586,7 +588,6 @@ include("objective_function/start_up_shut_down.jl") # add_{start_up, shut_down}_
 # same 5 arguments: container, variable, component, cost_curve, formulation.
 include("objective_function/linear_curve.jl")
 include("objective_function/quadratic_curve.jl")
-include("objective_function/import_export.jl")
 
 # Offer curve types (pure type definitions, no dependencies)
 include("objective_function/offer_curve_types.jl")
@@ -644,7 +645,7 @@ include("utils/file_utils.jl")
 include("utils/logging.jl")
 include("utils/dataframes_utils.jl")
 include("utils/jump_utils.jl")
-include("utils/powersystems_utils.jl")
+include("utils/component_utils.jl")
 include("utils/time_series_utils.jl")
 include("utils/datetime_utils.jl")
 end
