@@ -1,5 +1,5 @@
 function get_deterministic_time_series_type(sys::IS.InfrastructureSystemsContainer)
-    time_series_types = IS.get_time_series_counts_by_type(sys.data)
+    time_series_types = get_time_series_counts_by_type(sys)
     existing_types = Set(d["type"] for d in time_series_types)
     if ("Deterministic" in existing_types) &&
        ("DeterministicSingleTimeSeries" in existing_types)
@@ -242,12 +242,11 @@ function init_model_store_params!(model::DecisionModel)
     if model_interval != UNSET_INTERVAL
         interval = model_interval
     else
-        interval = IS.get_forecast_interval(system.data)
+        interval = get_forecast_interval(system)
     end
     resolution = get_resolution(model)
     base_power = get_base_power(system)
-    # FIXME declare as stub
-    sys_uuid = IS.get_uuid(system.data.internal)
+    sys_uuid = get_system_uuid(system)
     store_params = ModelStoreParams(
         num_executions,
         horizon,
@@ -264,7 +263,7 @@ end
 function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
     sys = get_system(model)
     settings = get_settings(model)
-    available_resolutions = IS.get_time_series_resolutions(sys.data)
+    available_resolutions = get_time_series_resolutions(sys)
 
     if get_resolution(settings) == UNSET_RESOLUTION && length(available_resolutions) != 1
         throw(
@@ -307,11 +306,11 @@ function validate_time_series!(model::DecisionModel{<:DefaultDecisionProblem})
     if get_horizon(settings) == UNSET_HORIZON
         set_horizon!(
             settings,
-            IS.get_forecast_horizon(sys.data; interval = _to_is_interval(model_interval)),
+            get_forecast_horizon(sys; interval = _to_is_interval(model_interval)),
         )
     end
 
-    counts = IS.get_time_series_counts(sys.data)
+    counts = get_time_series_counts(sys)
     if counts.forecast_count < 1
         error(
             "The system does not contain forecast data. A DecisionModel can't be built.",

@@ -348,7 +348,7 @@ export add_sparse_pwl_interpolation_variables!
 export JuMPOrFloat
 # Constraint helpers
 export add_range_constraints!, add_parameterized_upper_bound_range_constraints
-export add_reserve_bound_range_constraints!
+export add_reserve_bound_range_constraints!, add_commitment_bound_range_constraints!
 export add_semicontinuous_range_constraints!, add_semicontinuous_ramp_constraints!
 # Cost helpers
 export add_shut_down_cost!, add_start_up_cost!
