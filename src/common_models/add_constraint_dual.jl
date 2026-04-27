@@ -20,7 +20,8 @@ function add_constraint_dual!(
     model::NetworkModel{T},
 ) where {T <: AbstractPowerModel}
     if !isempty(get_duals(model))
-        devices = get_available_components(model, IS.InfrastructureSystemsComponent, sys)
+        # component is ACBus, but we don't have PSY as a dependency.
+        devices = get_available_components(model, component_for_network_dual(nothing), sys)
         for constraint_type in get_duals(model)
             assign_dual_variable!(container, constraint_type, devices, model)
         end

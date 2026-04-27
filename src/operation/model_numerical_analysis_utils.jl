@@ -98,8 +98,10 @@ function update_numerical_bounds(bonuds::NumericalBounds, func::MOI.Interval, id
     return update_numerical_bounds(bonuds, func.lower, idx)
 end
 
-# Default fallback for unsupported constraints.
+# Default fallbacks for unsupported constraints.
 update_numerical_bounds(::NumericalBounds, func, idx) = nothing
+update_coefficient_bounds(::ConstraintBounds, func, idx) = nothing
+update_rhs_bounds(::ConstraintBounds, func, idx) = nothing
 
 function get_constraint_numerical_bounds(model::OperationModel)
     if !is_built(model)

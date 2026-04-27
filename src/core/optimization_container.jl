@@ -309,7 +309,7 @@ function init_optimization_container!(
             # set_initial_time!(settings, IS.get_forecast_initial_timestamp(sys))
             set_initial_time!(settings, temp_get_forecast_initial_timestamp(sys))
         elseif get_default_time_series_type(container) <: IS.SingleTimeSeries
-            ini_time, _ = IS.check_time_series_consistency(sys, IS.SingleTimeSeries)
+            ini_time, _ = IS.check_time_series_consistency(sys.data, IS.SingleTimeSeries)
             set_initial_time!(settings, ini_time)
         end
     end

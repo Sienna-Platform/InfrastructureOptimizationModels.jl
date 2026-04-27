@@ -29,7 +29,7 @@ end
 SolverSOS2QuadConfig(depth::Int) = SolverSOS2QuadConfig(depth, 4)
 
 """
-    _add_quadratic_approx!(config::SolverSOS2QuadConfig, container, C, names, time_steps, x_var, x_min, x_max, meta)
+    _add_quadratic_approx!(config::SolverSOS2QuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 
 Approximate x² using a piecewise linear function with solver-native SOS2 constraints.
 
@@ -44,8 +44,7 @@ approximating x² in a `QuadraticExpression` expression container.
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x domain
-- `x_max::Float64`: upper bound of x domain
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: variable type identifier for the approximation (allows multiple approximations per component type)
 """
 function _add_quadratic_approx!(
@@ -55,11 +54,9 @@ function _add_quadratic_approx!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_var,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    lx = x_max - x_min
     x_bkpts, x_sq_bkpts =
         _get_breakpoints_for_pwl_function(
             0.0,
@@ -71,8 +68,15 @@ function _add_quadratic_approx!(
     jump_model = get_jump_model(container)
 
     # Create all containers upfront
-    lambda_var =
-        add_variable_container!(container, QuadraticVariable, C; meta)
+    lambda_var = add_variable_container!(
+        container,
+        QuadraticVariable,
+        C,
+        names,
+        1:n_points,
+        time_steps;
+        meta,
+    )
     link_cons = add_constraints_container!(
         container,
         SOS2LinkingConstraint,
@@ -122,14 +126,17 @@ function _add_quadratic_approx!(
         meta,
     )
 
-    for name in names, t in time_steps
+    for (i, name) in enumerate(names), t in time_steps
+        b = bounds[i]
+        IS.@assert_op b.max > b.min
+        lx = b.max - b.min
         x = x_var[name, t]
 
         # Create lambda_var variables: λ_i ∈ [0, 1]
         lambda = Vector{JuMP.VariableRef}(undef, n_points)
         for i in 1:n_points
             lambda[i] =
-                lambda_var[(name, i, t)] = JuMP.@variable(
+                lambda_var[name, i, t] = JuMP.@variable(
                     jump_model,
                     base_name = "QuadraticVariable_$(C)_{$(name), pwl_$(i), $(t)}",
                     lower_bound = 0.0,
@@ -142,7 +149,7 @@ function _add_quadratic_approx!(
         for i in eachindex(x_bkpts)
             add_proportional_to_jump_expression!(link, lambda[i], x_bkpts[i])
         end
-        link_cons[name, t] = JuMP.@constraint(jump_model, (x - x_min) / lx == link)
+        link_cons[name, t] = JuMP.@constraint(jump_model, (x - b.min) / lx == link)
 
         # Σ λ_i = 1
         norm = norm_expr[name, t] = JuMP.AffExpr(0.0)
@@ -162,15 +169,15 @@ function _add_quadratic_approx!(
         end
         x_sq = JuMP.AffExpr(0.0)
         add_proportional_to_jump_expression!(x_sq, x_hat_sq, lx * lx)
-        add_proportional_to_jump_expression!(x_sq, x, 2 * x_min)
-        add_constant_to_jump_expression!(x_sq, -x_min * x_min)
+        add_proportional_to_jump_expression!(x_sq, x, 2 * b.min)
+        add_constant_to_jump_expression!(x_sq, -b.min * b.min)
         result_expr[name, t] = x_sq
     end
 
     if config.pwmcc_segments > 0
         _add_pwmcc_concave_cuts!(
             container, C, names, time_steps,
-            x_var, result_expr, x_min, x_max,
+            x_var, result_expr, bounds,
             config.pwmcc_segments, meta * "_pwmcc",
         )
     end

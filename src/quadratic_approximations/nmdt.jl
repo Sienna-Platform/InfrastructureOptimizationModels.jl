@@ -34,7 +34,7 @@ end
 NMDTQuadConfig(depth::Int) = NMDTQuadConfig(depth, 3 * depth)
 
 """
-    _add_quadratic_approx!(config::DNMDTQuadConfig, container, C, names, time_steps, x_disc, meta)
+    _add_quadratic_approx!(config::DNMDTQuadConfig, container, C, names, time_steps, x_disc, bounds, meta)
 
 Approximate x² using the Double NMDT (DNMDT) method from a pre-built discretization.
 
@@ -49,6 +49,7 @@ tightens lower bounds with an epigraph relaxation via `_tighten_lower_bounds!`.
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_disc::NMDTDiscretization`: pre-built discretization for x
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: identifier encoding the original variable type being approximated
 """
 function _add_quadratic_approx!(
@@ -58,8 +59,7 @@ function _add_quadratic_approx!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_disc::NMDTDiscretization,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     tighten = config.epigraph_depth > 0
@@ -77,7 +77,7 @@ function _add_quadratic_approx!(
     result_expr = _assemble_dnmdt!(
         container, C, names, time_steps,
         bx_xh_expr, bx_dx_expr, bx_xh_expr, bx_dx_expr,
-        x_disc, x_disc, x_min, x_max, x_min, x_max,
+        x_disc, x_disc, bounds, bounds,
         config.depth, meta; tighten,
         result_type = QuadraticExpression,
     )
@@ -93,7 +93,7 @@ function _add_quadratic_approx!(
 end
 
 """
-    _add_quadratic_approx!(config::DNMDTQuadConfig, container, C, names, time_steps, x_var, x_min, x_max, meta)
+    _add_quadratic_approx!(config::DNMDTQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 
 Approximate x² using the Double NMDT (DNMDT) method from raw variable inputs.
 
@@ -107,8 +107,7 @@ Stores results in a `QuadraticExpression` container.
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x domain
-- `x_max::Float64`: upper bound of x domain
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: identifier encoding the original variable type being approximated
 """
 function _add_quadratic_approx!(
@@ -118,23 +117,22 @@ function _add_quadratic_approx!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_var,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     x_disc = _discretize!(
         container, C, names, time_steps,
-        x_var, x_min, x_max, config.depth, meta,
+        x_var, bounds, config.depth, meta,
     )
 
     return _add_quadratic_approx!(
         config, container, C, names, time_steps,
-        x_disc, x_min, x_max, meta,
+        x_disc, bounds, meta,
     )
 end
 
 """
-    _add_quadratic_approx!(config::NMDTQuadConfig, container, C, names, time_steps, x_disc, meta)
+    _add_quadratic_approx!(config::NMDTQuadConfig, container, C, names, time_steps, x_disc, bounds, meta)
 
 Approximate x² using the NMDT method from a pre-built discretization.
 
@@ -149,6 +147,7 @@ container. Optionally tightens lower bounds with an epigraph relaxation.
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_disc::NMDTDiscretization`: pre-built discretization for x
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: identifier encoding the original variable type being approximated
 """
 function _add_quadratic_approx!(
@@ -158,8 +157,7 @@ function _add_quadratic_approx!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_disc::NMDTDiscretization,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     tighten = config.epigraph_depth > 0
@@ -177,7 +175,7 @@ function _add_quadratic_approx!(
     result_expr = _assemble_product!(
         container, C, names, time_steps,
         [bx_y_expr], dz,
-        x_disc, x_disc, x_min, x_max, x_min, x_max,
+        x_disc, x_disc, bounds, bounds,
         meta; result_type = QuadraticExpression,
     )
 
@@ -192,7 +190,7 @@ function _add_quadratic_approx!(
 end
 
 """
-    _add_quadratic_approx!(config::NMDTQuadConfig, container, C, names, time_steps, x_var, x_min, x_max, meta)
+    _add_quadratic_approx!(config::NMDTQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 
 Approximate x² using the NMDT method from raw variable inputs.
 
@@ -206,8 +204,7 @@ Stores results in a `QuadraticExpression` container.
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x domain
-- `x_max::Float64`: upper bound of x domain
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: identifier encoding the original variable type being approximated
 """
 function _add_quadratic_approx!(
@@ -217,17 +214,16 @@ function _add_quadratic_approx!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_var,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     x_disc = _discretize!(
         container, C, names, time_steps,
-        x_var, x_min, x_max, config.depth, meta,
+        x_var, bounds, config.depth, meta,
     )
 
     return _add_quadratic_approx!(
         config, container, C, names, time_steps,
-        x_disc, x_min, x_max, meta,
+        x_disc, bounds, meta,
     )
 end

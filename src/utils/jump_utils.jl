@@ -396,15 +396,15 @@ function to_outputs_dataframe(
     array::DenseAxisArray{
         Float64,
         3,
-        <:Tuple{Vector{String}, Vector{String}, UnitRange{Int}},
+        <:Tuple{Vector{String}, T, UnitRange{Int}},
     },
     ::Nothing,
     ::Val{TableFormat.LONG},
-)
+) where {T <: Union{Vector{String}, UnitRange{Int}}}
     num_rows = length(array.data)
     time_col = Vector{Int}(undef, num_rows)
     name_col = Vector{String}(undef, num_rows)
-    name2_col = Vector{String}(undef, num_rows)
+    name2_col = Vector{eltype(T)}(undef, num_rows)
     vals = Vector{Float64}(undef, num_rows)
 
     row_index = 1

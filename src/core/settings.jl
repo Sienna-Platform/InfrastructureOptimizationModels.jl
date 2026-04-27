@@ -59,8 +59,7 @@ function Settings(
     store_variable_names = false,
     ext = Dict{String, Any}(),
 )
-    # alternatively, declare as stub and implement in POM.
-    if time_series_cache_size > 0 && IS.stores_time_series_in_memory(sys.data)
+    if time_series_cache_size > 0 && stores_time_series_in_memory(sys)
         @info "Overriding time_series_cache_size because time series is stored in memory"
         time_series_cache_size = 0
     end

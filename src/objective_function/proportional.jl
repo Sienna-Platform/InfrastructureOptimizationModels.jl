@@ -5,8 +5,9 @@
 # this is only used for ControllableLoads with non-PowerLoadInterruptible formulations.
 # The rest go through a thin wrapper around the maybe-variant version.
 """
-Default implementation for proportional cost, where the cost term is not time variant. Anything
-time-varying should implement its own method.
+Default implementation for proportional cost, where the cost term is not time variant.
+See also: `add_proportional_cost_maybe_time_variant!` for a common basis for devices that
+might have time-variant proportional costs.
 """
 function add_proportional_cost!(
     container::OptimizationContainer,
@@ -18,7 +19,6 @@ function add_proportional_cost!(
     U <: VariableType,
     V <: AbstractDeviceFormulation,
 }
-    # NOTE: anything time-varying should implement its own method.
     multiplier = objective_function_multiplier(U, V)
     for d in devices
         op_cost_data = get_operation_cost(d)
@@ -26,17 +26,19 @@ function add_proportional_cost!(
         iszero(cost_term) && continue
         name = get_name(d)
         rate = cost_term * multiplier
+        skip = skip_proportional_cost(d)
         for t in get_time_steps(container)
-            variable = get_variable(container, U, T)[name, t]
-            add_cost_term_invariant!(
-                container,
-                variable,
-                rate,
-                ProductionCostExpression,
-                T,
-                name,
-                t,
-            )
+            if skip
+                # must-run etc.: bookkeep in ProductionCostExpression but not in objective
+                add_cost_to_expression!(
+                    container, ProductionCostExpression, rate, T, name, t)
+            else
+                variable = get_variable(container, U, T)[name, t]
+                add_cost_term_invariant!(
+                    container, variable, rate,
+                    ProductionCostExpression, T, name, t,
+                )
+            end
         end
     end
     return

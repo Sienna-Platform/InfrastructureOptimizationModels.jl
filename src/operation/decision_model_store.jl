@@ -112,6 +112,19 @@ function write_output!(
     return
 end
 
+function write_output!(
+    store::DecisionModelStore,
+    name::Symbol,
+    key::OptimizationContainerKey,
+    index::DecisionModelIndexType,
+    update_timestamp::Dates.DateTime,
+    array::DenseAxisArray{T, 3, <:Tuple{Vector{String}, UnitRange, UnitRange}},
+) where {T}
+    container = getfield(store, get_store_container_type(key))
+    container[key][index] = array
+    return
+end
+
 function read_outputs(
     store::DecisionModelStore,
     key::OptimizationContainerKey;
