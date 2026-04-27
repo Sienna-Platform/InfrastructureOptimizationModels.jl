@@ -99,6 +99,7 @@ function update_numerical_bounds(bonuds::NumericalBounds, func::MOI.Interval, id
 end
 
 # Default fallbacks for unsupported constraints.
+update_numerical_bounds(::NumericalBounds, func, idx) = nothing
 update_coefficient_bounds(::ConstraintBounds, func, idx) = nothing
 update_rhs_bounds(::ConstraintBounds, func, idx) = nothing
 
