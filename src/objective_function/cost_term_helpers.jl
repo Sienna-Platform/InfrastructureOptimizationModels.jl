@@ -208,7 +208,7 @@ function add_proportional_cost_invariant!(
     ::Type{T},
     component::C,
     cost_term::Float64,
-    power_units::IS.UnitSystem,
+    power_units::IS.AbstractUnitSystem,
     multiplier::Float64,
     ::Type{E},
 ) where {T <: VariableType, C <: IS.InfrastructureSystemsComponent, E <: CostExpressions}
