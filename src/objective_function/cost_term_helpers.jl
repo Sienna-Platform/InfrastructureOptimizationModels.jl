@@ -138,7 +138,7 @@ function add_proportional_cost_invariant!(
     ::Type{T},
     component::C,
     cost_term::Float64,
-    power_units::IS.UnitSystem,
+    power_units::IS.AbstractUnitSystem,
     multiplier::Float64 = 1.0,
 ) where {T <: VariableType, C <: IS.InfrastructureSystemsComponent}
     iszero(cost_term) && return

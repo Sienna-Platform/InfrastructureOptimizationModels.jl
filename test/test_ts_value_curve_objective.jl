@@ -26,7 +26,7 @@ end
 
 # Helper to create a CostCurve{TimeSeriesPiecewiseIncrementalCurve}
 function _make_ts_incremental_cost_curve(;
-    power_units::IS.UnitSystem = IS.UnitSystem.NATURAL_UNITS,
+    power_units::IS.AbstractUnitSystem = IS.NaturalUnit(),
 )
     key = _make_forecast_key("test_forecast")
     ii_key = _make_forecast_key("initial_input")
@@ -355,13 +355,13 @@ end
         raw_breakpoints = [0.0, 50.0, 100.0]
 
         for (unit_system, expected_slope_factor, expected_bp_factor) in [
-            (IS.UnitSystem.NATURAL_UNITS, system_base, 1.0 / system_base),
+            (IS.NaturalUnit(), system_base, 1.0 / system_base),
             (
-                IS.UnitSystem.DEVICE_BASE,
+                IS.DeviceBaseUnit(),
                 1.0 / (device_base / system_base),
                 device_base / system_base,
             ),
-            (IS.UnitSystem.SYSTEM_BASE, 1.0, 1.0),
+            (IS.SystemBaseUnit(), 1.0, 1.0),
         ]
             @testset "$unit_system" begin
                 container = make_test_container(time_steps; base_power = system_base)
