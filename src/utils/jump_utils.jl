@@ -428,6 +428,18 @@ function to_outputs_dataframe(
     )
 end
 
+function to_outputs_dataframe(
+    array::DenseAxisArray{
+        Float64,
+        3,
+        <:Tuple{Vector{String}, Vector{String}, UnitRange{Int}},
+    },
+    ::Nothing,
+    ::Val{TableFormat.LONG},
+)
+    return to_outputs_dataframe(array, nothing, TableFormat.LONG)
+end
+
 function to_dataframe(array::SparseAxisArray{T, N, K}) where {T, N, K <: NTuple{N, Any}}
     columns = get_column_names_from_axis_array(array)
     return DataFrames.DataFrame(_to_matrix(array, columns), columns)
