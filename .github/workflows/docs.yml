@@ -16,14 +16,6 @@ jobs:
       - uses: julia-actions/setup-julia@v1
       - name: Install dependencies
         run: julia --color=yes --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd()));'
-      - name: Install InfrastructureSystems#IS4 in docs environment
-        run: |
-          julia --project=docs/ -e '
-            using Pkg
-            Pkg.add(PackageSpec(name="InfrastructureSystems", url="https://github.com/NREL-Sienna/InfrastructureSystems.jl.git", rev="IS4"))
-            Pkg.instantiate()
-          '
-
       - name: Set DOCUMENTER_CURRENT_VERSION for tutorial download links
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
