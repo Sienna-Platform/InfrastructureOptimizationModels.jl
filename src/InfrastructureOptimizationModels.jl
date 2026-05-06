@@ -478,6 +478,15 @@ export EventParameter
 # Abstract types for extensions (from InfrastructureSystems.Optimization)
 export AbstractPowerFlowEvaluationData
 
+# Power flow in-the-loop extension points and helpers
+export solve_powerflow!
+export get_power_flow_data
+export get_power_flow_evaluation_data
+export reset_power_flow_is_solved!
+export lookup_value
+export get_entry_type
+export get_component_names
+
 # Status Enums (from InfrastructureSystems)
 export ModelBuildStatus
 export RunStatus

@@ -204,10 +204,17 @@ function start_up_cost(
 end
 
 """
-Extension point: Solve the power flow model.
-Default: error. Concrete implementations require PowerFlows integration.
+Extension point: Solve the power flow model and update aux-variable inputs.
+Signature: `solve_powerflow!(pf_e_data, container, system)`. Concrete
+implementations require PowerFlows integration; provided in PowerOperationsModels.
 """
 function solve_powerflow! end
+
+"""
+Extension point: Get the underlying `PowerFlowData` from a `PowerFlowEvaluationData` wrapper.
+Concrete implementation lives in the PowerFlows extension of POM.
+"""
+function get_power_flow_data end
 
 """
 Extension point: Calculate auxiliary variable values.
