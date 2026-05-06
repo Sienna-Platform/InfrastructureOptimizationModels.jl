@@ -12,23 +12,19 @@ function _add_quadraticcurve_variable_term_to_model!(
     name = get_name(component)
     var = get_variable(container, T, V)[name, time_period]
 
-    cost = if quadratic_term_per_unit >= eps()
+    if quadratic_term_per_unit >= eps()
         @debug "$name Quadratic Variable Cost" _group = LOG_GROUP_COST_FUNCTIONS name
         q_cost =
             (var .^ 2 * quadratic_term_per_unit + var * proportional_term_per_unit) * dt
         add_to_objective_invariant_expression!(container, q_cost)
-        q_cost
+        # add_cost_to_expression! handles ConstituentCostExpression -> ProductionCostExpression
+        # propagation via _propagate_to_production_cost!.
+        add_cost_to_expression!(
+            container, FuelCostExpression, q_cost, V, name, time_period)
     else
         add_cost_term_invariant!(
             container, var, proportional_term_per_unit * dt,
-            ProductionCostExpression, V, name, time_period)
-    end
-
-    # For quadratic case, still need to add to expression (linear case handled by helper)
-    if quadratic_term_per_unit >= eps() &&
-       has_container_key(container, ProductionCostExpression, V)
-        expr = get_expression(container, ProductionCostExpression, V)
-        JuMP.add_to_expression!(expr[name, time_period], cost)
+            FuelCostExpression, V, name, time_period)
     end
     return
 end

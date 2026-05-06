@@ -8,6 +8,37 @@
 # - Single timestep only - looping stays in PSI/POM
 
 #######################################
+###### Constituent Propagation ########
+#######################################
+
+# Default no-op: any expression type that is not a ConstituentCostExpression
+# does not propagate into the aggregate ProductionCostExpression.
+_propagate_to_production_cost!(
+    ::OptimizationContainer,
+    ::Type{<:ExpressionType},
+    ::Type{<:IS.InfrastructureSystemsComponent},
+    ::String,
+    ::Int,
+    ::Any,
+) = nothing
+
+# ConstituentCostExpression overload: also write the same cost into
+# ProductionCostExpression so the aggregate stays consistent with its parts.
+function _propagate_to_production_cost!(
+    container::OptimizationContainer,
+    ::Type{<:ConstituentCostExpression},
+    ::Type{C},
+    name::String,
+    t::Int,
+    cost,
+) where {C <: IS.InfrastructureSystemsComponent}
+    has_container_key(container, ProductionCostExpression, C) || return
+    prod_expr = get_expression(container, ProductionCostExpression, C)
+    JuMP.add_to_expression!(prod_expr[name, t], cost)
+    return
+end
+
+#######################################
 ######## Linear Cost Helpers ##########
 #######################################
 
@@ -40,6 +71,7 @@ function add_cost_term_invariant!(
         expr = get_expression(container, E, C)
         JuMP.add_to_expression!(expr[name, t], cost)
     end
+    _propagate_to_production_cost!(container, E, C, name, t, cost)
     add_to_objective_invariant_expression!(container, cost)
     return cost
 end
@@ -76,6 +108,7 @@ function add_cost_term_variant!(
         expr = get_expression(container, E, C)
         JuMP.add_to_expression!(expr[name, t], cost)
     end
+    _propagate_to_production_cost!(container, E, C, name, t, cost)
     add_to_objective_variant_expression!(container, cost)
     return cost
 end
@@ -113,6 +146,7 @@ function add_cost_term_variant!(
         expr = get_expression(container, E, C)
         JuMP.add_to_expression!(expr[name, t], cost)
     end
+    _propagate_to_production_cost!(container, E, C, name, t, cost)
     add_to_objective_variant_expression!(container, cost)
     return cost
 end
@@ -122,7 +156,7 @@ end
 Add a proportional (linear) cost to the invariant objective across all time steps.
 
 Normalizes `cost_term` from `power_units` to system per-unit, multiplies by `dt` and
-`multiplier`, then adds `variable * rate` to `ProductionCostExpression` and the invariant
+`multiplier`, then adds `variable * rate` to the target expression `E` and the invariant
 objective for each time step.
 
 # Arguments
@@ -132,6 +166,9 @@ objective for each time step.
 - `cost_term`: raw proportional cost (e.g., \$/MWh before normalization)
 - `power_units`: unit system of `cost_term`
 - `multiplier`: additional scalar (e.g., `objective_function_multiplier`, fuel cost)
+- `E`: target cost expression type (e.g., `FuelCostExpression`, `VOMCostExpression`).
+  Constituent types auto-propagate into `ProductionCostExpression` via
+  `_propagate_to_production_cost!`.
 """
 function add_proportional_cost_invariant!(
     container::OptimizationContainer,
@@ -139,8 +176,9 @@ function add_proportional_cost_invariant!(
     component::C,
     cost_term::Float64,
     power_units::IS.UnitSystem,
-    multiplier::Float64 = 1.0,
-) where {T <: VariableType, C <: IS.InfrastructureSystemsComponent}
+    multiplier::Float64,
+    ::Type{E},
+) where {T <: VariableType, C <: IS.InfrastructureSystemsComponent, E <: CostExpressions}
     iszero(cost_term) && return
     base_power = get_model_base_power(container)
     device_base_power = get_base_power(component)
@@ -151,8 +189,21 @@ function add_proportional_cost_invariant!(
     rate = cost_per_unit * multiplier * dt
     for t in get_time_steps(container)
         variable = get_variable(container, T, C)[name, t]
-        add_cost_term_invariant!(
-            container, variable, rate, ProductionCostExpression, C, name, t)
+        add_cost_term_invariant!(container, variable, rate, E, C, name, t)
     end
     return
 end
+
+# Backward-compatible default: route to ProductionCostExpression for callers that
+# haven't been updated to specify a constituent expression type.
+add_proportional_cost_invariant!(
+    container::OptimizationContainer,
+    ::Type{T},
+    component::C,
+    cost_term::Float64,
+    power_units::IS.UnitSystem,
+    multiplier::Float64 = 1.0,
+) where {T <: VariableType, C <: IS.InfrastructureSystemsComponent} =
+    add_proportional_cost_invariant!(
+        container, T, component, cost_term, power_units, multiplier,
+        ProductionCostExpression)
