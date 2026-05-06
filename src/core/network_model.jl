@@ -66,7 +66,11 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
     network_reduction::PNM.NetworkReductionData
     reduce_radial_branches::Bool
     reduce_degree_two_branches::Bool
-    power_flow_evaluation::Vector{<:AbstractPowerFlowEvaluationModel}
+    # Stored as Vector{<:Any} so external power flow types (e.g.,
+    # `PowerFlows.PowerFlowEvaluationModel`) that don't subtype IS's
+    # `AbstractPowerFlowEvaluationModel` can be supplied here. The actual
+    # validation/dispatch happens in `add_power_flow_data!` in POM/PowerFlowsExt.
+    power_flow_evaluation::Vector
     subsystem::Union{Nothing, String}
     hvdc_network_model::Union{Nothing, AbstractHVDCNetworkModel}
     modeled_branch_types::Vector{DataType}
@@ -81,10 +85,7 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
         reduce_degree_two_branches = false,
         subnetworks = Dict{Int, Set{Int}}(),
         duals = Vector{DataType}(),
-        power_flow_evaluation::Union{
-            AbstractPowerFlowEvaluationModel,
-            Vector{<:AbstractPowerFlowEvaluationModel},
-        } = AbstractPowerFlowEvaluationModel[],
+        power_flow_evaluation = AbstractPowerFlowEvaluationModel[],
         hvdc_network_model = nothing,
     ) where {T <: AbstractPowerModel}
         _check_pm_formulation(T)
