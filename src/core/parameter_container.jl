@@ -110,10 +110,13 @@ end
 get_parameter_array(c::ParameterContainer) = c.parameter_array
 # Underlying dense storage of the parameter array. `parent` on a JuMP `DenseAxisArray`
 # returns the array itself, so reach for `.data` directly to bypass the axis-keyed lookup.
-get_parameter_array_data(c::ParameterContainer) = get_parameter_array(c).data
+# Restricted to dense storage: `SparseAxisArray` has no `.data` field.
+get_parameter_array_data(c::ParameterContainer{<:DenseAxisArray}) =
+    get_parameter_array(c).data
 get_multiplier_array(c::ParameterContainer) = c.multiplier_array
 # Same shortcut for the multiplier array — used by the integer-indexed fast path.
-get_multiplier_array_data(c::ParameterContainer) = get_multiplier_array(c).data
+get_multiplier_array_data(c::ParameterContainer{<:Any, <:DenseAxisArray}) =
+    get_multiplier_array(c).data
 get_attributes(c::ParameterContainer) = c.attributes
 Base.length(c::ParameterContainer) = length(c.parameter_array)
 Base.size(c::ParameterContainer) = size(c.parameter_array)

@@ -12,7 +12,7 @@ function _add_quadraticcurve_variable_term_to_model!(
     name = get_name(component)
     var = get_variable(container, T, V)[name, time_period]
 
-    if quadratic_term_per_unit >= eps()
+    if abs(quadratic_term_per_unit) >= eps()
         @debug "$name Quadratic Variable Cost" _group = LOG_GROUP_COST_FUNCTIONS name
         q_cost =
             (var .^ 2 * quadratic_term_per_unit + var * proportional_term_per_unit) * dt

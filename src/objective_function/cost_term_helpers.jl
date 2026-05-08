@@ -226,17 +226,3 @@ function add_proportional_cost_invariant!(
     end
     return
 end
-
-# Backward-compatible default: route to ProductionCostExpression for callers that
-# haven't been updated to specify a constituent expression type.
-add_proportional_cost_invariant!(
-    container::OptimizationContainer,
-    ::Type{T},
-    component::C,
-    cost_term::Float64,
-    power_units::IS.UnitSystem,
-    multiplier::Float64 = 1.0,
-) where {T <: VariableType, C <: IS.InfrastructureSystemsComponent} =
-    add_proportional_cost_invariant!(
-        container, T, component, cost_term, power_units, multiplier,
-        ProductionCostExpression)
