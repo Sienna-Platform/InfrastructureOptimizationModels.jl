@@ -223,6 +223,7 @@ export add_constant_to_jump_expression!
 export add_proportional_to_jump_expression!
 export add_linear_to_jump_expression!
 # Cost term helpers (generic objective function building blocks)
+export add_cost_term_to_expression!
 export add_cost_term_invariant!
 export add_cost_term_variant!
 export add_pwl_variables_delta!
@@ -479,7 +480,7 @@ export EventParameter
 export AbstractPowerFlowEvaluationData
 
 # Power flow in-the-loop extension points and helpers
-export solve_powerflow!
+export solve_power_flow!
 export get_power_flow_data
 export get_power_flow_evaluation_data
 export reset_power_flow_is_solved!

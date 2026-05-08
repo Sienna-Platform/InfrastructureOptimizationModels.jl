@@ -43,10 +43,48 @@ end
 #######################################
 
 """
+Add cost term to a target expression (no objective hook).
+
+Computes `cost = quantity * rate`, adds it to expression `E` for component `C` at
+time `t` if that expression exists, and propagates into `ProductionCostExpression`
+when `E <: ConstituentCostExpression`. Use this when the caller wants to record
+the cost in an expression container without adding to the JuMP objective (e.g.,
+fuel consumption, where the term is a downstream quantity rather than a cost
+that should be minimized).
+
+# Arguments
+- `container`: the optimization container
+- `quantity`: the value being costed (e.g., variable value, expression value)
+- `rate`: scalar cost rate (e.g., \$/MWh, \$/MMBTU)
+- `E`: target expression type (caller provides)
+- `C`: component type
+- `name`: component name
+- `t`: time period
+"""
+function add_cost_term_to_expression!(
+    container::OptimizationContainer,
+    quantity::JuMPOrFloat,
+    rate::Float64,
+    ::Type{E},
+    ::Type{C},
+    name::String,
+    t::Int,
+) where {E <: ExpressionType, C <: IS.InfrastructureSystemsComponent}
+    cost = quantity * rate
+    if has_container_key(container, E, C)
+        expr = get_expression(container, E, C)
+        JuMP.add_to_expression!(expr[name, t], cost)
+    end
+    _propagate_to_production_cost!(container, E, C, name, t, cost)
+    return cost
+end
+
+"""
 Add cost term to expression and invariant objective.
 
 Computes `cost = quantity * rate`, adds to target expression (if present),
-and adds to the time-invariant part of the objective.
+propagates to `ProductionCostExpression` (when applicable), and adds to the
+time-invariant part of the objective.
 
 # Arguments
 - `container`: the optimization container
@@ -66,12 +104,7 @@ function add_cost_term_invariant!(
     name::String,
     t::Int,
 ) where {E <: ExpressionType, C <: IS.InfrastructureSystemsComponent}
-    cost = quantity * rate
-    if has_container_key(container, E, C)
-        expr = get_expression(container, E, C)
-        JuMP.add_to_expression!(expr[name, t], cost)
-    end
-    _propagate_to_production_cost!(container, E, C, name, t, cost)
+    cost = add_cost_term_to_expression!(container, quantity, rate, E, C, name, t)
     add_to_objective_invariant_expression!(container, cost)
     return cost
 end

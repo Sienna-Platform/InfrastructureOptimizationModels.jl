@@ -126,7 +126,9 @@ function _determine_bin_lhs(
     sos_status::SOSStatusVariable,
     ::Type{T},
     name::String,
-    period::Int) where {T <: IS.InfrastructureSystemsComponent}
+    period::Int;
+    on_var_type::Type{<:VariableType} = OnVariable,
+) where {T <: IS.InfrastructureSystemsComponent}
     if sos_status == SOSStatusVariable.NO_VARIABLE
         @debug "Using Piecewise Linear cost function but no variable/parameter ref for ON status is passed. Default status will be set to online (1.0)" _group =
             LOG_GROUP_COST_FUNCTIONS
@@ -136,9 +138,9 @@ function _determine_bin_lhs(
             LOG_GROUP_COST_FUNCTIONS
         return get_parameter(container, OnStatusParameter, T).parameter_array[name, period]
     elseif sos_status == SOSStatusVariable.VARIABLE
-        @debug "Using Piecewise Linear cost function with variable OnVariable $T" _group =
+        @debug "Using Piecewise Linear cost function with variable $on_var_type for $T" _group =
             LOG_GROUP_COST_FUNCTIONS
-        return get_variable(container, OnVariable, T)[name, period]
+        return get_variable(container, on_var_type, T)[name, period]
     else
         @assert false
     end

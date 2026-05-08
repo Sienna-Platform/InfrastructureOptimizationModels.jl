@@ -205,10 +205,10 @@ end
 
 """
 Extension point: Solve the power flow model and update aux-variable inputs.
-Signature: `solve_powerflow!(pf_e_data, container, system)`. Concrete
+Signature: `solve_power_flow!(pf_e_data, container, system)`. Concrete
 implementations require PowerFlows integration; provided in PowerOperationsModels.
 """
-function solve_powerflow! end
+function solve_power_flow! end
 
 """
 Extension point: Get the underlying `PowerFlowData` from a `PowerFlowEvaluationData` wrapper.
