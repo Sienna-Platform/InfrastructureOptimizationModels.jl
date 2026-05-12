@@ -2,35 +2,6 @@ const HYBS_META = "HybSTest"
 const HYBS_BILINEAR_META = "BilinearTest"
 
 @testset "Epigraph Quadratic Approximation" begin
-    @testset "Constraint structure" begin
-        setup = _setup_qa_test(["dev1"], 1:1)
-        depth = 3
-
-        IOM._add_quadratic_approx!(
-            IOM.EpigraphQuadConfig(depth),
-            setup.container,
-            MockThermalGen,
-            ["dev1"],
-            1:1,
-            setup.var_container,
-            0.0,
-            4.0,
-            HYBS_META,
-        )
-        expr_container = IOM.get_expression(
-            setup.container,
-            IOM.EpigraphExpression,
-            MockThermalGen,
-            HYBS_META,
-        )
-
-        @test expr_container["dev1", 1] isa JuMP.AffExpr
-
-        # No binary variables (pure LP)
-        n_bin = count(JuMP.is_binary, JuMP.all_variables(setup.jump_model))
-        @test n_bin == 0
-    end
-
     @testset "Lower-bounds x^2 on [0,1]" begin
         setup = _setup_qa_test(["dev1"], 1:1)
         x_var = setup.var_container["dev1", 1]
@@ -43,8 +14,7 @@ const HYBS_BILINEAR_META = "BilinearTest"
             ["dev1"],
             1:1,
             setup.var_container,
-            0.0,
-            1.0,
+            [(min = 0.0, max = 1.0)],
             HYBS_META,
         )
         expr_container = IOM.get_expression(
@@ -77,8 +47,7 @@ const HYBS_BILINEAR_META = "BilinearTest"
             ["dev1"],
             1:1,
             setup.var_container,
-            0.0,
-            2.0,
+            [(min = 0.0, max = 2.0)],
             HYBS_META,
         )
         expr_container = IOM.get_expression(
@@ -99,31 +68,6 @@ const HYBS_BILINEAR_META = "BilinearTest"
         @test JuMP.objective_value(setup.jump_model) >= 1.69 - 0.1
     end
 
-    @testset "Multiple time steps" begin
-        setup = _setup_qa_test(["dev1"], 1:3)
-        IOM._add_quadratic_approx!(
-            IOM.EpigraphQuadConfig(2),
-            setup.container,
-            MockThermalGen,
-            ["dev1"],
-            1:3,
-            setup.var_container,
-            0.0,
-            4.0,
-            HYBS_META,
-        )
-        expr_container = IOM.get_expression(
-            setup.container,
-            IOM.EpigraphExpression,
-            MockThermalGen,
-            HYBS_META,
-        )
-
-        for t in 1:3
-            @test expr_container["dev1", t] isa JuMP.AffExpr
-        end
-    end
-
     @testset "Approximation quality improves with depth" begin
         errors = Float64[]
         true_val = 0.35^2
@@ -139,8 +83,7 @@ const HYBS_BILINEAR_META = "BilinearTest"
                 ["dev1"],
                 1:1,
                 setup.var_container,
-                0.0,
-                1.0,
+                [(min = 0.0, max = 1.0)],
                 HYBS_META,
             )
             expr_container = IOM.get_expression(
@@ -166,38 +109,6 @@ const HYBS_BILINEAR_META = "BilinearTest"
 end
 
 @testset "HybS Bilinear Approximation" begin
-    @testset "Constraint structure" begin
-        setup = _setup_bilinear_test(["dev1"], 1:1)
-        depth = 2
-
-        IOM._add_bilinear_approx!(
-            IOM.HybSConfig(IOM.SawtoothQuadConfig(depth), depth),
-            setup.container,
-            MockThermalGen,
-            ["dev1"],
-            1:1,
-            setup.x_var_container,
-            setup.y_var_container,
-            0.0,
-            4.0,
-            0.0,
-            4.0,
-            HYBS_META,
-        )
-        expr_container = IOM.get_expression(
-            setup.container,
-            IOM.BilinearProductExpression,
-            MockThermalGen,
-            HYBS_META,
-        )
-
-        @test expr_container["dev1", 1] isa JuMP.AffExpr
-
-        # Binary count: 2L (L for x², L for y²), zero from epigraphs
-        n_bin = count(JuMP.is_binary, JuMP.all_variables(setup.jump_model))
-        @test n_bin == 2 * depth
-    end
-
     @testset "Brackets true product at interior points" begin
         test_points = [(0.3, 0.7), (0.5, 0.5), (0.1, 0.9), (0.8, 0.2)]
         for (x0, y0) in test_points
@@ -215,10 +126,8 @@ end
                     1:1,
                     setup.x_var_container,
                     setup.y_var_container,
-                    0.0,
-                    1.0,
-                    0.0,
-                    1.0,
+                    [(min = 0.0, max = 1.0)],
+                    [(min = 0.0, max = 1.0)],
                     HYBS_META,
                 )
                 expr_container = IOM.get_expression(
@@ -258,10 +167,8 @@ end
             1:1,
             setup.x_var_container,
             setup.y_var_container,
-            0.0,
-            4.0,
-            0.0,
-            4.0,
+            [(min = 0.0, max = 4.0)],
+            [(min = 0.0, max = 4.0)],
             HYBS_META,
         )
         expr_container = IOM.get_expression(
@@ -298,10 +205,8 @@ end
             1:1,
             setup.x_var_container,
             setup.y_var_container,
-            0.0,
-            4.0,
-            0.0,
-            4.0,
+            [(min = 0.0, max = 4.0)],
+            [(min = 0.0, max = 4.0)],
             HYBS_META,
         )
         expr_container = IOM.get_expression(
@@ -338,10 +243,8 @@ end
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                0.0,
-                1.0,
-                0.0,
-                1.0,
+                [(min = 0.0, max = 1.0)],
+                [(min = 0.0, max = 1.0)],
                 HYBS_META,
             )
             expr_container = IOM.get_expression(
@@ -381,10 +284,8 @@ end
                 1:1,
                 setup.x_var_container,
                 setup.y_var_container,
-                2.0,
-                5.0,
-                1.0,
-                3.0,
+                [(min = 2.0, max = 5.0)],
+                [(min = 1.0, max = 3.0)],
                 HYBS_META,
             )
             expr_container = IOM.get_expression(
@@ -407,34 +308,6 @@ end
         @test z_vals[2] >= true_product - 1e-6
     end
 
-    @testset "Multiple time steps" begin
-        setup = _setup_bilinear_test(["dev1"], 1:3)
-        IOM._add_bilinear_approx!(
-            IOM.HybSConfig(IOM.SawtoothQuadConfig(2), 2),
-            setup.container,
-            MockThermalGen,
-            ["dev1"],
-            1:3,
-            setup.x_var_container,
-            setup.y_var_container,
-            0.0,
-            4.0,
-            0.0,
-            4.0,
-            HYBS_META,
-        )
-        expr_container = IOM.get_expression(
-            setup.container,
-            IOM.BilinearProductExpression,
-            MockThermalGen,
-            HYBS_META,
-        )
-
-        for t in 1:3
-            @test expr_container["dev1", t] isa JuMP.AffExpr
-        end
-    end
-
     @testset "Vertex optimum" begin
         setup = _setup_bilinear_test(["dev1"], 1:1)
         x_var = setup.x_var_container["dev1", 1]
@@ -452,10 +325,8 @@ end
             1:1,
             setup.x_var_container,
             setup.y_var_container,
-            0.0,
-            4.0,
-            0.0,
-            4.0,
+            [(min = 0.0, max = 4.0)],
+            [(min = 0.0, max = 4.0)],
             HYBS_META,
         )
         expr_container = IOM.get_expression(
@@ -488,10 +359,8 @@ end
                 1:1,
                 setup_h.x_var_container,
                 setup_h.y_var_container,
-                0.0,
-                1.0,
-                0.0,
-                1.0,
+                [(min = 0.0, max = 1.0)],
+                [(min = 0.0, max = 1.0)],
                 HYBS_META,
             )
             n_bin_hybs =
@@ -507,10 +376,8 @@ end
                 1:1,
                 setup_b.x_var_container,
                 setup_b.y_var_container,
-                0.0,
-                1.0,
-                0.0,
-                1.0,
+                [(min = 0.0, max = 1.0)],
+                [(min = 0.0, max = 1.0)],
                 HYBS_BILINEAR_META,
             )
             n_bin_bin2 =

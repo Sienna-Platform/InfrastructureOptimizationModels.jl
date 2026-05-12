@@ -5,7 +5,7 @@
 struct NoQuadApproxConfig <: QuadraticApproxConfig end
 
 """
-    _add_quadratic_approx!(::NoQuadApproxConfig, container, C, names, time_steps, x_var, x_min, x_max, meta)
+    _add_quadratic_approx!(::NoQuadApproxConfig, container, C, names, time_steps, x_var, bounds, meta)
 
 No-op quadratic approximation: returns exact x² as a QuadExpr.
 
@@ -16,8 +16,7 @@ No-op quadratic approximation: returns exact x² as a QuadExpr.
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x domain
-- `x_max::Float64`: upper bound of x domain
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: variable type identifier for the approximation
 """
 function _add_quadratic_approx!(
@@ -27,8 +26,7 @@ function _add_quadratic_approx!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_var,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     result_expr = add_expression_container!(

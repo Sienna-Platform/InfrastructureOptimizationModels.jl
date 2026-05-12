@@ -31,7 +31,7 @@ end
 SawtoothQuadConfig(depth::Int) = SawtoothQuadConfig(depth, 0)
 
 """
-    _add_quadratic_approx!(config::SawtoothQuadConfig, container, C, names, time_steps, x_var, x_min, x_max, meta)
+    _add_quadratic_approx!(config::SawtoothQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 
 Approximate x² using the sawtooth MIP formulation.
 
@@ -50,8 +50,7 @@ with maximum overestimation error Δ² · 2^{-2L-2} where Δ = x_max - x_min.
 - `names::Vector{String}`: component names
 - `time_steps::UnitRange{Int}`: time periods
 - `x_var`: container of variables indexed by (name, t)
-- `x_min::Float64`: lower bound of x domain
-- `x_max::Float64`: upper bound of x domain
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: variable type identifier for the approximation (allows multiple approximations per component type)
 """
 function _add_quadratic_approx!(
@@ -61,14 +60,11 @@ function _add_quadratic_approx!(
     names::Vector{String},
     time_steps::UnitRange{Int},
     x_var,
-    x_min::Float64,
-    x_max::Float64,
+    bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    IS.@assert_op x_max > x_min
     IS.@assert_op config.depth >= 1
     jump_model = get_jump_model(container)
-    delta = x_max - x_min
 
     # Create containers with known dimensions
     g_levels = 0:(config.depth)
@@ -122,7 +118,7 @@ function _add_quadratic_approx!(
         lp_expr = _add_quadratic_approx!(
             EpigraphQuadConfig(config.epigraph_depth),
             container, C, names, time_steps,
-            x_var, x_min, x_max, meta * "_lb",
+            x_var, bounds, meta * "_lb",
         )
         z_var = add_variable_container!(
             container,
@@ -143,14 +139,13 @@ function _add_quadratic_approx!(
         )
     end
 
-    # Precompute sawtooth coefficients (invariant across names and time steps)
-    saw_coeffs = [delta * delta * (2.0^(-2 * j)) for j in alpha_levels]
-
-    # Compute valid bounds for z ≈ x² from variable bounds
-    z_min = (x_min <= 0.0 <= x_max) ? 0.0 : min(x_min * x_min, x_max * x_max)
-    z_max = max(x_min * x_min, x_max * x_max)
-
-    for name in names, t in time_steps
+    for (i, name) in enumerate(names), t in time_steps
+        b = bounds[i]
+        IS.@assert_op b.max > b.min
+        delta = b.max - b.min
+        saw_coeffs = [delta * delta * (2.0^(-2 * j)) for j in alpha_levels]
+        z_min = (b.min <= 0.0 <= b.max) ? 0.0 : min(b.min * b.min, b.max * b.max)
+        z_max = max(b.min * b.min, b.max * b.max)
         x = x_var[name, t]
 
         # Auxiliary variables g_0,...,g_L ∈ [0, 1]
@@ -175,7 +170,7 @@ function _add_quadratic_approx!(
         # Linking constraint: g_0 = (x - x_min) / Δ
         link_cons[name, t] = JuMP.@constraint(
             jump_model,
-            g_var[name, 0, t] == (x - x_min) / delta,
+            g_var[name, 0, t] == (x - b.min) / delta,
         )
 
         # S^L constraints for j = 1,...,L
@@ -198,11 +193,11 @@ function _add_quadratic_approx!(
         end
 
         # Build x² ≈ x_min² + (2 x_min Δ + Δ²) g_0 - Σ_{j=1}^L Δ² 2^{-2j} g_j
-        x_sq_approx = JuMP.AffExpr(x_min * x_min)
+        x_sq_approx = JuMP.AffExpr(b.min * b.min)
         add_proportional_to_jump_expression!(
             x_sq_approx,
             g_var[name, 0, t],
-            2.0 * x_min * delta + delta * delta,
+            2.0 * b.min * delta + delta * delta,
         )
         for j in alpha_levels
             add_proportional_to_jump_expression!(

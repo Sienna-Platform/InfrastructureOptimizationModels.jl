@@ -266,4 +266,24 @@ struct MockVariableType <: ISOPT.VariableType end
         @test :value in propertynames(df)
         @test nrow(df) == 12  # 2 * 2 * 3
     end
+
+    @testset "to_outputs_dataframe - 3D LONG format (String, Int, Int)" begin
+        data = DenseAxisArray(
+            zeros(2, 2, 3),
+            ["gen1", "gen2"],
+            ["area1", "area2"],
+            1:3,
+        )
+        data["gen1", "area1", 1] = 1.0
+        data["gen2", "area2", 2] = 2.0
+
+        timestamps = [DateTime(2024, 1, 1, i) for i in 0:2]
+        df = IOM.to_outputs_dataframe(data, timestamps, Val(IOM.TableFormat.LONG))
+        @test isa(df, DataFrame)
+        @test :DateTime in propertynames(df)
+        @test :name in propertynames(df)
+        @test :name2 in propertynames(df)
+        @test :value in propertynames(df)
+        @test nrow(df) == 12  # 2 * 2 * 3
+    end
 end
