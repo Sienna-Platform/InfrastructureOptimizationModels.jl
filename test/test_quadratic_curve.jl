@@ -237,7 +237,7 @@ end
             # Cost: quadratic=0.5, linear=20 in natural units (MW)
             cost_curve = IS.CostCurve(
                 IS.QuadraticCurve(0.5, 20.0, 0.0),  # (quadratic, linear, constant)
-                IS.UnitSystem.NATURAL_UNITS,
+                IS.NaturalUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -279,7 +279,7 @@ end
             # Cost in system base units - no conversion needed
             cost_curve = IS.CostCurve(
                 IS.QuadraticCurve(2.0, 30.0, 0.0),
-                IS.UnitSystem.SYSTEM_BASE,
+                IS.SystemBaseUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -318,7 +318,7 @@ end
 
             cost_curve = IS.CostCurve(
                 IS.QuadraticCurve(1.0, 20.0, 0.0),
-                IS.UnitSystem.DEVICE_BASE,
+                IS.DeviceBaseUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -359,7 +359,7 @@ end
 
             cost_curve = IS.CostCurve(
                 IS.QuadraticCurve(2.0, 40.0, 0.0),
-                IS.UnitSystem.NATURAL_UNITS,
+                IS.NaturalUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -435,7 +435,7 @@ end
         # Fuel cost: 4.0 $/MMBTU
         fuel_curve = IS.FuelCurve(
             IS.QuadraticCurve(0.02, 7.0, 0.0),  # (quadratic, linear, constant)
-            IS.UnitSystem.NATURAL_UNITS,
+            IS.NaturalUnit(),
             4.0,  # $/MMBTU
         )
 

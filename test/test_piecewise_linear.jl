@@ -89,7 +89,7 @@ function setup_pwl_test(;
     device_base_power = 100.0,
     resolution = Dates.Hour(1),
     points = CONVEX_PWL_POINTS,
-    unit_system = IS.UnitSystem.NATURAL_UNITS,
+    unit_system = IS.NaturalUnit(),
     fuel_cost = nothing,  # If set, creates FuelCurve instead of CostCurve
 )
     # When fuel_cost is provided, the device's operation_cost must also have it
@@ -296,7 +296,7 @@ end
             (; container, device, cost_curve) = setup_pwl_test(;
                 device_base_power = 50.0,
                 points = natural_points,
-                unit_system = IS.UnitSystem.NATURAL_UNITS,
+                unit_system = IS.NaturalUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -338,7 +338,7 @@ end
             (; container, device, cost_curve) = setup_pwl_test(;
                 device_base_power = 50.0,
                 points = system_base_points,
-                unit_system = IS.UnitSystem.SYSTEM_BASE,
+                unit_system = IS.SystemBaseUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -473,7 +473,7 @@ end
         )
         cost_curve = IS.CostCurve(
             incremental_curve,  # Already an IncrementalCurve
-            IS.UnitSystem.NATURAL_UNITS,
+            IS.NaturalUnit(),
         )
 
         InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -810,7 +810,7 @@ end
         )
         fuel_curve = IS.FuelCurve(
             incremental_curve,
-            IS.UnitSystem.NATURAL_UNITS,
+            IS.NaturalUnit(),
             fuel_cost,
         )
         op_cost = MockOperationCost(0.0, false, fuel_cost)

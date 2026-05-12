@@ -72,7 +72,7 @@ end
             TestActivePowerVariable,
             device,
             25.0,
-            IS.UnitSystem.NATURAL_UNITS,
+            IS.NaturalUnit(),
         )
 
         expected_coef = 25.0 * 100.0 * 1.0
@@ -102,7 +102,7 @@ end
             TestActivePowerVariable,
             device,
             20.0,
-            IS.UnitSystem.SYSTEM_BASE,
+            IS.SystemBaseUnit(),
             2.0,
         )
 
@@ -127,7 +127,7 @@ end
             TestActivePowerVariable,
             device,
             0.0,
-            IS.UnitSystem.NATURAL_UNITS,
+            IS.NaturalUnit(),
         )
 
         # Should have zero coefficients since cost_term is zero
@@ -154,7 +154,7 @@ end
             # Cost: 30 $/MWh in natural units (MW)
             cost_curve = IS.CostCurve(
                 IS.LinearCurve(30.0),
-                IS.UnitSystem.NATURAL_UNITS,
+                IS.NaturalUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -190,7 +190,7 @@ end
             # Cost: 30 $/p.u.h in system base units
             cost_curve = IS.CostCurve(
                 IS.LinearCurve(30.0),
-                IS.UnitSystem.SYSTEM_BASE,
+                IS.SystemBaseUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -227,7 +227,7 @@ end
             # Cost: 30 $/p.u.h in device base units
             cost_curve = IS.CostCurve(
                 IS.LinearCurve(30.0),
-                IS.UnitSystem.DEVICE_BASE,
+                IS.DeviceBaseUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -265,7 +265,7 @@ end
             # Cost: 20 $/MWh in natural units
             cost_curve = IS.CostCurve(
                 IS.LinearCurve(20.0),
-                IS.UnitSystem.NATURAL_UNITS,
+                IS.NaturalUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -306,7 +306,7 @@ end
         # Total cost: 8.0 * 5.0 = 40.0 $/MWh
         fuel_curve = IS.FuelCurve(
             IS.LinearCurve(8.0),  # MMBTU/MWh
-            IS.UnitSystem.NATURAL_UNITS,
+            IS.NaturalUnit(),
             5.0,  # $/MMBTU
         )
 
@@ -390,7 +390,7 @@ end
         )
         fuel_curve = IS.FuelCurve(
             IS.LinearCurve(proportional_term),
-            IS.UnitSystem.SYSTEM_BASE,  # already normalized
+            IS.SystemBaseUnit(),  # already normalized
             ts_key,
         )
 
