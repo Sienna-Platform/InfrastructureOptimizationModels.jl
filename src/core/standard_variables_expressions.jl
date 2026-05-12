@@ -37,6 +37,38 @@ struct RateofChangeConstraintSlackDown <: VariableType end
 struct DCVoltage <: VariableType end
 
 #################################################################################
+# Flow direction trait
+#
+# Encodes the sign with which a variable contributes to a power-balance
+# expression. Replaces scattered `get_variable_multiplier(...) = ±1.0` overrides
+# whose only signal is the variable type itself. Device-driven sign overrides
+# (e.g. anything on `PSY.ElectricLoad`) still live in POM as more-specific
+# dispatches.
+#################################################################################
+
+# Holy-traits style: `flow_sign` returns a *type*, and `multiplier_from_sign`
+# dispatches on `::Type{<:FlowSign}`. Both layers resolve at compile time so the
+# numeric multiplier folds away at every call site.
+abstract type FlowSign end
+struct Injection <: FlowSign end
+struct Withdrawal <: FlowSign end
+struct Unsigned <: FlowSign end
+
+# Default: no directional meaning attached to the variable type.
+flow_sign(::Type{<:VariableType}) = Unsigned
+
+multiplier_from_sign(::Type{Injection}) = 1.0
+multiplier_from_sign(::Type{Withdrawal}) = -1.0
+# Variables without flow semantics (OnVariable, StartVariable, ...) keep the
+# legacy 1.0 default so callers that don't care about sign still work.
+multiplier_from_sign(::Type{Unsigned}) = 1.0
+
+# Standard variable types defined here:
+flow_sign(::Type{ActivePowerVariable}) = Injection
+flow_sign(::Type{ActivePowerInVariable}) = Withdrawal
+flow_sign(::Type{ActivePowerOutVariable}) = Injection
+
+#################################################################################
 # Standard Expression Types
 # These are the base expression types for aggregating terms
 #################################################################################
