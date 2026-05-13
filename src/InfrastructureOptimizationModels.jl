@@ -159,9 +159,7 @@ using DocStringExtensions
 #################################################################################
 # Exports
 
-# Base Models
-export DecisionModel
-export EmulationModel
+# Base Models — concrete DecisionModel/EmulationModel now defined and exported by POM.
 export AbstractProblemTemplate
 export ServicesModelContainer, DevicesModelContainer, BranchModelContainer
 export InitialCondition
@@ -197,11 +195,9 @@ export EventParametersAttributes
 export ValidDataParamEltypes
 
 # Functions
-export validate_time_series!
 export init_optimization_container!
 ## Op Model Exports
 export get_initial_conditions
-export serialize_outputs
 export serialize_optimization_model
 
 export get_device_models
@@ -231,51 +227,17 @@ export add_pwl_normalization_constraint!
 export add_pwl_sos2_constraint!
 export get_pwl_cost_expression_delta
 
-## Outputs interfaces
-export get_variable_values
-export get_dual_values
+## Outputs interfaces — OptimizationProblemOutputs and its readers now live in POM.
 export get_parameter_values
-export get_aux_variable_values
 export get_expression_values
 export get_timestamps
 export get_system
-export list_variable_keys
-export list_dual_keys
-export list_parameter_keys
-export list_aux_variable_keys
-export list_expression_keys
-export list_variable_names
-export list_dual_names
-export list_parameter_names
-export list_aux_variable_names
-export list_expression_names
-export read_variable
-export read_dual
-export read_parameter
-export read_aux_variable
-export read_expression
-export read_variables
-export read_duals
-export read_parameters
-export read_aux_variables
-export read_expressions
-export get_realized_timestamps
 export get_problem_base_power
-export get_objective_value
-export read_optimizer_stats
 
 ## Utils Exports
-export OptimizationProblemOutputs
-export OptimizationProblemOutputsExport
 export OptimizerStats
-export get_all_constraint_index
-export get_all_variable_index
-export get_constraint_index
-export get_variable_index
 export list_recorder_events
 export jump_value
-export ConstraintBounds
-export VariableBounds
 
 # Internal accessors needed by downstream packages
 export get_network_model
@@ -296,9 +258,6 @@ export get_parameter_column_refs
 export get_service_name
 export get_default_time_series_type
 export add_expression_container!
-
-# Initial condition infrastructure (extension points for POM)
-export update_initial_conditions!
 
 # Key Types (defined in IOM)
 export OptimizationContainerKey
@@ -370,7 +329,6 @@ export add_service_variables!, requires_initialization
 # End bulk-added
 
 # more extension points
-export write_outputs!
 export built_for_recurrent_solves
 export get_incompatible_devices
 
@@ -378,7 +336,7 @@ export get_incompatible_devices
 # Core types
 export OptimizationContainer, OperationModel, AbstractPowerFlowEvaluationModel
 export ArgumentConstructStage, ModelConstructStage
-export EmulationModelStore, DeviceModelForBranches
+export DeviceModelForBranches
 export SOSStatusVariable
 # Parameter types
 export FuelCostParameter, VariableValueParameter, FixValueParameter
@@ -476,11 +434,12 @@ export ModelBuildStatus
 export RunStatus
 export SimulationBuildStatus
 
-# Problem Types
+# Problem Types — abstract types stay in IOM; default concrete subtypes
+# (DefaultDecisionProblem, DefaultEmulationProblem, GenericOpProblem,
+# GenericEmulationProblem) are exported by POM.
+export OperationProblem
 export DecisionProblem
 export EmulationProblem
-export DefaultDecisionProblem
-export DefaultEmulationProblem
 
 # Settings and Data Types
 export Settings
@@ -517,9 +476,7 @@ export get_contributing_devices
 export get_contributing_devices_map
 export get_parameter_column_values
 export update_container_parameter_values!
-export export_outputs
 export get_source_data
-export set_source_data!
 
 ## Note: Concrete PowerModels types (ACPPowerModel, DCPPowerModel, etc.) are now
 ## defined and exported by PowerOperationsModels, not IOM.
@@ -538,8 +495,6 @@ include("core/parameter_container.jl")                # Parameter container infr
 include("core/abstract_model_store.jl")               # Store depends on keys
 include("core/optimizer_stats.jl")                    # Stats standalone
 include("core/optimization_container_metadata.jl")    # Metadata depends on keys
-include("core/optimization_problem_outputs_export.jl") # Export config
-include("core/optimization_problem_outputs.jl")       # Outputs depends on all above
 include("core/model_internal.jl")                     # Internal state (needs ModelBuildStatus)
 
 include("core/time_series_parameter_types.jl")
@@ -625,16 +580,6 @@ include("bilinear_approximations/nmdt.jl")
 include("common_models/add_param_container.jl")
 
 include("operation/operation_model_interface.jl")
-include("operation/decision_model_store.jl")
-include("operation/emulation_model_store.jl")
-include("operation/store_common.jl")
-include("operation/initial_conditions_update_in_memory_store.jl")
-include("operation/decision_model.jl")
-include("operation/emulation_model.jl")
-include("operation/problem_outputs.jl")
-include("operation/time_series_interface.jl")
-include("operation/optimization_debugging.jl")
-include("operation/model_numerical_analysis_utils.jl")
 
 include("initial_conditions/calculate_initial_condition.jl")
 

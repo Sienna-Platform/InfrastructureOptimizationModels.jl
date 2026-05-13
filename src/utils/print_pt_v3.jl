@@ -210,9 +210,6 @@ function Base.show(io::IO, ::MIME"text/html", input::SimulationModels)
     _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
-_get_model_type(::DecisionModel{T}) where {T <: DecisionProblem} = T
-_get_model_type(::EmulationModel{T}) where {T <: EmulationProblem} = T
-
 function _show_method(io::IO, sim_models::SimulationModels, backend::Symbol; kwargs...)
     println(io)
     header = ["Model Name", "Model Type", "Status", "Output Directory"]
@@ -220,7 +217,7 @@ function _show_method(io::IO, sim_models::SimulationModels, backend::Symbol; kwa
     table = Matrix{Any}(undef, length(sim_models.decision_models), length(header))
     for (ix, model) in enumerate(sim_models.decision_models)
         table[ix, 1] = string(get_name(model))
-        table[ix, 2] = IS.strip_module_name(string(_get_model_type(model)))
+        table[ix, 2] = IS.strip_module_name(string(get_problem_type(model)))
         table[ix, 3] = string(get_status(model))
         table[ix, 4] = get_output_dir(model)
     end
@@ -240,7 +237,7 @@ function _show_method(io::IO, sim_models::SimulationModels, backend::Symbol; kwa
         table = Matrix{Any}(undef, 1, length(header))
         table[1, 1] = string(get_name(sim_models.emulation_model))
         table[1, 2] =
-            IS.strip_module_name(string(_get_model_type(sim_models.emulation_model)))
+            IS.strip_module_name(string(get_problem_type(sim_models.emulation_model)))
         table[1, 3] = string(get_status(sim_models.emulation_model))
         table[1, 4] = get_output_dir(sim_models.emulation_model)
 
@@ -325,186 +322,7 @@ function _show_method(io::IO, sequence::SimulationSequence, backend::Symbol; kwa
     end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", input::Simulation)
-    _show_method(io, input, :auto)
-end
-
-function Base.show(io::IO, ::MIME"text/html", input::Simulation)
-    # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
-end
-
-function _get_initial_time_for_show(sim::Simulation)
-    ini_time = get_initial_time(sim)
-    if isnothing(ini_time)
-        return "Unset Initial Time"
-    else
-        return string(ini_time)
-    end
-end
-
-function _get_build_status_for_show(sim::Simulation)
-    internal = sim.internal
-    if isnothing(internal)
-        return "EMPTY"
-    else
-        return string(internal.build_status)
-    end
-end
-
-function _get_run_status_for_show(sim::Simulation)
-    internal = sim.internal
-    if isnothing(internal)
-        return "NOT_READY"
-    else
-        return string(internal.status)
-    end
-end
-
-function _show_method(io::IO, sim::Simulation, backend::Symbol; kwargs...)
-    table = [
-        "Simulation Name" get_name(sim)
-        "Build Status" _get_build_status_for_show(sim)
-        "Run Status" _get_run_status_for_show(sim)
-        "Initial Time" _get_initial_time_for_show(sim)
-        "Steps" get_steps(sim)
-    ]
-
-    PrettyTables.pretty_table(
-        io,
-        table;
-        backend = backend,
-        show_column_labels = false,
-        title = "Simulation",
-        alignment = :l,
-        kwargs...,
-    )
-
-    _show_method(io, sim.models, backend; kwargs...)
-    _show_method(io, sim.sequence, backend; kwargs...)
-end
-
-function Base.show(io::IO, ::MIME"text/plain", input::SimulationOutputs)
-    _show_method(io, input, :auto)
-end
-
-function Base.show(io::IO, ::MIME"text/html", input::SimulationOutputs)
-    # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
-end
-
-function _show_method(io::IO, outputs::SimulationOutputs, backend::Symbol; kwargs...)
-    header = ["Problem Name", "Initial Time", "Resolution", "Last Solution Timestamp"]
-
-    table = Matrix{Any}(undef, length(outputs.decision_problem_outputs), length(header))
-    for (ix, (key, output)) in enumerate(outputs.decision_problem_outputs)
-        table[ix, 1] = key
-        table[ix, 2] = first(output.timestamps)
-        table[ix, 3] = Dates.canonicalize(output.resolution)
-        table[ix, 4] = last(output.timestamps)
-    end
-    println(io)
-    PrettyTables.pretty_table(
-        io,
-        table;
-        column_labels = header,
-        backend = backend,
-        title = "Decision Problem Outputs",
-        alignment = :l,
-    )
-
-    println(io)
-    table = [
-        "Name" outputs.emulation_problem_outputs.problem
-        "Resolution" Dates.Minute(outputs.emulation_problem_outputs.resolution)
-        "Number of steps" length(outputs.emulation_problem_outputs.timestamps)
-    ]
-    PrettyTables.pretty_table(
-        io,
-        table;
-        show_column_labels = false,
-        backend = backend,
-        title = "Emulator Outputs",
-        alignment = :l,
-        kwargs...,
-    )
-end
-
-ProblemOutputsTypes = Union{OptimizationProblemOutputs, SimulationProblemOutputs}
-function Base.show(io::IO, ::MIME"text/plain", input::ProblemOutputsTypes)
-    _show_method(io, input, :auto)
-end
-
-function Base.show(io::IO, ::MIME"text/html", input::ProblemOutputsTypes)
-    # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
-    _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
-end
-
-function _show_method(
-    io::IO,
-    outputs::T,
-    backend::Symbol;
-    kwargs...,
-) where {T <: ProblemOutputsTypes}
-    timestamps = get_timestamps(outputs)
-
-    if backend == :html
-        println(io, "<p> Start: $(first(timestamps))</p>")
-        println(io, "<p> End: $(last(timestamps))</p>")
-        println(
-            io,
-            "<p> Resolution: $(Dates.Minute(ISOPT.get_resolution(outputs)))</p>",
-        )
-    else
-        println(io, "Start: $(first(timestamps))")
-        println(io, "End: $(last(timestamps))")
-        println(io, "Resolution: $(Dates.Minute(ISOPT.get_resolution(outputs)))")
-    end
-
-    values = Dict{String, Vector{String}}(
-        "Variables" => list_variable_names(outputs),
-        "Auxiliary variables" => list_aux_variable_names(outputs),
-        "Duals" => list_dual_names(outputs),
-        "Expressions" => list_expression_names(outputs),
-        "Parameters" => list_parameter_names(outputs),
-    )
-
-    if hasfield(T, :problem)
-        name = outputs.problem
-    else
-        name = "InfrastructureOptimizationModels"
-    end
-
-    for (k, val) in values
-        if !isempty(val)
-            println(io)
-            PrettyTables.pretty_table(
-                io,
-                val;
-                show_column_labels = false,
-                backend = backend,
-                title = "$name Problem $k Outputs",
-                alignment = :l,
-                kwargs...,
-            )
-        end
-    end
-end
-
-function Base.show(io::IO, ::MIME"text/plain", bounds::ConstraintBounds)
-    println(io, "ConstraintBounds:")
-    println(io, "Constraint Coefficient")
-    show(io, MIME"text/plain"(), bounds.coefficient)
-    println(io, "Constraint RHS")
-    show(io, MIME"text/plain"(), bounds.rhs)
-end
-
-function Base.show(io::IO, ::MIME"text/plain", bounds::VariableBounds)
-    println(io, "VariableBounds:")
-    show(io, MIME"text/plain"(), bounds.bounds)
-end
-
-function Base.show(io::IO, ::MIME"text/plain", bounds::NumericalBounds)
-    println(io, rpad("  Minimum", 20), "Maximum")
-    println(io, rpad("  $(bounds.min)", 20), "$(bounds.max)")
-end
+# show methods for OptimizationProblemOutputs, ConstraintBounds, VariableBounds,
+# NumericalBounds live with the concrete types in PowerOperationsModels.
+# Simulation/SimulationOutputs/SimulationProblemOutputs show methods live in
+# PowerSimulations along with their concrete types.

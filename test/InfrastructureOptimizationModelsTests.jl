@@ -106,8 +106,7 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_optimization_container_metadata.jl"))
                     # optimization_container_types.jl: no need for tests
                     include(joinpath(TEST_DIR, "test_optimization_container.jl"))
-                    # optimization_problem_outputs_export.jl: low-complexity
-                    include(joinpath(TEST_DIR, "test_optimization_outputs.jl"))
+                    # OptimizationProblemOutputs moved to POM — test lives in POM/test/test_optimization_outputs.jl
                     include(joinpath(TEST_DIR, "test_optimizer_stats.jl"))
                     # parameter_container.jl: low-complexity
                     # TODO outputs_by_time.jl
@@ -139,16 +138,8 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_nmdt_approximations.jl"))
                 end
 
-                #=
-                ============================================================================
-                BROKEN/NEEDS-WORK TEST FILES (not included — rewrite with mocks)
-                ============================================================================
-                - test_basic_model_structs.jl, test_model_decision.jl, test_model_emulation.jl:
-                  previously used PSY/PowerModels types; rewrite with mocks before re-enabling.
-                - test_model_store.jl, test_offer_curve_cost.jl: PSY/PSB-backed integration tests
-                  removed when IOM dropped PSY/PSB dependencies; rewrite with mocks.
-                ============================================================================
-                =#
+                # NOTE: test_basic_model_structs.jl uses PSY/PowerModels types — rewrite with mocks before re-enabling.
+                # Decision/Emulation/store tests live in POM now (operation models moved out of IOM).
             end
         end
 
