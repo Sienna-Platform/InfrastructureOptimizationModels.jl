@@ -233,7 +233,6 @@ export get_expression_values
 export get_timestamps
 export get_system
 export get_problem_base_power
-export read_optimizer_stats
 
 ## Utils Exports
 export OptimizerStats

@@ -1,8 +1,8 @@
 # Default implementations of getter/setter functions for OperationModel.
 # Methods that compose primitives accessible only via concrete (POM-owned)
 # struct fields — _check_numerical_bounds, _pre_solve_model_checks, _read_outputs,
-# read_dual/read_variable/etc., list_keys-driven helpers, instantiate_network_model!,
-# and read_optimizer_stats(::OperationModel) — live in
+# read_dual/read_variable/etc., list_keys-driven helpers, and
+# read_optimizer_stats(::OperationModel) — live in
 # PowerOperationsModels/operation/operation_model_glue.jl.
 
 is_built(model::OperationModel) =

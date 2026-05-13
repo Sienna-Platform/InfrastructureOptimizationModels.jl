@@ -67,21 +67,3 @@ end
 
 # Placeholder accessor function for simulation sequence
 get_step_resolution(::SimulationSequence) = Dates.Hour(1)
-
-#################################################################################
-# Simulation Type
-# Abstract type for simulation objects
-# Concrete implementation should be in PowerSimulations
-abstract type Simulation end
-
-#################################################################################
-# Simulation Outputs Type
-# Abstract type for simulation outputs
-# Concrete implementation should be in PowerSimulations
-abstract type SimulationOutputs end
-
-#################################################################################
-# Simulation Problem Outputs Type
-# Abstract type for individual problem outputs within a simulation
-# Concrete implementation should be in PowerSimulations
-abstract type SimulationProblemOutputs end
