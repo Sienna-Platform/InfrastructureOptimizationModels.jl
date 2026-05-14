@@ -55,7 +55,7 @@ function _add_shut_down_cost_per_device!(
             rate = cost_term * multiplier
             variable = get_variable(container, U, T)[name, t]
             add_cost_term_variant!(
-                container, variable, rate, ProductionCostExpression, T, name, t)
+                container, variable, rate, ShutDownCostExpression, T, name, t)
         end
     else
         cost_term = _shutdown_cost_value(get_shut_down(op_cost))
@@ -64,7 +64,7 @@ function _add_shut_down_cost_per_device!(
         for t in get_time_steps(container)
             variable = get_variable(container, U, T)[name, t]
             add_cost_term_invariant!(
-                container, variable, rate, ProductionCostExpression, T, name, t)
+                container, variable, rate, ShutDownCostExpression, T, name, t)
         end
     end
 end
@@ -117,7 +117,7 @@ function _add_start_up_cost_to_objective!(
             rate = cost_term * multiplier
             variable = get_variable(container, T, C)[name, t]
             add_cost_term_variant!(
-                container, variable, rate, ProductionCostExpression, C, name, t)
+                container, variable, rate, StartUpCostExpression, C, name, t)
         end
     else
         raw_startup_cost = get_start_up(op_cost)
@@ -127,7 +127,7 @@ function _add_start_up_cost_to_objective!(
             rate = cost_term * multiplier
             variable = get_variable(container, T, C)[name, t]
             add_cost_term_invariant!(
-                container, variable, rate, ProductionCostExpression, C, name, t)
+                container, variable, rate, StartUpCostExpression, C, name, t)
         end
     end
     return

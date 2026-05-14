@@ -547,4 +547,241 @@ Test types defined in test_utils/test_types.jl.
             @test JuMP.coefficient(cost_expr, pwl_vars[2]) ≈ 15.0
         end
     end
+
+    # Helpers for the ProductionCostExpression propagation testset
+    function _setup_prop_test_container(time_steps, names = ["gen1"])
+        container = make_test_container(time_steps)
+        var_container = IOM.add_variable_container!(
+            container, TestCostVariable, MockThermalGen, names, time_steps,
+        )
+        jump_model = IOM.get_jump_model(container)
+        for name in names, t in time_steps
+            var_container[name, t] =
+                JuMP.@variable(jump_model, base_name = "v_$(name)_$(t)")
+        end
+        return container, var_container
+    end
+
+    _expr_coef(container, ::Type{E}, var, name, t) where {E} = JuMP.coefficient(
+        IOM.get_expression(container, E, MockThermalGen)[name, t], var,
+    )
+    _inv_coef(container, var) = JuMP.coefficient(
+        IOM.get_invariant_terms(IOM.get_objective_expression(container)), var,
+    )
+    _var_coef(container, var) = JuMP.coefficient(
+        IOM.get_variant_terms(IOM.get_objective_expression(container)), var,
+    )
+
+    @testset "ProductionCostExpression propagation" begin
+        time_steps = 1:1
+
+        @testset "add_cost_term_to_expression! propagates constituent → ProductionCost" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            for E in (IOM.FuelCostExpression, IOM.ProductionCostExpression)
+                add_test_expression!(container, E, MockThermalGen, ["gen1"], time_steps)
+            end
+            r = 11.0
+            IOM.add_cost_term_to_expression!(
+                container, vars["gen1", 1], r,
+                IOM.FuelCostExpression, MockThermalGen, "gen1", 1,
+            )
+            @test _expr_coef(
+                container, IOM.FuelCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            @test _expr_coef(
+                container, IOM.ProductionCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            # No objective hook on this entry point.
+            @test _inv_coef(container, vars["gen1", 1]) ≈ 0.0
+            @test _var_coef(container, vars["gen1", 1]) ≈ 0.0
+        end
+
+        @testset "add_cost_term_invariant! → constituent, ProductionCost, and invariant obj" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            for E in (IOM.FuelCostExpression, IOM.ProductionCostExpression)
+                add_test_expression!(container, E, MockThermalGen, ["gen1"], time_steps)
+            end
+            r = 13.0
+            IOM.add_cost_term_invariant!(
+                container, vars["gen1", 1], r,
+                IOM.FuelCostExpression, MockThermalGen, "gen1", 1,
+            )
+            @test _expr_coef(
+                container, IOM.FuelCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            @test _expr_coef(
+                container, IOM.ProductionCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            @test _inv_coef(container, vars["gen1", 1]) ≈ r
+            @test _var_coef(container, vars["gen1", 1]) ≈ 0.0
+        end
+
+        @testset "add_cost_term_invariant! direct ProductionCost write does not recurse" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            add_test_expression!(
+                container, IOM.ProductionCostExpression, MockThermalGen,
+                ["gen1"], time_steps,
+            )
+            r = 17.0
+            IOM.add_cost_term_invariant!(
+                container, vars["gen1", 1], r,
+                IOM.ProductionCostExpression, MockThermalGen, "gen1", 1,
+            )
+            # ProductionCostExpression ⊀ ConstituentCostExpression, so the propagation
+            # hook is a no-op — exactly one write to ProductionCostExpression.
+            @test _expr_coef(
+                container, IOM.ProductionCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            @test _inv_coef(container, vars["gen1", 1]) ≈ r
+        end
+
+        @testset "add_cost_term_invariant! to non-constituent reaches obj, not ProductionCost" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            add_test_expression!(
+                container, TestCostExpression, MockThermalGen, ["gen1"], time_steps,
+            )
+            add_test_expression!(
+                container, IOM.ProductionCostExpression, MockThermalGen,
+                ["gen1"], time_steps,
+            )
+            r = 19.0
+            IOM.add_cost_term_invariant!(
+                container, vars["gen1", 1], r,
+                TestCostExpression, MockThermalGen, "gen1", 1,
+            )
+            @test _expr_coef(
+                container, TestCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            # TestCostExpression is not a ConstituentCostExpression — ProductionCost untouched.
+            @test _expr_coef(
+                container, IOM.ProductionCostExpression,
+                vars["gen1", 1], "gen1", 1) ≈ 0.0
+            @test _inv_coef(container, vars["gen1", 1]) ≈ r
+        end
+
+        @testset "add_cost_term_variant! (param-rate) propagates and hits variant obj" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            for E in (IOM.FuelCostExpression, IOM.ProductionCostExpression)
+                add_test_expression!(container, E, MockThermalGen, ["gen1"], time_steps)
+            end
+            param_rate = 23.0
+            add_test_parameter!(
+                container, TestCostParameter, MockThermalGen,
+                ["gen1"], time_steps, fill(param_rate, 1, length(time_steps)),
+            )
+            IOM.add_cost_term_variant!(
+                container, vars["gen1", 1], TestCostParameter,
+                IOM.FuelCostExpression, MockThermalGen, "gen1", 1,
+            )
+            @test _expr_coef(
+                container, IOM.FuelCostExpression, vars["gen1", 1], "gen1", 1) ≈ param_rate
+            @test _expr_coef(
+                container, IOM.ProductionCostExpression,
+                vars["gen1", 1], "gen1", 1) ≈ param_rate
+            @test _var_coef(container, vars["gen1", 1]) ≈ param_rate
+            @test _inv_coef(container, vars["gen1", 1]) ≈ 0.0
+        end
+
+        @testset "add_cost_term_variant! (explicit-rate) propagates and hits variant obj" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            for E in (IOM.FuelCostExpression, IOM.ProductionCostExpression)
+                add_test_expression!(container, E, MockThermalGen, ["gen1"], time_steps)
+            end
+            r = 29.0
+            IOM.add_cost_term_variant!(
+                container, vars["gen1", 1], r,
+                IOM.FuelCostExpression, MockThermalGen, "gen1", 1,
+            )
+            @test _expr_coef(
+                container, IOM.FuelCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            @test _expr_coef(
+                container, IOM.ProductionCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            @test _var_coef(container, vars["gen1", 1]) ≈ r
+            @test _inv_coef(container, vars["gen1", 1]) ≈ 0.0
+        end
+
+        @testset "add_cost_to_expression! propagates constituent → ProductionCost" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            for E in (IOM.FuelCostExpression, IOM.ProductionCostExpression)
+                add_test_expression!(container, E, MockThermalGen, ["gen1"], time_steps)
+            end
+            r = 31.0
+            IOM.add_cost_to_expression!(
+                container, IOM.FuelCostExpression, r * vars["gen1", 1],
+                MockThermalGen, "gen1", 1,
+            )
+            @test _expr_coef(
+                container, IOM.FuelCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            @test _expr_coef(
+                container, IOM.ProductionCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            # No objective hook on this entry point.
+            @test _inv_coef(container, vars["gen1", 1]) ≈ 0.0
+            @test _var_coef(container, vars["gen1", 1]) ≈ 0.0
+        end
+
+        @testset "add_proportional_cost_invariant! propagates per-time-step" begin
+            ts = 1:3
+            container, vars = _setup_prop_test_container(ts)
+            for E in (IOM.FuelCostExpression, IOM.ProductionCostExpression)
+                add_test_expression!(container, E, MockThermalGen, ["gen1"], ts)
+            end
+            device = make_mock_thermal("gen1"; base_power = 100.0)
+            cost_term = 7.0
+            multiplier = 1.0
+            # SYSTEM_BASE → no normalization; dt = 1 hour → rate = cost_term * multiplier.
+            IOM.add_proportional_cost_invariant!(
+                container, TestCostVariable, device, cost_term,
+                IS.UnitSystem.SYSTEM_BASE, multiplier, IOM.FuelCostExpression,
+            )
+            expected = cost_term * multiplier
+            for t in ts
+                @test _expr_coef(
+                    container, IOM.FuelCostExpression,
+                    vars["gen1", t], "gen1", t) ≈ expected
+                @test _expr_coef(
+                    container, IOM.ProductionCostExpression,
+                    vars["gen1", t], "gen1", t) ≈ expected
+                @test _inv_coef(container, vars["gen1", t]) ≈ expected
+            end
+        end
+
+        @testset "multiple constituents sum into ProductionCost without double-count" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            for E in (IOM.FuelCostExpression, IOM.VOMCostExpression,
+                IOM.StartUpCostExpression, IOM.ProductionCostExpression)
+                add_test_expression!(container, E, MockThermalGen, ["gen1"], time_steps)
+            end
+            r_fuel, r_vom, r_su = 3.0, 5.0, 7.0
+            for (E, r) in ((IOM.FuelCostExpression, r_fuel),
+                (IOM.VOMCostExpression, r_vom),
+                (IOM.StartUpCostExpression, r_su))
+                IOM.add_cost_term_invariant!(
+                    container, vars["gen1", 1], r, E, MockThermalGen, "gen1", 1,
+                )
+            end
+            @test _expr_coef(
+                container, IOM.FuelCostExpression, vars["gen1", 1], "gen1", 1) ≈ r_fuel
+            @test _expr_coef(
+                container, IOM.VOMCostExpression, vars["gen1", 1], "gen1", 1) ≈ r_vom
+            @test _expr_coef(
+                container, IOM.StartUpCostExpression, vars["gen1", 1], "gen1", 1) ≈ r_su
+            # Each constituent contributes once; no double-count, no missing terms.
+            @test _expr_coef(
+                container, IOM.ProductionCostExpression,
+                vars["gen1", 1], "gen1", 1) ≈ r_fuel + r_vom + r_su
+            @test _inv_coef(container, vars["gen1", 1]) ≈ r_fuel + r_vom + r_su
+        end
+
+        @testset "ProductionCost not registered: constituent write is a no-op for prod" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            # Only the constituent container is registered.
+            add_test_expression!(
+                container, IOM.FuelCostExpression, MockThermalGen, ["gen1"], time_steps,
+            )
+            r = 41.0
+            IOM.add_cost_term_invariant!(
+                container, vars["gen1", 1], r,
+                IOM.FuelCostExpression, MockThermalGen, "gen1", 1,
+            )
+            @test _expr_coef(
+                container, IOM.FuelCostExpression, vars["gen1", 1], "gen1", 1) ≈ r
+            @test !IOM.has_container_key(
+                container, IOM.ProductionCostExpression, MockThermalGen)
+            @test _inv_coef(container, vars["gen1", 1]) ≈ r
+        end
+    end
 end

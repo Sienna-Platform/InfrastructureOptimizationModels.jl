@@ -223,6 +223,7 @@ export add_constant_to_jump_expression!
 export add_proportional_to_jump_expression!
 export add_linear_to_jump_expression!
 # Cost term helpers (generic objective function building blocks)
+export add_cost_term_to_expression!
 export add_cost_term_invariant!
 export add_cost_term_variant!
 export add_pwl_variables_delta!
@@ -443,6 +444,13 @@ export EmergencyUp
 export EmergencyDown
 export RawACE
 export ProductionCostExpression
+export ConstituentCostExpression
+export FuelCostExpression
+export StartUpCostExpression
+export ShutDownCostExpression
+export FixedCostExpression
+export VOMCostExpression
+export CurtailmentCostExpression
 export FuelConsumptionExpression
 export ActivePowerRangeExpressionLB
 export ActivePowerRangeExpressionUB
@@ -470,6 +478,15 @@ export EventParameter
 
 # Abstract types for extensions (from InfrastructureSystems.Optimization)
 export AbstractPowerFlowEvaluationData
+
+# Power flow in-the-loop extension points and helpers
+export solve_power_flow!
+export get_power_flow_data
+export get_power_flow_evaluation_data
+export reset_power_flow_is_solved!
+export lookup_value
+export get_entry_type
+export get_component_names
 
 # Status Enums (from InfrastructureSystems)
 export ModelBuildStatus
