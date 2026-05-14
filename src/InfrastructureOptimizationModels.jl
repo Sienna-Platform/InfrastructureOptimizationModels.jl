@@ -600,25 +600,29 @@ include("objective_function/objective_function_pwl_delta.jl")  # delta/increment
 include("objective_function/piecewise_linear.jl")    # CostCurve/FuelCurve → lambda PWL
 include("objective_function/value_curve_cost.jl")    # ValueCurve → delta PWL
 
-# Quadratic approximations (PWL via SOS2)
-include("quadratic_approximations/common.jl")
-include("quadratic_approximations/no_approx.jl")
-include("quadratic_approximations/pwl_utils.jl")
-include("quadratic_approximations/incremental.jl")
-include("quadratic_approximations/solver_sos2.jl")
-include("quadratic_approximations/manual_sos2.jl")
-include("quadratic_approximations/sawtooth.jl")
-include("quadratic_approximations/epigraph.jl")
-include("quadratic_approximations/nmdt_common.jl")
-include("quadratic_approximations/nmdt.jl")
-include("quadratic_approximations/pwmcc_cuts.jl")
-
-# Bilinear approximations (x·y via Bin2/HybS decomposition)
-include("bilinear_approximations/mccormick.jl")
-include("bilinear_approximations/bin2.jl")
-include("bilinear_approximations/no_approx.jl")
-include("bilinear_approximations/hybs.jl")
-include("bilinear_approximations/nmdt.jl")
+# Quadratic and bilinear approximations.
+# Layered architecture: pure-JuMP `build_*_approx` functions return result
+# structs holding all JuMP objects; the generic IOM wrappers in common.jl
+# dispatch `register_in_container!` on the result struct to write everything
+# into the OptimizationContainer.
+include("approximations/common.jl")
+include("approximations/pwl_utils.jl")
+include("approximations/mccormick.jl")
+include("approximations/nmdt_discretization.jl")
+include("approximations/pwmcc_cuts.jl")
+# Quadratic methods (each file is self-contained: config + result + build + register)
+include("approximations/no_approx_quadratic.jl")
+include("approximations/epigraph.jl")  # must precede sawtooth (epigraph tightening)
+include("approximations/solver_sos2.jl")
+include("approximations/manual_sos2.jl")
+include("approximations/sawtooth.jl")
+include("approximations/nmdt_quadratic.jl")
+include("approximations/incremental.jl")
+# Bilinear methods (compose with quadratic — must follow)
+include("approximations/no_approx_bilinear.jl")
+include("approximations/bin2.jl")
+include("approximations/hybs.jl")
+include("approximations/nmdt_bilinear.jl")
 
 # add_param_container! wrappers — must come after piecewise_linear.jl
 # (which defines VariableValueParameter and FixValueParameter)

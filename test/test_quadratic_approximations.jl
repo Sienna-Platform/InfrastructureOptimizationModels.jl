@@ -11,7 +11,7 @@ const TEST_META = "TestVar"
             JuMP.set_lower_bound(x_var, 0.0)
             JuMP.set_upper_bound(x_var, 4.0)
 
-            IOM._add_quadratic_approx!(
+            IOM.add_quadratic_approx!(
                 IOM.SolverSOS2QuadConfig(4, 0),
                 setup.container,
                 MockThermalGen,
@@ -47,7 +47,7 @@ const TEST_META = "TestVar"
 
             y = JuMP.@variable(setup.jump_model, base_name = "y")
 
-            IOM._add_quadratic_approx!(
+            IOM.add_quadratic_approx!(
                 IOM.SolverSOS2QuadConfig(4, 0),
                 setup.container,
                 MockThermalGen,
@@ -86,7 +86,7 @@ const TEST_META = "TestVar"
                 JuMP.set_lower_bound(x_var, 0.0)
                 JuMP.set_upper_bound(x_var, 6.0)
 
-                IOM._add_quadratic_approx!(
+                IOM.add_quadratic_approx!(
                     IOM.SolverSOS2QuadConfig(num_segments, 0),
                     setup.container,
                     MockThermalGen,
@@ -126,7 +126,7 @@ const TEST_META = "TestVar"
             JuMP.set_lower_bound(x_var, 0.0)
             JuMP.set_upper_bound(x_var, 4.0)
 
-            IOM._add_quadratic_approx!(
+            IOM.add_quadratic_approx!(
                 IOM.ManualSOS2QuadConfig(4, 0),
                 setup.container,
                 MockThermalGen,
@@ -161,7 +161,7 @@ const TEST_META = "TestVar"
 
             y = JuMP.@variable(setup.jump_model, base_name = "y")
 
-            IOM._add_quadratic_approx!(
+            IOM.add_quadratic_approx!(
                 IOM.ManualSOS2QuadConfig(4, 0),
                 setup.container,
                 MockThermalGen,
@@ -198,7 +198,7 @@ const TEST_META = "TestVar"
             JuMP.set_lower_bound(x_var, 0.0)
             JuMP.set_upper_bound(x_var, 4.0)
 
-            IOM._add_quadratic_approx!(
+            IOM.add_quadratic_approx!(
                 IOM.SawtoothQuadConfig(2),
                 setup.container,
                 MockThermalGen,
@@ -233,7 +233,7 @@ const TEST_META = "TestVar"
 
             y = JuMP.@variable(setup.jump_model, base_name = "y")
 
-            IOM._add_quadratic_approx!(
+            IOM.add_quadratic_approx!(
                 IOM.SawtoothQuadConfig(2),
                 setup.container,
                 MockThermalGen,
@@ -271,7 +271,7 @@ const TEST_META = "TestVar"
                 JuMP.set_lower_bound(x_var, 0.0)
                 JuMP.set_upper_bound(x_var, 6.0)
 
-                IOM._add_quadratic_approx!(
+                IOM.add_quadratic_approx!(
                     IOM.SawtoothQuadConfig(depth),
                     setup.container,
                     MockThermalGen,
@@ -313,7 +313,7 @@ const TEST_META = "TestVar"
                     JuMP.set_upper_bound(x_var, 4.0)
 
                     if method == :sos2
-                        IOM._add_quadratic_approx!(
+                        IOM.add_quadratic_approx!(
                             IOM.SolverSOS2QuadConfig(2^depth, 0),
                             setup.container,
                             MockThermalGen,
@@ -324,7 +324,7 @@ const TEST_META = "TestVar"
                             TEST_META,
                         )
                     else
-                        IOM._add_quadratic_approx!(
+                        IOM.add_quadratic_approx!(
                             IOM.SawtoothQuadConfig(depth),
                             setup.container,
                             MockThermalGen,

@@ -234,7 +234,7 @@ function build_gen_bilinear(
     container, net::MockNetworkProblem, V_container, I_container, time_steps,
     bilinear_config::Union{IOM.Bin2Config, IOM.HybSConfig}, quad_config,
 )
-    V_sq = IOM._add_quadratic_approx!(
+    V_sq = IOM.add_quadratic_approx!(
         quad_config,
         container,
         MockNetworkNode,
@@ -245,7 +245,7 @@ function build_gen_bilinear(
         V_MAX,
         "gen_V_sq",
     )
-    I_sq = IOM._add_quadratic_approx!(
+    I_sq = IOM.add_quadratic_approx!(
         quad_config,
         container,
         MockNetworkNode,
@@ -256,7 +256,7 @@ function build_gen_bilinear(
         I_GEN_MAX,
         "gen_I_sq",
     )
-    z_gen = IOM._add_bilinear_approx!(
+    z_gen = IOM.add_bilinear_approx!(
         bilinear_config,
         container,
         MockNetworkNode,
@@ -291,11 +291,11 @@ function build_gen_bilinear(
         container, MockNetworkNode, net.gen_nodes, time_steps,
         I_container, I_GEN_MIN, I_GEN_MAX, quad_config.depth, "gen_I",
     )
-    I_sq = IOM._add_quadratic_approx!(
+    I_sq = IOM.add_quadratic_approx!(
         quad_config, container, MockNetworkNode, net.gen_nodes, time_steps,
         I_disc, I_GEN_MIN, I_GEN_MAX, "gen_I_sq",
     )
-    z_gen = IOM._add_bilinear_approx!(
+    z_gen = IOM.add_bilinear_approx!(
         bilinear_config, container, MockNetworkNode, net.gen_nodes, time_steps,
         V_disc, I_disc, V_MIN, V_MAX, I_GEN_MIN, I_GEN_MAX, "gen",
     )
@@ -309,7 +309,7 @@ function build_gen_bilinear(
     container, net::MockNetworkProblem, V_container, I_container, time_steps,
     bilinear_config::IOM.NoBilinearApproxConfig, quad_config::IOM.NoQuadApproxConfig,
 )
-    z_gen = IOM._add_bilinear_approx!(
+    z_gen = IOM.add_bilinear_approx!(
         bilinear_config,
         container,
         MockNetworkNode,
@@ -323,7 +323,7 @@ function build_gen_bilinear(
         I_GEN_MAX,
         "gen",
     )
-    I_sq = IOM._add_quadratic_approx!(
+    I_sq = IOM.add_quadratic_approx!(
         quad_config,
         container,
         MockNetworkNode,
@@ -393,7 +393,7 @@ function build_mip_model(
     )
 
     # --- Bilinear dem: always uses the config-based dispatch ---
-    z_dem = IOM._add_bilinear_approx!(
+    z_dem = IOM.add_bilinear_approx!(
         bilinear_config, container, MockNetworkNode, net.dem_nodes, time_steps,
         V_container, I_container,
         V_MIN, V_MAX, I_DEM_MIN, I_DEM_MAX, "dem",
