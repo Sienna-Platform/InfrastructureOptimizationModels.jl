@@ -5,7 +5,9 @@
 struct NoQuadApproxConfig <: QuadraticApproxConfig end
 
 "Pure-JuMP result of the no-op quadratic approximation."
-struct NoQuadApproxResult{A} <: QuadraticApproxResult
+struct NoQuadApproxResult{
+    A <: JuMP.Containers.DenseAxisArray{JuMP.QuadExpr, 2},
+} <: QuadraticApproxResult
     approximation::A
 end
 
@@ -40,16 +42,9 @@ function register_in_container!(
     name_axis = axes(result.approximation, 1)
     time_axis = axes(result.approximation, 2)
     target = add_expression_container!(
-        container,
-        QuadraticExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
-        expr_type = JuMP.QuadExpr,
+        container, QuadraticExpression, C, name_axis, time_axis;
+        meta, expr_type = JuMP.QuadExpr,
     )
-    for name in name_axis, t in time_axis
-        target[name, t] = result.approximation[name, t]
-    end
+    target.data .= result.approximation.data
     return
 end

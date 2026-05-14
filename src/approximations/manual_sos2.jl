@@ -33,8 +33,19 @@ end
 """
 Pure-JuMP result of `build_quadratic_approx(::ManualSOS2QuadConfig, ...)`.
 """
-struct ManualSOS2QuadResult{A, L, Z, LC, NC, ZSUM, AC, LE, NE, ZE, PWMCC} <:
-       QuadraticApproxResult
+struct ManualSOS2QuadResult{
+    A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    L <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
+    Z <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
+    LC <: JuMP.Containers.DenseAxisArray,
+    NC <: JuMP.Containers.DenseAxisArray,
+    ZSUM <: JuMP.Containers.DenseAxisArray,
+    AC <: JuMP.Containers.DenseAxisArray,
+    LE <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    NE <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    ZE <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    PWMCC <: Union{Nothing, PWMCCResult},
+} <: QuadraticApproxResult
     approximation::A
     lambda::L
     z_var::Z
@@ -70,20 +81,11 @@ function build_quadratic_approx(
     n_points = config.depth + 1
     n_bins = n_points - 1
     x_bkpts, x_sq_bkpts = _get_breakpoints_for_pwl_function(
-        0.0,
-        1.0,
-        _square;
-        num_segments = config.depth,
+        0.0, 1.0, _square; num_segments = config.depth,
     )
 
-    lx = JuMP.Containers.DenseAxisArray(
-        [b.max - b.min for b in bounds],
-        name_axis,
-    )
-    x_min = JuMP.Containers.DenseAxisArray(
-        [b.min for b in bounds],
-        name_axis,
-    )
+    lx = JuMP.Containers.DenseAxisArray([b.max - b.min for b in bounds], name_axis)
+    x_min = JuMP.Containers.DenseAxisArray([b.min for b in bounds], name_axis)
 
     lambda = JuMP.@variable(
         model,
@@ -130,25 +132,32 @@ function build_quadratic_approx(
         seg_expr[name, t] == 1
     )
 
-    # Adjacency constraints: λ_i ≤ z_{i-1} + z_i with boundary cases.
-    # Store as a 3D container keyed by (name, i, t) where i ∈ 1:n_points.
-    adj_cons = JuMP.Containers.DenseAxisArray{Any}(
+    # Adjacency constraints: λ_i ≤ z_{i-1} + z_i, with boundary cases for i = 1
+    # and i = n_points (only one neighbor z exists). Three vectorized
+    # @constraint calls stacked into a (name, i, t) container.
+    adj_first = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        lambda[name, 1, t] <= z_var[name, 1, t],
+    )
+    adj_interior = JuMP.@constraint(
+        model,
+        [name = name_axis, i = 2:(n_points - 1), t = time_axis],
+        lambda[name, i, t] <= z_var[name, i - 1, t] + z_var[name, i, t],
+    )
+    adj_last = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        lambda[name, n_points, t] <= z_var[name, n_bins, t],
+    )
+    adj_cons = JuMP.Containers.DenseAxisArray{eltype(adj_first.data)}(
         undef, name_axis, 1:n_points, time_axis,
     )
-    for name in name_axis, t in time_axis
-        adj_cons[name, 1, t] =
-            JuMP.@constraint(model, lambda[name, 1, t] <= z_var[name, 1, t])
-        for i in 2:(n_points - 1)
-            adj_cons[name, i, t] = JuMP.@constraint(
-                model,
-                lambda[name, i, t] <= z_var[name, i - 1, t] + z_var[name, i, t],
-            )
-        end
-        adj_cons[name, n_points, t] = JuMP.@constraint(
-            model,
-            lambda[name, n_points, t] <= z_var[name, n_bins, t],
-        )
+    @views adj_cons.data[:, 1, :] .= adj_first.data
+    if n_points >= 3
+        @views adj_cons.data[:, 2:(n_points - 1), :] .= adj_interior.data
     end
+    @views adj_cons.data[:, n_points, :] .= adj_last.data
 
     approximation = JuMP.@expression(
         model,
@@ -165,17 +174,9 @@ function build_quadratic_approx(
     end
 
     return ManualSOS2QuadResult(
-        approximation,
-        lambda,
-        z_var,
-        link_cons,
-        norm_cons,
-        seg_cons,
-        adj_cons,
-        link_expr,
-        norm_expr,
-        seg_expr,
-        pwmcc,
+        approximation, lambda, z_var,
+        link_cons, norm_cons, seg_cons, adj_cons,
+        link_expr, norm_expr, seg_expr, pwmcc,
     )
 end
 
@@ -191,112 +192,56 @@ function register_in_container!(
     n_bins_axis = axes(result.z_var, 2)
 
     lambda_target = add_variable_container!(
-        container,
-        QuadraticVariable,
-        C,
-        collect(name_axis),
-        n_points_axis,
-        time_axis;
-        meta,
+        container, QuadraticVariable, C, name_axis, n_points_axis, time_axis; meta,
     )
-    for name in name_axis, i in n_points_axis, t in time_axis
-        lambda_target[name, i, t] = result.lambda[name, i, t]
-    end
+    lambda_target.data .= result.lambda.data
 
     z_target = add_variable_container!(
-        container,
-        ManualSOS2BinaryVariable,
-        C,
-        collect(name_axis),
-        n_bins_axis,
-        time_axis;
-        meta,
+        container, ManualSOS2BinaryVariable, C, name_axis, n_bins_axis, time_axis; meta,
     )
-    for name in name_axis, j in n_bins_axis, t in time_axis
-        z_target[name, j, t] = result.z_var[name, j, t]
-    end
+    z_target.data .= result.z_var.data
 
     link_cons_target = add_constraints_container!(
-        container,
-        SOS2LinkingConstraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, SOS2LinkingConstraint, C, name_axis, time_axis; meta,
     )
+    link_cons_target.data .= result.link_constraints.data
+
     norm_cons_target = add_constraints_container!(
-        container,
-        SOS2NormConstraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, SOS2NormConstraint, C, name_axis, time_axis; meta,
     )
+    norm_cons_target.data .= result.norm_constraints.data
+
     seg_cons_target = add_constraints_container!(
-        container,
-        ManualSOS2SegmentSelectionConstraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, ManualSOS2SegmentSelectionConstraint, C, name_axis, time_axis; meta,
     )
+    seg_cons_target.data .= result.segment_sum_constraints.data
+
     link_expr_target = add_expression_container!(
-        container,
-        SOS2LinkingExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, SOS2LinkingExpression, C, name_axis, time_axis; meta,
     )
+    link_expr_target.data .= result.link_expressions.data
+
     norm_expr_target = add_expression_container!(
-        container,
-        SOS2NormExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, SOS2NormExpression, C, name_axis, time_axis; meta,
     )
+    norm_expr_target.data .= result.norm_expressions.data
+
     seg_expr_target = add_expression_container!(
-        container,
-        ManualSOS2SegmentSelectionExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, ManualSOS2SegmentSelectionExpression, C, name_axis, time_axis; meta,
     )
+    seg_expr_target.data .= result.segment_sum_expressions.data
+
     result_target = add_expression_container!(
-        container,
-        QuadraticExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, QuadraticExpression, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        link_cons_target[name, t] = result.link_constraints[name, t]
-        norm_cons_target[name, t] = result.norm_constraints[name, t]
-        seg_cons_target[name, t] = result.segment_sum_constraints[name, t]
-        link_expr_target[name, t] = result.link_expressions[name, t]
-        norm_expr_target[name, t] = result.norm_expressions[name, t]
-        seg_expr_target[name, t] = result.segment_sum_expressions[name, t]
-        result_target[name, t] = result.approximation[name, t]
-    end
+    result_target.data .= result.approximation.data
 
     adj_target = add_constraints_container!(
-        container,
-        ManualSOS2AdjacencyConstraint,
-        C,
-        collect(name_axis),
-        n_points_axis,
-        time_axis;
-        meta,
+        container, ManualSOS2AdjacencyConstraint, C, name_axis, n_points_axis,
+        time_axis; meta,
     )
-    for name in name_axis, i in n_points_axis, t in time_axis
-        adj_target[name, i, t] = result.adjacency_constraints[name, i, t]
-    end
+    adj_target.data .= result.adjacency_constraints.data
 
-    if result.pwmcc !== nothing
-        register_pwmcc!(container, C, result.pwmcc, meta * "_pwmcc")
-    end
+    register_pwmcc!(container, C, result.pwmcc, meta * "_pwmcc")
     return
 end

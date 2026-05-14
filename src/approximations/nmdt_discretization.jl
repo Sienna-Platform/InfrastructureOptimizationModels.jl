@@ -5,13 +5,6 @@
 # binary digits and δ ∈ [0, 2^{−L}] a residual. The discretization is then
 # combined with another normalized variable (for bilinear products) or with
 # itself (for quadratic) via McCormick-linearized binary-continuous products.
-#
-# This file provides:
-#   - The container key types
-#   - The NMDTDiscretization struct (intermediate scaffolding type)
-#   - Pure-JuMP build helpers for each NMDT building block
-#   - Per-piece register_* helpers used by the top-level method's
-#     register_in_container! implementation
 
 # --- Container key types ---
 
@@ -31,8 +24,6 @@ struct NMDTBinaryContinuousProductExpression <: ExpressionType end
 
 "Constraint enforcing xh = Σ 2^{−i}·β_i + δ in the NMDT discretization."
 struct NMDTEDiscretizationConstraint <: ConstraintType end
-"McCormick envelope constraints for binary-continuous products u_i ≈ β_i·y in NMDT."
-struct NMDTBinaryContinuousProductConstraint <: ConstraintType end
 "Epigraph lower-bound tightening constraint on the NMDT quadratic result."
 struct NMDTTightenConstraint <: ConstraintType end
 
@@ -42,11 +33,15 @@ struct NMDTTightenConstraint <: ConstraintType end
 NMDT discretization scaffolding for a single normalized variable xh ∈ [0,1].
 
 Holds the affine expression for the normalized variable, the binary digit
-variables β_i (one per level of depth), and the residual δ. Constructed by
-`build_discretization` and consumed by `build_binary_continuous_product`,
-`build_residual_product`, and the NMDT assembly helpers.
+variables β_i (one per level of depth), and the residual δ.
 """
-struct NMDTDiscretization{NE, BV, DV, DC, DE}
+struct NMDTDiscretization{
+    NE <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    BV <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
+    DV <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 2},
+    DC <: JuMP.Containers.DenseAxisArray,
+    DE <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+}
     norm_expr::NE
     beta_var::BV
     delta_var::DV
@@ -104,10 +99,19 @@ end
 """
 Result of a single NMDT binary-continuous product step β_i·y ≈ u_i, weighted
 sum into Σ 2^{−i}·u_i. Returned by `build_binary_continuous_product`.
+
+`mccormick_lower` is `nothing` when `tighten = true` (the caller supplies a
+tighter bound elsewhere).
 """
-struct NMDTBinaryContinuousProduct{UV, MC, RE}
+struct NMDTBinaryContinuousProduct{
+    UV <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
+    MCL <: Union{Nothing, NTuple{2, <:JuMP.Containers.DenseAxisArray}},
+    MCU <: NTuple{2, <:JuMP.Containers.DenseAxisArray},
+    RE <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+}
     u_var::UV
-    mccormick_constraints::MC
+    mccormick_lower::MCL
+    mccormick_upper::MCU
     result_expression::RE
 end
 
@@ -117,7 +121,7 @@ end
 Build the depth-level binary-continuous product Σᵢ 2^{−i}·u_i ≈ β·y.
 
 For each (name, i, t), creates an auxiliary u_i with bounds [cont_min, cont_max]
-and adds the four McCormick envelope inequalities on (β_i, y, u_i). If
+and adds McCormick envelope inequalities on (β_i, y, u_i). If
 `tighten = true`, the lower-bound McCormick constraints are omitted (the caller
 applies a tighter bound elsewhere).
 """
@@ -139,39 +143,57 @@ function build_binary_continuous_product(
         upper_bound = cont_max,
         base_name = "NMDTBinContProd",
     )
-    mc_cons = JuMP.Containers.DenseAxisArray{Any}(
-        undef, name_axis, 1:depth, 1:4, time_axis,
+    # McCormick envelopes for u[name, i, t] ≈ cont_var[name, t] · beta[name, i, t],
+    # with cont_var ∈ [cont_min, cont_max] and beta ∈ {0, 1}:
+    #   c1 (lower): u ≥ cont_min · beta
+    #   c2 (lower): u ≥ cont_max · beta + cont_var − cont_max
+    #   c3 (upper): u ≤ cont_max · beta
+    #   c4 (upper): u ≤ cont_min · beta + cont_var − cont_min
+    upper_1 = JuMP.@constraint(
+        model,
+        [name = name_axis, i = 1:depth, t = time_axis],
+        u_var[name, i, t] <= cont_max * beta_var[name, i, t],
     )
-    for name in name_axis, i in 1:depth, t in time_axis
-        c1, c2, c3, c4 = build_mccormick_envelope(
+    upper_2 = JuMP.@constraint(
+        model,
+        [name = name_axis, i = 1:depth, t = time_axis],
+        u_var[name, i, t] <=
+        cont_min * beta_var[name, i, t] + cont_var[name, t] - cont_min,
+    )
+    mccormick_lower = if tighten
+        nothing
+    else
+        lower_1 = JuMP.@constraint(
             model,
-            cont_var[name, t],
-            beta_var[name, i, t],
-            u_var[name, i, t],
-            cont_min,
-            cont_max,
-            0.0,
-            1.0;
-            lower_bounds = !tighten,
+            [name = name_axis, i = 1:depth, t = time_axis],
+            u_var[name, i, t] >= cont_min * beta_var[name, i, t],
         )
-        mc_cons[name, i, 1, t] = c1
-        mc_cons[name, i, 2, t] = c2
-        mc_cons[name, i, 3, t] = c3
-        mc_cons[name, i, 4, t] = c4
+        lower_2 = JuMP.@constraint(
+            model,
+            [name = name_axis, i = 1:depth, t = time_axis],
+            u_var[name, i, t] >=
+            cont_max * beta_var[name, i, t] + cont_var[name, t] - cont_max,
+        )
+        (lower_1, lower_2)
     end
     result_expr = JuMP.@expression(
         model,
         [name = name_axis, t = time_axis],
         sum(2.0^(-i) * u_var[name, i, t] for i in 1:depth)
     )
-    return NMDTBinaryContinuousProduct(u_var, mc_cons, result_expr)
+    return NMDTBinaryContinuousProduct(
+        u_var, mccormick_lower, (upper_1, upper_2), result_expr,
+    )
 end
 
 """
 Result of the residual-continuous product step z ≈ δ·y. Returned by
 `build_residual_product`.
 """
-struct NMDTResidualProduct{ZV, MC}
+struct NMDTResidualProduct{
+    ZV <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 2},
+    MC <: NamedTuple,
+}
     z_var::ZV
     mccormick_constraints::MC
 end
@@ -201,25 +223,19 @@ function build_residual_product(
         upper_bound = delta_max * cont_max,
         base_name = "NMDTResidualProduct",
     )
-    mc_cons = JuMP.Containers.DenseAxisArray{Any}(undef, name_axis, 1:4, time_axis)
-    for name in name_axis, t in time_axis
-        c1, c2, c3, c4 = build_mccormick_envelope(
-            model,
-            delta_var[name, t],
-            cont_var[name, t],
-            z_var[name, t],
-            0.0,
-            delta_max,
-            0.0,
-            cont_max;
-            lower_bounds = !tighten,
-        )
-        mc_cons[name, 1, t] = c1
-        mc_cons[name, 2, t] = c2
-        mc_cons[name, 3, t] = c3
-        mc_cons[name, 4, t] = c4
-    end
-    return NMDTResidualProduct(z_var, mc_cons)
+    # Bounds for the vectorized envelope: δ ∈ [0, delta_max], cont ∈ [0, cont_max].
+    delta_bounds = fill((min = 0.0, max = delta_max), length(name_axis))
+    cont_bounds = fill((min = 0.0, max = cont_max), length(name_axis))
+    mc = build_mccormick_envelope(
+        model,
+        delta_var,
+        cont_var,
+        z_var,
+        delta_bounds,
+        cont_bounds;
+        lower_bounds = !tighten,
+    )
+    return NMDTResidualProduct(z_var, mc)
 end
 
 """
@@ -329,73 +345,38 @@ function register_discretization!(
     time_axis = axes(disc.beta_var, 3)
 
     norm_target = add_expression_container!(
-        container,
-        NormedVariableExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, NormedVariableExpression, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        norm_target[name, t] = disc.norm_expr[name, t]
-    end
+    norm_target.data .= disc.norm_expr.data
 
     beta_target = add_variable_container!(
-        container,
-        NMDTBinaryVariable,
-        C,
-        collect(name_axis),
-        depth_axis,
-        time_axis;
-        meta,
+        container, NMDTBinaryVariable, C, name_axis, depth_axis, time_axis; meta,
     )
-    for name in name_axis, i in depth_axis, t in time_axis
-        beta_target[name, i, t] = disc.beta_var[name, i, t]
-    end
+    beta_target.data .= disc.beta_var.data
 
     delta_target = add_variable_container!(
-        container,
-        NMDTResidualVariable,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, NMDTResidualVariable, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        delta_target[name, t] = disc.delta_var[name, t]
-    end
+    delta_target.data .= disc.delta_var.data
 
     disc_expr_target = add_expression_container!(
-        container,
-        NMDTDiscretizationExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, NMDTDiscretizationExpression, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        disc_expr_target[name, t] = disc.disc_expression[name, t]
-    end
+    disc_expr_target.data .= disc.disc_expression.data
 
     disc_cons_target = add_constraints_container!(
-        container,
-        NMDTEDiscretizationConstraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, NMDTEDiscretizationConstraint, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        disc_cons_target[name, t] = disc.disc_constraints[name, t]
-    end
+    disc_cons_target.data .= disc.disc_constraints.data
     return
 end
 
 """
     register_binary_continuous_product!(container, ::Type{C}, product, meta)
 
-Register the auxiliary u variables, McCormick constraints, and weighted-sum
-expression of an NMDT binary-continuous product step.
+Register the auxiliary u variables, McCormick constraints (split into
+lower/upper sides under `McCormickLowerConstraint`/`McCormickUpperConstraint`),
+and the weighted-sum expression of an NMDT binary-continuous product step.
 """
 function register_binary_continuous_product!(
     container::OptimizationContainer,
@@ -411,44 +392,68 @@ function register_binary_continuous_product!(
         container,
         NMDTBinaryContinuousProductVariable,
         C,
-        collect(name_axis),
+        name_axis,
         depth_axis,
         time_axis;
         meta,
     )
-    for name in name_axis, i in depth_axis, t in time_axis
-        u_target[name, i, t] = product.u_var[name, i, t]
-    end
+    u_target.data .= product.u_var.data
 
-    cons_target = add_constraints_container!(
-        container,
-        NMDTBinaryContinuousProductConstraint,
-        C,
-        collect(name_axis),
-        depth_axis,
-        1:4,
-        time_axis;
-        meta,
+    # Suffix the McCormick meta so the binary-continuous product's envelope
+    # doesn't collide with a sibling residual product's envelope under the
+    # same NMDT approximation's `meta`.
+    _register_mccormick_depth_side!(
+        container, C, McCormickUpperConstraint, product.mccormick_upper, meta * "_bc",
     )
-    for name in name_axis, i in depth_axis, k in 1:4, t in time_axis
-        c = product.mccormick_constraints[name, i, k, t]
-        c === nothing && continue
-        cons_target[name, i, k, t] = c
-    end
+    _register_mccormick_depth_side!(
+        container, C, McCormickLowerConstraint, product.mccormick_lower, meta * "_bc",
+    )
 
     expr_target = add_expression_container!(
         container,
         NMDTBinaryContinuousProductExpression,
         C,
-        collect(name_axis),
+        name_axis,
         time_axis;
         meta,
     )
-    for name in name_axis, t in time_axis
-        expr_target[name, t] = product.result_expression[name, t]
-    end
+    expr_target.data .= product.result_expression.data
     return
 end
+
+# Register one side (lower or upper) of an NMDT binary-continuous product's
+# McCormick envelope. Each side is a pair of 3D `(name, depth, t)` constraint
+# containers; we stack them into a 4D `(name, depth, k=1:2, t)` container.
+function _register_mccormick_depth_side!(
+    container::OptimizationContainer,
+    ::Type{C},
+    ::Type{K},
+    cons::Tuple{<:JuMP.Containers.DenseAxisArray, <:JuMP.Containers.DenseAxisArray},
+    meta::String,
+) where {
+    C <: IS.InfrastructureSystemsComponent,
+    K <: ConstraintType,
+}
+    c1, c2 = cons
+    name_axis = axes(c1, 1)
+    depth_axis = axes(c1, 2)
+    time_axis = axes(c1, 3)
+    target = add_constraints_container!(
+        container, K, C, name_axis, depth_axis, 1:2, time_axis; meta,
+    )
+    @views target.data[:, :, 1, :] .= c1.data
+    @views target.data[:, :, 2, :] .= c2.data
+    return
+end
+
+# No-op when the lower side wasn't built.
+_register_mccormick_depth_side!(
+    ::OptimizationContainer,
+    ::Type{<:IS.InfrastructureSystemsComponent},
+    ::Type{<:ConstraintType},
+    ::Nothing,
+    ::String,
+) = nothing
 
 """
     register_residual_product!(container, ::Type{C}, product, meta)
@@ -465,19 +470,10 @@ function register_residual_product!(
     time_axis = axes(product.z_var, 2)
 
     z_target = add_variable_container!(
-        container,
-        NMDTResidualProductVariable,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, NMDTResidualProductVariable, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        z_target[name, t] = product.z_var[name, t]
-    end
+    z_target.data .= product.z_var.data
 
-    register_mccormick_envelope!(
-        container, C, product.mccormick_constraints, meta,
-    )
+    register_mccormick_envelope!(container, C, product.mccormick_constraints, meta)
     return
 end

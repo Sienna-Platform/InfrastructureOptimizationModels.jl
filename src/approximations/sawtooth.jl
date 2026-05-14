@@ -31,17 +31,37 @@ function SawtoothQuadConfig(depth::Int)
 end
 
 """
+Tightening pieces of a sawtooth result when `config.epigraph_depth > 0`:
+the substitute z variable, its bound constraints, and the epigraph result
+that supplies the lower bound.
+"""
+struct SawtoothTightening{
+    ZV <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 2},
+    TC <: JuMP.Containers.DenseAxisArray,
+    EPI <: EpigraphQuadResult,
+}
+    z_var::ZV
+    constraints::TC
+    epigraph::EPI
+end
+
+"""
 Pure-JuMP result of `build_quadratic_approx(::SawtoothQuadConfig, ...)`.
 """
-struct SawtoothQuadResult{A, G, AL, LC, MC, ZV, TC, EPI} <: QuadraticApproxResult
+struct SawtoothQuadResult{
+    A <: JuMP.Containers.DenseAxisArray,
+    G <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
+    AL <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
+    LC <: JuMP.Containers.DenseAxisArray,
+    MC <: JuMP.Containers.DenseAxisArray,
+    T <: Union{Nothing, SawtoothTightening},
+} <: QuadraticApproxResult
     approximation::A
     g_var::G
     alpha_var::AL
     link_constraints::LC
     mip_constraints::MC
-    tightened_z_var::ZV          # Union{Nothing, DenseAxisArray}
-    tightened_constraints::TC    # Union{Nothing, DenseAxisArray}
-    epigraph::EPI                # Union{Nothing, EpigraphQuadResult}
+    tightening::T
 end
 
 """
@@ -67,14 +87,8 @@ function build_quadratic_approx(
 
     g_levels = 0:(config.depth)
     alpha_levels = 1:(config.depth)
-    delta = JuMP.Containers.DenseAxisArray(
-        [b.max - b.min for b in bounds],
-        name_axis,
-    )
-    x_min_arr = JuMP.Containers.DenseAxisArray(
-        [b.min for b in bounds],
-        name_axis,
-    )
+    delta = JuMP.Containers.DenseAxisArray([b.max - b.min for b in bounds], name_axis)
+    x_min_arr = JuMP.Containers.DenseAxisArray([b.min for b in bounds], name_axis)
 
     g_var = JuMP.@variable(
         model,
@@ -96,40 +110,48 @@ function build_quadratic_approx(
         g_var[name, 0, t] == (x[name, t] - x_min_arr[name]) / delta[name],
     )
 
-    # S^L constraints for j = 1..L: 4 inequalities per level.
-    # Indexed by (name, j, k, t) with k ∈ 1:4.
-    mip_cons = JuMP.Containers.DenseAxisArray{Any}(
+    # S^L constraints for j = 1..L: 4 inequalities per level. Stack four
+    # `(name, j, t)` families into a `(name, j, k, t)` container.
+    mip_a = JuMP.@constraint(
+        model,
+        [name = name_axis, j = alpha_levels, t = time_axis],
+        g_var[name, j, t] <= 2.0 * g_var[name, j - 1, t],
+    )
+    mip_b = JuMP.@constraint(
+        model,
+        [name = name_axis, j = alpha_levels, t = time_axis],
+        g_var[name, j, t] <= 2.0 * (1.0 - g_var[name, j - 1, t]),
+    )
+    mip_c = JuMP.@constraint(
+        model,
+        [name = name_axis, j = alpha_levels, t = time_axis],
+        g_var[name, j, t] >= 2.0 * (g_var[name, j - 1, t] - alpha_var[name, j, t]),
+    )
+    mip_d = JuMP.@constraint(
+        model,
+        [name = name_axis, j = alpha_levels, t = time_axis],
+        g_var[name, j, t] >= 2.0 * (alpha_var[name, j, t] - g_var[name, j - 1, t]),
+    )
+    mip_cons = JuMP.Containers.DenseAxisArray{JuMP.ConstraintRef}(
         undef, name_axis, alpha_levels, 1:4, time_axis,
     )
-    for name in name_axis, j in alpha_levels, t in time_axis
-        g_prev = g_var[name, j - 1, t]
-        g_curr = g_var[name, j, t]
-        a_j = alpha_var[name, j, t]
-        mip_cons[name, j, 1, t] =
-            JuMP.@constraint(model, g_curr <= 2.0 * g_prev)
-        mip_cons[name, j, 2, t] =
-            JuMP.@constraint(model, g_curr <= 2.0 * (1.0 - g_prev))
-        mip_cons[name, j, 3, t] =
-            JuMP.@constraint(model, g_curr >= 2.0 * (g_prev - a_j))
-        mip_cons[name, j, 4, t] =
-            JuMP.@constraint(model, g_curr >= 2.0 * (a_j - g_prev))
-    end
+    @views mip_cons.data[:, :, 1, :] .= mip_a.data
+    @views mip_cons.data[:, :, 2, :] .= mip_b.data
+    @views mip_cons.data[:, :, 3, :] .= mip_c.data
+    @views mip_cons.data[:, :, 4, :] .= mip_d.data
 
-    # x² ≈ x_min² + (2·x_min·δ + δ²)·g₀ − Σ_{j=1..L} δ²·2^{−2j}·g_j
+    # x² ≈ x_min² + (2·x_min·δ + δ²)·g₀ − Σ_{j ∈ alpha_levels} δ²·2^{−2j}·g_j
     x_sq_approx = JuMP.@expression(
         model,
         [name = name_axis, t = time_axis],
-        x_min_arr[name]^2 +
-        (2.0 * x_min_arr[name] * delta[name] + delta[name]^2) * g_var[name, 0, t] -
-        sum(delta[name]^2 * 2.0^(-2j) * g_var[name, j, t] for j in alpha_levels)
+        scale_back_g_basis(
+            x_min_arr[name], delta[name], g_var, name, t, alpha_levels,
+        )
     )
 
     if config.epigraph_depth > 0
         epi_result = build_quadratic_approx(
-            EpigraphQuadConfig(config.epigraph_depth),
-            model,
-            x,
-            bounds,
+            EpigraphQuadConfig(config.epigraph_depth), model, x, bounds,
         )
         z_min_arr = JuMP.Containers.DenseAxisArray(
             [(b.min <= 0.0 <= b.max) ? 0.0 : min(b.min^2, b.max^2) for b in bounds],
@@ -142,49 +164,40 @@ function build_quadratic_approx(
         z_var = JuMP.@variable(
             model,
             [name = name_axis, t = time_axis],
+            lower_bound = z_min_arr[name],
+            upper_bound = z_max_arr[name],
             base_name = "TightenedSawtooth",
         )
-        for name in name_axis, t in time_axis
-            JuMP.set_lower_bound(z_var[name, t], z_min_arr[name])
-            JuMP.set_upper_bound(z_var[name, t], z_max_arr[name])
-        end
-        tight_cons = JuMP.Containers.DenseAxisArray{Any}(
+        tight_a = JuMP.@constraint(
+            model,
+            [name = name_axis, t = time_axis],
+            z_var[name, t] <= x_sq_approx[name, t],
+        )
+        tight_b = JuMP.@constraint(
+            model,
+            [name = name_axis, t = time_axis],
+            z_var[name, t] >= epi_result.approximation[name, t],
+        )
+        # tight_a is `z <= sawtooth approx` (LessThan), tight_b is `z >= epigraph`
+        # (GreaterThan) — use the abstract ConstraintRef to hold both kinds.
+        tight_cons = JuMP.Containers.DenseAxisArray{JuMP.ConstraintRef}(
             undef, name_axis, 1:2, time_axis,
         )
-        for name in name_axis, t in time_axis
-            tight_cons[name, 1, t] =
-                JuMP.@constraint(model, z_var[name, t] <= x_sq_approx[name, t])
-            tight_cons[name, 2, t] = JuMP.@constraint(
-                model,
-                z_var[name, t] >= epi_result.approximation[name, t],
-            )
-        end
+        @views tight_cons.data[:, 1, :] .= tight_a.data
+        @views tight_cons.data[:, 2, :] .= tight_b.data
         approximation = JuMP.@expression(
             model,
             [name = name_axis, t = time_axis],
             1.0 * z_var[name, t]
         )
+        tightening = SawtoothTightening(z_var, tight_cons, epi_result)
         return SawtoothQuadResult(
-            approximation,
-            g_var,
-            alpha_var,
-            link_cons,
-            mip_cons,
-            z_var,
-            tight_cons,
-            epi_result,
+            approximation, g_var, alpha_var, link_cons, mip_cons, tightening,
         )
     end
 
     return SawtoothQuadResult(
-        x_sq_approx,
-        g_var,
-        alpha_var,
-        link_cons,
-        mip_cons,
-        nothing,
-        nothing,
-        nothing,
+        x_sq_approx, g_var, alpha_var, link_cons, mip_cons, nothing,
     )
 end
 
@@ -200,94 +213,59 @@ function register_in_container!(
     alpha_levels = axes(result.alpha_var, 2)
 
     g_target = add_variable_container!(
-        container,
-        SawtoothAuxVariable,
-        C,
-        collect(name_axis),
-        g_levels,
-        time_axis;
-        meta,
+        container, SawtoothAuxVariable, C, name_axis, g_levels, time_axis; meta,
     )
-    for name in name_axis, j in g_levels, t in time_axis
-        g_target[name, j, t] = result.g_var[name, j, t]
-    end
+    g_target.data .= result.g_var.data
 
     alpha_target = add_variable_container!(
-        container,
-        SawtoothBinaryVariable,
-        C,
-        collect(name_axis),
-        alpha_levels,
-        time_axis;
-        meta,
+        container, SawtoothBinaryVariable, C, name_axis, alpha_levels, time_axis; meta,
     )
-    for name in name_axis, j in alpha_levels, t in time_axis
-        alpha_target[name, j, t] = result.alpha_var[name, j, t]
-    end
+    alpha_target.data .= result.alpha_var.data
 
     link_target = add_constraints_container!(
-        container,
-        SawtoothLinkingConstraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, SawtoothLinkingConstraint, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        link_target[name, t] = result.link_constraints[name, t]
-    end
+    link_target.data .= result.link_constraints.data
 
     mip_target = add_constraints_container!(
-        container,
-        SawtoothMIPConstraint,
-        C,
-        collect(name_axis),
-        1:4,
-        time_axis;
-        sparse = true,
+        container, SawtoothMIPConstraint, C, name_axis, alpha_levels, 1:4, time_axis;
         meta,
     )
-    for name in name_axis, j in alpha_levels, k in 1:4, t in time_axis
-        mip_target[(name, k, t)] = result.mip_constraints[name, j, k, t]
-    end
+    mip_target.data .= result.mip_constraints.data
 
     result_target = add_expression_container!(
-        container,
-        QuadraticExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, QuadraticExpression, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        result_target[name, t] = result.approximation[name, t]
-    end
+    result_target.data .= result.approximation.data
 
-    if result.tightened_z_var !== nothing
-        z_target = add_variable_container!(
-            container,
-            SawtoothTightenedVariable,
-            C,
-            collect(name_axis),
-            time_axis;
-            meta,
-        )
-        for name in name_axis, t in time_axis
-            z_target[name, t] = result.tightened_z_var[name, t]
-        end
-        tight_target = add_constraints_container!(
-            container,
-            SawtoothTightenedConstraint,
-            C,
-            collect(name_axis),
-            1:2,
-            time_axis;
-            meta,
-        )
-        for name in name_axis, k in 1:2, t in time_axis
-            tight_target[name, k, t] = result.tightened_constraints[name, k, t]
-        end
-        register_in_container!(container, C, result.epigraph, meta * "_lb")
-    end
+    _register_sawtooth_tightening!(container, C, result.tightening, meta)
     return
 end
+
+function _register_sawtooth_tightening!(
+    container::OptimizationContainer,
+    ::Type{C},
+    tight::SawtoothTightening,
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    name_axis = axes(tight.z_var, 1)
+    time_axis = axes(tight.z_var, 2)
+    z_target = add_variable_container!(
+        container, SawtoothTightenedVariable, C, name_axis, time_axis; meta,
+    )
+    z_target.data .= tight.z_var.data
+    tight_target = add_constraints_container!(
+        container, SawtoothTightenedConstraint, C, name_axis, 1:2, time_axis; meta,
+    )
+    tight_target.data .= tight.constraints.data
+    register_in_container!(container, C, tight.epigraph, meta * "_lb")
+    return
+end
+
+# No-op when tightening is disabled (config.epigraph_depth = 0).
+_register_sawtooth_tightening!(
+    ::OptimizationContainer,
+    ::Type{<:IS.InfrastructureSystemsComponent},
+    ::Nothing,
+    ::String,
+) = nothing

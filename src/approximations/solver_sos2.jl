@@ -38,7 +38,16 @@ end
 """
 Pure-JuMP result of `build_quadratic_approx(::SolverSOS2QuadConfig, ...)`.
 """
-struct SOS2QuadResult{A, L, LC, NC, SC, LE, NE, PWMCC} <: QuadraticApproxResult
+struct SOS2QuadResult{
+    A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    L <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
+    LC <: JuMP.Containers.DenseAxisArray,
+    NC <: JuMP.Containers.DenseAxisArray,
+    SC <: JuMP.Containers.DenseAxisArray,
+    LE <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    NE <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    PWMCC <: Union{Nothing, PWMCCResult},
+} <: QuadraticApproxResult
     approximation::A
     lambda::L
     link_constraints::LC
@@ -46,7 +55,7 @@ struct SOS2QuadResult{A, L, LC, NC, SC, LE, NE, PWMCC} <: QuadraticApproxResult
     sos_constraints::SC
     link_expressions::LE
     norm_expressions::NE
-    pwmcc::PWMCC  # Union{Nothing, PWMCCResult}
+    pwmcc::PWMCC
 end
 
 """
@@ -70,20 +79,11 @@ function build_quadratic_approx(
     end
     n_points = config.depth + 1
     x_bkpts, x_sq_bkpts = _get_breakpoints_for_pwl_function(
-        0.0,
-        1.0,
-        _square;
-        num_segments = config.depth,
+        0.0, 1.0, _square; num_segments = config.depth,
     )
 
-    lx = JuMP.Containers.DenseAxisArray(
-        [b.max - b.min for b in bounds],
-        name_axis,
-    )
-    x_min = JuMP.Containers.DenseAxisArray(
-        [b.min for b in bounds],
-        name_axis,
-    )
+    lx = JuMP.Containers.DenseAxisArray([b.max - b.min for b in bounds], name_axis)
+    x_min = JuMP.Containers.DenseAxisArray([b.min for b in bounds], name_axis)
 
     lambda = JuMP.@variable(
         model,
@@ -112,13 +112,11 @@ function build_quadratic_approx(
         [name = name_axis, t = time_axis],
         norm_expr[name, t] == 1.0
     )
-    sos_cons = JuMP.Containers.DenseAxisArray{Any}(undef, name_axis, time_axis)
-    for name in name_axis, t in time_axis
-        sos_cons[name, t] = JuMP.@constraint(
-            model,
-            [lambda[name, i, t] for i in 1:n_points] in MOI.SOS2(collect(1:n_points)),
-        )
-    end
+    sos_cons = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        [lambda[name, i, t] for i in 1:n_points] in MOI.SOS2(collect(1:n_points))
+    )
     # x² = x_min² + 2·x_min·(x − x_min) + lx² · xh² where xh² ≈ Σ λ_i · x_bkpts[i]²
     #     = lx² · Σ λ_i · x_bkpts[i]² + 2·x_min·x − x_min²
     approximation = JuMP.@expression(
@@ -136,14 +134,7 @@ function build_quadratic_approx(
     end
 
     return SOS2QuadResult(
-        approximation,
-        lambda,
-        link_cons,
-        norm_cons,
-        sos_cons,
-        link_expr,
-        norm_expr,
-        pwmcc,
+        approximation, lambda, link_cons, norm_cons, sos_cons, link_expr, norm_expr, pwmcc,
     )
 end
 
@@ -158,77 +149,40 @@ function register_in_container!(
     n_points_axis = axes(result.lambda, 2)
 
     lambda_target = add_variable_container!(
-        container,
-        QuadraticVariable,
-        C,
-        collect(name_axis),
-        n_points_axis,
-        time_axis;
-        meta,
+        container, QuadraticVariable, C, name_axis, n_points_axis, time_axis; meta,
     )
-    for name in name_axis, i in n_points_axis, t in time_axis
-        lambda_target[name, i, t] = result.lambda[name, i, t]
-    end
+    lambda_target.data .= result.lambda.data
 
     link_cons_target = add_constraints_container!(
-        container,
-        SOS2LinkingConstraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, SOS2LinkingConstraint, C, name_axis, time_axis; meta,
     )
-    norm_cons_target = add_constraints_container!(
-        container,
-        SOS2NormConstraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
-    )
-    sos_cons_target = add_constraints_container!(
-        container,
-        SolverSOS2Constraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
-    )
-    link_expr_target = add_expression_container!(
-        container,
-        SOS2LinkingExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
-    )
-    norm_expr_target = add_expression_container!(
-        container,
-        SOS2NormExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
-    )
-    result_target = add_expression_container!(
-        container,
-        QuadraticExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
-    )
-    for name in name_axis, t in time_axis
-        link_cons_target[name, t] = result.link_constraints[name, t]
-        norm_cons_target[name, t] = result.norm_constraints[name, t]
-        sos_cons_target[name, t] = result.sos_constraints[name, t]
-        link_expr_target[name, t] = result.link_expressions[name, t]
-        norm_expr_target[name, t] = result.norm_expressions[name, t]
-        result_target[name, t] = result.approximation[name, t]
-    end
+    link_cons_target.data .= result.link_constraints.data
 
-    if result.pwmcc !== nothing
-        register_pwmcc!(container, C, result.pwmcc, meta * "_pwmcc")
-    end
+    norm_cons_target = add_constraints_container!(
+        container, SOS2NormConstraint, C, name_axis, time_axis; meta,
+    )
+    norm_cons_target.data .= result.norm_constraints.data
+
+    sos_cons_target = add_constraints_container!(
+        container, SolverSOS2Constraint, C, name_axis, time_axis; meta,
+    )
+    sos_cons_target.data .= result.sos_constraints.data
+
+    link_expr_target = add_expression_container!(
+        container, SOS2LinkingExpression, C, name_axis, time_axis; meta,
+    )
+    link_expr_target.data .= result.link_expressions.data
+
+    norm_expr_target = add_expression_container!(
+        container, SOS2NormExpression, C, name_axis, time_axis; meta,
+    )
+    norm_expr_target.data .= result.norm_expressions.data
+
+    result_target = add_expression_container!(
+        container, QuadraticExpression, C, name_axis, time_axis; meta,
+    )
+    result_target.data .= result.approximation.data
+
+    register_pwmcc!(container, C, result.pwmcc, meta * "_pwmcc")
     return
 end

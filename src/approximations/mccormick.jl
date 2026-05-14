@@ -1,8 +1,13 @@
 # McCormick envelope for bilinear products z = x·y.
-# Adds 4 linear inequalities that bound z given variable bounds on x and y.
+# Adds up to 4 linear inequalities that bound z given variable bounds on x and y.
+# The lower envelopes (z ≥ …) can be omitted when a tighter lower bound is
+# supplied elsewhere; the upper envelopes (z ≤ …) are always present.
 
-"Standard McCormick envelope constraints bounding the bilinear product z = x·y."
-struct McCormickConstraint <: ConstraintType end
+"McCormick envelope lower-bound constraints: z ≥ …  (entries c1, c2)."
+struct McCormickLowerConstraint <: ConstraintType end
+
+"McCormick envelope upper-bound constraints: z ≤ …  (entries c3, c4)."
+struct McCormickUpperConstraint <: ConstraintType end
 
 "Reformulated McCormick constraints on Bin2 separable variables."
 struct ReformulatedMcCormickConstraint <: ConstraintType end
@@ -12,12 +17,9 @@ struct ReformulatedMcCormickConstraint <: ConstraintType end
 """
     build_mccormick_envelope(model, x, y, z, x_min, x_max, y_min, y_max; lower_bounds = true)
 
-Add the four McCormick inequalities bounding `z ≈ x·y` to `model` and return
-them as a `(c1, c2, c3, c4)` tuple. If `lower_bounds == false`, the first
-two constraints (`z ≥ …` lower envelopes) are omitted; the returned tuple
-slots are `nothing` in their place.
-
-Inputs may be `JuMP.AbstractJuMPScalar` (variable or affine expression).
+Build the McCormick inequalities bounding `z ≈ x·y` on `model`. Returns a
+NamedTuple `(lower, upper)` of `(c, c)` tuples (`lower === nothing` when
+`lower_bounds == false`). Inputs may be any `JuMP.AbstractJuMPScalar`.
 """
 function build_mccormick_envelope(
     model::JuMP.Model,
@@ -30,29 +32,24 @@ function build_mccormick_envelope(
     y_max::Float64;
     lower_bounds::Bool = true,
 )
-    c1 = if lower_bounds
-        JuMP.@constraint(model, z >= x_min * y + x * y_min - x_min * y_min)
-    else
-        nothing
-    end
-    c2 = if lower_bounds
-        JuMP.@constraint(model, z >= x_max * y + x * y_max - x_max * y_max)
-    else
-        nothing
-    end
     c3 = JuMP.@constraint(model, z <= x_max * y + x * y_min - x_max * y_min)
     c4 = JuMP.@constraint(model, z <= x_min * y + x * y_max - x_min * y_max)
-    return (c1, c2, c3, c4)
+    lower = if lower_bounds
+        c1 = JuMP.@constraint(model, z >= x_min * y + x * y_min - x_min * y_min)
+        c2 = JuMP.@constraint(model, z >= x_max * y + x * y_max - x_max * y_max)
+        (c1, c2)
+    else
+        nothing
+    end
+    return (lower = lower, upper = (c3, c4))
 end
 
 """
     build_mccormick_envelope(model, x, y, z, x_bounds, y_bounds; lower_bounds = true)
 
-Vectorized McCormick envelope over a (name, t) grid: for each (name, t)
-adds the four inequalities bounding `z[name, t] ≈ x[name, t] · y[name, t]`.
-Returns a `DenseAxisArray` indexed by (name, k, t) where k ∈ 1:4 holds
-the four constraints (or a `Union{Missing, ConstraintRef}` array entry
-for the omitted lower bounds when `lower_bounds == false`).
+Vectorized McCormick envelope over a `(name, t)` grid. Returns a NamedTuple
+`(lower, upper)` where each side is a pair `(c, c)` of 2D `DenseAxisArray`s
+indexed by `(name, t)`. `lower === nothing` when `lower_bounds == false`.
 """
 function build_mccormick_envelope(
     model::JuMP.Model,
@@ -67,30 +64,50 @@ function build_mccormick_envelope(
     time_axis = axes(x, 2)
     IS.@assert_op length(name_axis) == length(x_bounds)
     IS.@assert_op length(name_axis) == length(y_bounds)
-
-    cons = JuMP.Containers.DenseAxisArray{Any}(undef, name_axis, 1:4, time_axis)
-    for (i, name) in enumerate(name_axis), t in time_axis
-        xb = x_bounds[i]
-        yb = y_bounds[i]
-        IS.@assert_op xb.max > xb.min
-        IS.@assert_op yb.max > yb.min
-        c1, c2, c3, c4 = build_mccormick_envelope(
-            model,
-            x[name, t],
-            y[name, t],
-            z[name, t],
-            xb.min,
-            xb.max,
-            yb.min,
-            yb.max;
-            lower_bounds,
-        )
-        cons[name, 1, t] = c1
-        cons[name, 2, t] = c2
-        cons[name, 3, t] = c3
-        cons[name, 4, t] = c4
+    for i in eachindex(x_bounds)
+        IS.@assert_op x_bounds[i].max > x_bounds[i].min
+        IS.@assert_op y_bounds[i].max > y_bounds[i].min
     end
-    return cons
+
+    xmin = JuMP.Containers.DenseAxisArray([b.min for b in x_bounds], name_axis)
+    xmax = JuMP.Containers.DenseAxisArray([b.max for b in x_bounds], name_axis)
+    ymin = JuMP.Containers.DenseAxisArray([b.min for b in y_bounds], name_axis)
+    ymax = JuMP.Containers.DenseAxisArray([b.max for b in y_bounds], name_axis)
+
+    upper_1 = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        z[name, t] <=
+        xmax[name] * y[name, t] + x[name, t] * ymin[name] -
+        xmax[name] * ymin[name],
+    )
+    upper_2 = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        z[name, t] <=
+        xmin[name] * y[name, t] + x[name, t] * ymax[name] -
+        xmin[name] * ymax[name],
+    )
+    lower = if lower_bounds
+        lower_1 = JuMP.@constraint(
+            model,
+            [name = name_axis, t = time_axis],
+            z[name, t] >=
+            xmin[name] * y[name, t] + x[name, t] * ymin[name] -
+            xmin[name] * ymin[name],
+        )
+        lower_2 = JuMP.@constraint(
+            model,
+            [name = name_axis, t = time_axis],
+            z[name, t] >=
+            xmax[name] * y[name, t] + x[name, t] * ymax[name] -
+            xmax[name] * ymax[name],
+        )
+        (lower_1, lower_2)
+    else
+        nothing
+    end
+    return (lower = lower, upper = (upper_1, upper_2))
 end
 
 # --- Bin2 reformulated-McCormick helpers (used inside build_bilinear_approx(::Bin2Config, ...)) ---
@@ -136,7 +153,8 @@ end
 """
     build_reformulated_mccormick(model, x, y, zp1, zx, zy, x_bounds, y_bounds)
 
-Vectorized reformulated McCormick over the (name, t) grid.
+Vectorized reformulated McCormick over the `(name, t)` grid. Returns a
+4-tuple of 2D `DenseAxisArray`s, one per cut.
 """
 function build_reformulated_mccormick(
     model::JuMP.Model,
@@ -150,93 +168,149 @@ function build_reformulated_mccormick(
 )
     name_axis = axes(x, 1)
     time_axis = axes(x, 2)
-    cons = JuMP.Containers.DenseAxisArray{Any}(undef, name_axis, 1:4, time_axis)
-    for (i, name) in enumerate(name_axis), t in time_axis
-        xb = x_bounds[i]
-        yb = y_bounds[i]
-        IS.@assert_op xb.max > xb.min
-        IS.@assert_op yb.max > yb.min
-        c1, c2, c3, c4 = build_reformulated_mccormick(
-            model,
-            x[name, t],
-            y[name, t],
-            zp1[name, t],
-            zx[name, t],
-            zy[name, t],
-            xb.min,
-            xb.max,
-            yb.min,
-            yb.max,
-        )
-        cons[name, 1, t] = c1
-        cons[name, 2, t] = c2
-        cons[name, 3, t] = c3
-        cons[name, 4, t] = c4
+    IS.@assert_op length(name_axis) == length(x_bounds)
+    IS.@assert_op length(name_axis) == length(y_bounds)
+    for i in eachindex(x_bounds)
+        IS.@assert_op x_bounds[i].max > x_bounds[i].min
+        IS.@assert_op y_bounds[i].max > y_bounds[i].min
     end
-    return cons
+
+    xmin = JuMP.Containers.DenseAxisArray([b.min for b in x_bounds], name_axis)
+    xmax = JuMP.Containers.DenseAxisArray([b.max for b in x_bounds], name_axis)
+    ymin = JuMP.Containers.DenseAxisArray([b.min for b in y_bounds], name_axis)
+    ymax = JuMP.Containers.DenseAxisArray([b.max for b in y_bounds], name_axis)
+
+    c1 = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        zp1[name, t] - zx[name, t] - zy[name, t] >=
+        2.0 * (xmin[name] * y[name, t] + x[name, t] * ymin[name] -
+         xmin[name] * ymin[name]),
+    )
+    c2 = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        zp1[name, t] - zx[name, t] - zy[name, t] >=
+        2.0 * (xmax[name] * y[name, t] + x[name, t] * ymax[name] -
+         xmax[name] * ymax[name]),
+    )
+    c3 = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        zp1[name, t] - zx[name, t] - zy[name, t] <=
+        2.0 * (xmax[name] * y[name, t] + x[name, t] * ymin[name] -
+         xmax[name] * ymin[name]),
+    )
+    c4 = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        zp1[name, t] - zx[name, t] - zy[name, t] <=
+        2.0 * (xmin[name] * y[name, t] + x[name, t] * ymax[name] -
+         xmin[name] * ymax[name]),
+    )
+    return (c1, c2, c3, c4)
 end
 
 # --- IOM-side McCormick container registration ---
 
 """
-    register_mccormick_envelope!(container, ::Type{C}, cons, meta)
+    register_mccormick_envelope!(container, ::Type{C}, mc, meta)
 
-Register a McCormick constraint array (as returned by `build_mccormick_envelope`)
-into the optimization container under `McCormickConstraint` with the given `meta`.
+Register a McCormick envelope (NamedTuple `(lower, upper)` as returned by
+the vectorized `build_mccormick_envelope`) into the optimization container.
+`mc.upper` is written under `McCormickUpperConstraint`; `mc.lower`, when
+non-`nothing`, under `McCormickLowerConstraint`.
 """
 function register_mccormick_envelope!(
     container::OptimizationContainer,
     ::Type{C},
-    cons,
+    mc::NamedTuple,
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    name_axis = axes(cons, 1)
-    time_axis = axes(cons, 3)
-    target = add_constraints_container!(
-        container,
-        McCormickConstraint,
-        C,
-        collect(name_axis),
-        1:4,
-        time_axis;
-        sparse = true,
-        meta,
-    )
-    for name in name_axis, k in 1:4, t in time_axis
-        c = cons[name, k, t]
-        c === nothing && continue
-        target[(name, k, t)] = c
-    end
+    _register_mccormick_side!(container, C, McCormickUpperConstraint, mc.upper, meta)
+    _register_mccormick_side!(container, C, McCormickLowerConstraint, mc.lower, meta)
     return
 end
+
+# No-op when this McCormick envelope was disabled at the call site.
+register_mccormick_envelope!(
+    ::OptimizationContainer,
+    ::Type{<:IS.InfrastructureSystemsComponent},
+    ::Nothing,
+    ::String,
+) = nothing
+
+function _register_mccormick_side!(
+    container::OptimizationContainer,
+    ::Type{C},
+    ::Type{K},
+    cons::Tuple{<:JuMP.Containers.DenseAxisArray, <:JuMP.Containers.DenseAxisArray},
+    meta::String,
+) where {
+    C <: IS.InfrastructureSystemsComponent,
+    K <: ConstraintType,
+}
+    c1, c2 = cons
+    name_axis = axes(c1, 1)
+    time_axis = axes(c1, 2)
+    target = add_constraints_container!(
+        container, K, C, name_axis, 1:2, time_axis; meta,
+    )
+    @views target.data[:, 1, :] .= c1.data
+    @views target.data[:, 2, :] .= c2.data
+    return
+end
+
+# No-op when the lower-bound side wasn't built.
+_register_mccormick_side!(
+    ::OptimizationContainer,
+    ::Type{<:IS.InfrastructureSystemsComponent},
+    ::Type{<:ConstraintType},
+    ::Nothing,
+    ::String,
+) = nothing
 
 """
     register_reformulated_mccormick!(container, ::Type{C}, cons, meta)
 
-Register a reformulated McCormick constraint array (as returned by
-`build_reformulated_mccormick`) into the optimization container under
-`ReformulatedMcCormickConstraint`.
+Register a reformulated McCormick constraint set (the 4-tuple of 2D
+constraint containers returned by `build_reformulated_mccormick`) into the
+optimization container under `ReformulatedMcCormickConstraint`.
 """
 function register_reformulated_mccormick!(
     container::OptimizationContainer,
     ::Type{C},
-    cons,
+    cons::Tuple{
+        <:JuMP.Containers.DenseAxisArray,
+        <:JuMP.Containers.DenseAxisArray,
+        <:JuMP.Containers.DenseAxisArray,
+        <:JuMP.Containers.DenseAxisArray,
+    },
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    name_axis = axes(cons, 1)
-    time_axis = axes(cons, 3)
+    c1, c2, c3, c4 = cons
+    name_axis = axes(c1, 1)
+    time_axis = axes(c1, 2)
     target = add_constraints_container!(
         container,
         ReformulatedMcCormickConstraint,
         C,
-        collect(name_axis),
+        name_axis,
         1:4,
         time_axis;
-        sparse = true,
         meta,
     )
-    for name in name_axis, k in 1:4, t in time_axis
-        target[(name, k, t)] = cons[name, k, t]
-    end
+    @views target.data[:, 1, :] .= c1.data
+    @views target.data[:, 2, :] .= c2.data
+    @views target.data[:, 3, :] .= c3.data
+    @views target.data[:, 4, :] .= c4.data
     return
 end
+
+# No-op when this McCormick envelope was disabled at the call site.
+register_reformulated_mccormick!(
+    ::OptimizationContainer,
+    ::Type{<:IS.InfrastructureSystemsComponent},
+    ::Nothing,
+    ::String,
+) = nothing

@@ -48,7 +48,10 @@ end
 """
 Result of an epigraph tightening step on an NMDT quadratic approximation.
 """
-struct NMDTEpigraphTightening{EPI, CONS}
+struct NMDTEpigraphTightening{
+    EPI <: EpigraphQuadResult,
+    CONS <: JuMP.Containers.DenseAxisArray,
+}
     epigraph::EPI
     constraints::CONS
 end
@@ -61,12 +64,9 @@ function _build_nmdt_tightening(
 )
     name_axis = axes(approximation, 1)
     time_axis = axes(approximation, 2)
-    fake_bounds = fill(MinMax((min = 0.0, max = 1.0)), length(name_axis))
+    fake_bounds = fill((min = 0.0, max = 1.0), length(name_axis))
     epi = build_quadratic_approx(
-        EpigraphQuadConfig(epigraph_depth),
-        model,
-        x_disc.norm_expr,
-        fake_bounds,
+        EpigraphQuadConfig(epigraph_depth), model, x_disc.norm_expr, fake_bounds,
     )
     cons = JuMP.@constraint(
         model,
@@ -86,30 +86,37 @@ function _register_tightening!(
     name_axis = axes(t.constraints, 1)
     time_axis = axes(t.constraints, 2)
     target = add_constraints_container!(
-        container,
-        NMDTTightenConstraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, NMDTTightenConstraint, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t_idx in time_axis
-        target[name, t_idx] = t.constraints[name, t_idx]
-    end
+    target.data .= t.constraints.data
     return
 end
+
+# No-op when tightening is disabled (config.epigraph_depth = 0).
+_register_tightening!(
+    ::OptimizationContainer,
+    ::Type{<:IS.InfrastructureSystemsComponent},
+    ::Nothing,
+    ::String,
+) = nothing
 
 # --- NMDT (single) ---
 
 """
 Pure-JuMP result of `build_quadratic_approx(::NMDTQuadConfig, ...)`.
 """
-struct NMDTQuadResult{A, D, BX, DZ, T} <: QuadraticApproxResult
+struct NMDTQuadResult{
+    A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    D <: NMDTDiscretization,
+    BX <: NMDTBinaryContinuousProduct,
+    DZ <: NMDTResidualProduct,
+    T <: Union{Nothing, NMDTEpigraphTightening},
+} <: QuadraticApproxResult
     approximation::A
     discretization::D
     bx_xh_product::BX
     residual_product::DZ
-    tightening::T  # Union{Nothing, NMDTEpigraphTightening}
+    tightening::T
 end
 
 """
@@ -128,21 +135,10 @@ function build_quadratic_approx(
     tighten = config.epigraph_depth > 0
     x_disc = build_discretization(model, x, bounds, config.depth)
     bx_xh = build_binary_continuous_product(
-        model,
-        x_disc.beta_var,
-        x_disc.norm_expr,
-        0.0,
-        1.0,
-        config.depth;
-        tighten,
+        model, x_disc.beta_var, x_disc.norm_expr, 0.0, 1.0, config.depth; tighten,
     )
     dz = build_residual_product(
-        model,
-        x_disc.delta_var,
-        x_disc.norm_expr,
-        1.0,
-        config.depth;
-        tighten,
+        model, x_disc.delta_var, x_disc.norm_expr, 1.0, config.depth; tighten,
     )
     approximation = build_assembled_product(
         model,
@@ -174,20 +170,11 @@ function register_in_container!(
     name_axis = axes(result.approximation, 1)
     time_axis = axes(result.approximation, 2)
     result_target = add_expression_container!(
-        container,
-        QuadraticExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, QuadraticExpression, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        result_target[name, t] = result.approximation[name, t]
-    end
+    result_target.data .= result.approximation.data
 
-    if result.tightening !== nothing
-        _register_tightening!(container, C, result.tightening, meta)
-    end
+    _register_tightening!(container, C, result.tightening, meta)
     return
 end
 
@@ -196,7 +183,14 @@ end
 """
 Pure-JuMP result of `build_quadratic_approx(::DNMDTQuadConfig, ...)`.
 """
-struct DNMDTQuadResult{A, D, BX_XH, BX_DX, DZ, T} <: QuadraticApproxResult
+struct DNMDTQuadResult{
+    A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    D <: NMDTDiscretization,
+    BX_XH <: NMDTBinaryContinuousProduct,
+    BX_DX <: NMDTBinaryContinuousProduct,
+    DZ <: NMDTResidualProduct,
+    T <: Union{Nothing, NMDTEpigraphTightening},
+} <: QuadraticApproxResult
     approximation::A
     discretization::D
     bx_xh_product::BX_XH
@@ -220,13 +214,7 @@ function build_quadratic_approx(
     tighten = config.epigraph_depth > 0
     x_disc = build_discretization(model, x, bounds, config.depth)
     bx_xh = build_binary_continuous_product(
-        model,
-        x_disc.beta_var,
-        x_disc.norm_expr,
-        0.0,
-        1.0,
-        config.depth;
-        tighten,
+        model, x_disc.beta_var, x_disc.norm_expr, 0.0, 1.0, config.depth; tighten,
     )
     bx_dx = build_binary_continuous_product(
         model,
@@ -238,12 +226,8 @@ function build_quadratic_approx(
         tighten,
     )
     dz = build_residual_product(
-        model,
-        x_disc.delta_var,
-        x_disc.delta_var,
-        2.0^(-config.depth),
-        config.depth;
-        tighten,
+        model, x_disc.delta_var, x_disc.delta_var,
+        2.0^(-config.depth), config.depth; tighten,
     )
     approximation = build_assembled_dnmdt(
         model,
@@ -283,19 +267,10 @@ function register_in_container!(
     name_axis = axes(result.approximation, 1)
     time_axis = axes(result.approximation, 2)
     result_target = add_expression_container!(
-        container,
-        QuadraticExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, QuadraticExpression, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        result_target[name, t] = result.approximation[name, t]
-    end
+    result_target.data .= result.approximation.data
 
-    if result.tightening !== nothing
-        _register_tightening!(container, C, result.tightening, meta)
-    end
+    _register_tightening!(container, C, result.tightening, meta)
     return
 end

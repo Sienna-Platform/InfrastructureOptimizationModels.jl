@@ -11,7 +11,7 @@
 #     build_bilinear_approx(config, model, x, y, x_bounds, y_bounds) -> BilinearApproxResult
 #
 #   IOM layer  (container bookkeeping)
-#     _add_quadratic_approx!(config, container, C, names, time_steps, x, bounds, meta)
+#     add_quadratic_approx!(config, container, C, names, time_steps, x, bounds, meta)
 #       1. call build_quadratic_approx
 #       2. dispatch register_in_container!(container, C, result, meta) to write
 #          all auxiliary JuMP objects into the OptimizationContainer
@@ -43,6 +43,16 @@ holds either `JuMP.AffExpr` or `JuMP.QuadExpr` entries depending on method.
 """
 get_approximation(result::QuadraticApproxResult) = result.approximation
 get_approximation(result::BilinearApproxResult) = result.approximation
+
+"""
+Lightweight `QuadraticApproxResult` adapter that wraps a pre-built x² (or
+y²) expression container. Used by the precomputed-form bilinear entrypoints
+so the shared math can consume already-registered quadratic approximations
+without re-computing or re-registering them.
+"""
+struct _PrebuiltQuadApprox{A} <: QuadraticApproxResult
+    approximation::A
+end
 
 # --- Shared expression-key types ---
 
@@ -108,7 +118,7 @@ end
 # --- IOM-side wrappers (POM entry points) ---
 
 """
-    _add_quadratic_approx!(config, container, C, names, time_steps, x_var, bounds, meta)
+    add_quadratic_approx!(config, container, C, names, time_steps, x_var, bounds, meta)
 
 POM entry point for quadratic approximation. Dispatched on the abstract
 `QuadraticApproxConfig` type — concrete behavior comes from the concrete
@@ -130,7 +140,7 @@ config's `build_quadratic_approx` and `register_in_container!` methods.
 The approximation expression container (indexed by (name, t)), as returned
 by `get_approximation(result)`.
 """
-function _add_quadratic_approx!(
+function add_quadratic_approx!(
     config::QuadraticApproxConfig,
     container::OptimizationContainer,
     ::Type{C},
@@ -146,7 +156,7 @@ function _add_quadratic_approx!(
 end
 
 """
-    _add_bilinear_approx!(config, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
+    add_bilinear_approx!(config, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
 
 POM entry point for bilinear approximation. Dispatched on the abstract
 `BilinearApproxConfig` type — concrete behavior comes from the concrete
@@ -165,7 +175,7 @@ config's `build_bilinear_approx` and `register_in_container!` methods.
 # Returns
 The approximation expression container (indexed by (name, t)).
 """
-function _add_bilinear_approx!(
+function add_bilinear_approx!(
     config::BilinearApproxConfig,
     container::OptimizationContainer,
     ::Type{C},

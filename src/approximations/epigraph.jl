@@ -26,6 +26,24 @@ struct EpigraphTangentConstraint <: ConstraintType end
 struct EpigraphTangentExpression <: ExpressionType end
 
 """
+    scale_back_g_basis(x_min, delta, g_var, name, t, levels)
+
+Build the affine "scale back to actual dimensions" expression
+    x² ≈ x_min² + (2·x_min·δ + δ²)·g₀ − Σ_{j ∈ levels} δ²·2^{−2j}·g_j
+where `g_var` is the SawtoothAux g-basis variable container, `x_min` and
+`delta = x_max − x_min` are per-name scalars, and `levels` selects which
+g-basis levels participate in the residual sum.
+
+Shared by sawtooth (PWL approximation) and epigraph (tangent cuts) — both
+express the parabola anchor + residual decomposition in this form.
+"""
+@inline function scale_back_g_basis(x_min, delta, g_var, name, t, levels)
+    return x_min^2 +
+           (2.0 * x_min * delta + delta^2) * g_var[name, 0, t] -
+           sum(delta^2 * 2.0^(-2j) * g_var[name, j, t] for j in levels)
+end
+
+"""
 Config for epigraph (Q^{L1}) LP-only lower-bound quadratic approximation.
 
 # Fields
@@ -39,7 +57,15 @@ end
 """
 Pure-JuMP result of `build_quadratic_approx(::EpigraphQuadConfig, ...)`.
 """
-struct EpigraphQuadResult{A, Z, G, LP, LC, FL, TC} <: QuadraticApproxResult
+struct EpigraphQuadResult{
+    A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    Z <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 2},
+    G <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
+    LP <: JuMP.Containers.DenseAxisArray,
+    LC <: JuMP.Containers.DenseAxisArray,
+    FL <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
+    TC <: JuMP.Containers.DenseAxisArray,
+} <: QuadraticApproxResult
     approximation::A
     z_var::Z
     g_var::G
@@ -70,14 +96,8 @@ function build_quadratic_approx(
     end
 
     g_levels = 0:(config.depth)
-    delta = JuMP.Containers.DenseAxisArray(
-        [b.max - b.min for b in bounds],
-        name_axis,
-    )
-    x_min_arr = JuMP.Containers.DenseAxisArray(
-        [b.min for b in bounds],
-        name_axis,
-    )
+    delta = JuMP.Containers.DenseAxisArray([b.max - b.min for b in bounds], name_axis)
+    x_min_arr = JuMP.Containers.DenseAxisArray([b.min for b in bounds], name_axis)
     z_ub_arr = JuMP.Containers.DenseAxisArray(
         [max(b.min^2, b.max^2) for b in bounds],
         name_axis,
@@ -98,66 +118,68 @@ function build_quadratic_approx(
     )
 
     # T^L constraints: g_j ≤ 2 g_{j-1} and g_j ≤ 2(1 − g_{j-1}) for j = 1..L.
-    # Indexed by (name, j, k, t) with k ∈ 1:2.
-    lp_cons = JuMP.Containers.DenseAxisArray{Any}(
+    # Stack two depth × N × T families into a (name, j, k, t) container.
+    lp_a = JuMP.@constraint(
+        model,
+        [name = name_axis, j = 1:(config.depth), t = time_axis],
+        g_var[name, j, t] <= 2.0 * g_var[name, j - 1, t],
+    )
+    lp_b = JuMP.@constraint(
+        model,
+        [name = name_axis, j = 1:(config.depth), t = time_axis],
+        g_var[name, j, t] <= 2.0 * (1.0 - g_var[name, j - 1, t]),
+    )
+    lp_cons = JuMP.Containers.DenseAxisArray{eltype(lp_a.data)}(
         undef, name_axis, 1:(config.depth), 1:2, time_axis,
     )
-    for name in name_axis, j in 1:(config.depth), t in time_axis
-        lp_cons[name, j, 1, t] = JuMP.@constraint(
-            model,
-            g_var[name, j, t] <= 2.0 * g_var[name, j - 1, t],
-        )
-        lp_cons[name, j, 2, t] = JuMP.@constraint(
-            model,
-            g_var[name, j, t] <= 2.0 * (1.0 - g_var[name, j - 1, t]),
-        )
-    end
+    @views lp_cons.data[:, :, 1, :] .= lp_a.data
+    @views lp_cons.data[:, :, 2, :] .= lp_b.data
 
-    # z is bounded below by x² via tangent cuts; pure-LP variable.
     z_var = JuMP.@variable(
         model,
         [name = name_axis, t = time_axis],
         lower_bound = 0.0,
+        upper_bound = z_ub_arr[name],
         base_name = "EpigraphVar",
     )
-    for name in name_axis, t in time_axis
-        JuMP.set_upper_bound(z_var[name, t], z_ub_arr[name])
-    end
 
-    # fL[j] = Σ_{k=1..j} δ² · 2^{−2k} · g_k  (partial sum used in the j-th tangent cut).
-    # Built as a 2D container with time axis only (full-depth sum); the partial
-    # sums for each tangent constraint are formed inline below.
+    # fL = Σ_{j=1..L} δ²·2^{−2j}·g_j  (full-depth residual sum used downstream
+    # by the optional sawtooth tightening; the per-j partial sums for the
+    # tangent cuts are formed inline below).
     fL_expr = JuMP.@expression(
         model,
         [name = name_axis, t = time_axis],
         sum(delta[name]^2 * 2.0^(-2j) * g_var[name, j, t] for j in 1:(config.depth))
     )
 
-    # Tangent-line cuts: z ≥ 0, z ≥ 2·x_min + 2·δ·g₀ − 1, plus depth more cuts
-    # at j = 1..L of the form z ≥ x_min·(2·δ·g₀ + x_min) − fL[j] + δ²·(g₀ − 2^{−2j−2}).
-    tangent_cons = JuMP.Containers.DenseAxisArray{Any}(
+    # Tangent-line cuts:
+    #   k=1: z ≥ 0
+    #   k=2: z ≥ 2·x_min + 2·δ·g₀ − 1               (anchor at xh = 1/2)
+    #   k=j+2 for j=1..L: z ≥ scale_back_g_basis(1:j) − δ²·2^{−2j−2}
+    tangent_zero = JuMP.@constraint(
+        model, [name = name_axis, t = time_axis], z_var[name, t] >= 0.0,
+    )
+    tangent_anchor = JuMP.@constraint(
+        model,
+        [name = name_axis, t = time_axis],
+        z_var[name, t] >=
+        2.0 * x_min_arr[name] - 1.0 + 2.0 * delta[name] * g_var[name, 0, t],
+    )
+    tangent_levels = JuMP.@constraint(
+        model,
+        [name = name_axis, j = 1:(config.depth), t = time_axis],
+        z_var[name, t] >=
+        scale_back_g_basis(
+            x_min_arr[name], delta[name], g_var, name, t, 1:j,
+        ) - delta[name]^2 * 2.0^(-2j - 2),
+    )
+
+    tangent_cons = JuMP.Containers.DenseAxisArray{eltype(tangent_zero.data)}(
         undef, name_axis, 1:(config.depth + 2), time_axis,
     )
-    for name in name_axis, t in time_axis
-        tangent_cons[name, 1, t] = JuMP.@constraint(model, z_var[name, t] >= 0)
-        tangent_cons[name, 2, t] = JuMP.@constraint(
-            model,
-            z_var[name, t] >=
-            2.0 * x_min_arr[name] - 1.0 + 2.0 * delta[name] * g_var[name, 0, t],
-        )
-        for j in 1:(config.depth)
-            tangent_cons[name, j + 2, t] = JuMP.@constraint(
-                model,
-                z_var[name, t] >=
-                x_min_arr[name] *
-                (2.0 * delta[name] * g_var[name, 0, t] + x_min_arr[name]) -
-                sum(
-                    delta[name]^2 * 2.0^(-2k) * g_var[name, k, t] for k in 1:j
-                ) +
-                delta[name]^2 * (g_var[name, 0, t] - 2.0^(-2j - 2)),
-            )
-        end
-    end
+    @views tangent_cons.data[:, 1, :] .= tangent_zero.data
+    @views tangent_cons.data[:, 2, :] .= tangent_anchor.data
+    @views tangent_cons.data[:, 3:end, :] .= tangent_levels.data
 
     approximation = JuMP.@expression(
         model,
@@ -185,89 +207,43 @@ function register_in_container!(
     name_axis = axes(result.approximation, 1)
     time_axis = axes(result.approximation, 2)
     g_levels = axes(result.g_var, 2)
+    lp_lvl_axis = axes(result.lp_constraints, 2)
+    tangent_axis = axes(result.tangent_constraints, 2)
 
     z_target = add_variable_container!(
-        container,
-        EpigraphVariable,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, EpigraphVariable, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        z_target[name, t] = result.z_var[name, t]
-    end
+    z_target.data .= result.z_var.data
 
     g_target = add_variable_container!(
-        container,
-        SawtoothAuxVariable,
-        C,
-        collect(name_axis),
-        g_levels,
-        time_axis;
-        meta,
+        container, SawtoothAuxVariable, C, name_axis, g_levels, time_axis; meta,
     )
-    for name in name_axis, j in g_levels, t in time_axis
-        g_target[name, j, t] = result.g_var[name, j, t]
-    end
+    g_target.data .= result.g_var.data
 
     link_target = add_constraints_container!(
-        container,
-        SawtoothLinkingConstraint,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, SawtoothLinkingConstraint, C, name_axis, time_axis; meta,
     )
+    link_target.data .= result.link_constraints.data
+
     fL_target = add_expression_container!(
-        container,
-        EpigraphTangentExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, EpigraphTangentExpression, C, name_axis, time_axis; meta,
     )
+    fL_target.data .= result.tangent_expressions.data
+
     result_target = add_expression_container!(
-        container,
-        EpigraphExpression,
-        C,
-        collect(name_axis),
-        time_axis;
-        meta,
+        container, EpigraphExpression, C, name_axis, time_axis; meta,
     )
-    for name in name_axis, t in time_axis
-        link_target[name, t] = result.link_constraints[name, t]
-        fL_target[name, t] = result.tangent_expressions[name, t]
-        result_target[name, t] = result.approximation[name, t]
-    end
+    result_target.data .= result.approximation.data
 
     lp_target = add_constraints_container!(
-        container,
-        SawtoothLPConstraint,
-        C,
-        collect(name_axis),
-        1:2,
-        time_axis;
-        meta,
+        container, SawtoothLPConstraint, C, name_axis, lp_lvl_axis, 1:2, time_axis; meta,
     )
-    lp_lvl_axis = axes(result.lp_constraints, 2)
-    for name in name_axis, j in lp_lvl_axis, k in 1:2, t in time_axis
-        lp_target[name, k, t] = result.lp_constraints[name, j, k, t]
-    end
+    lp_target.data .= result.lp_constraints.data
 
-    tangent_axis = axes(result.tangent_constraints, 2)
     tangent_target = add_constraints_container!(
-        container,
-        EpigraphTangentConstraint,
-        C,
-        collect(name_axis),
-        tangent_axis,
-        time_axis;
-        sparse = true,
+        container, EpigraphTangentConstraint, C, name_axis, tangent_axis, time_axis;
         meta,
     )
-    for name in name_axis, k in tangent_axis, t in time_axis
-        tangent_target[(name, k, t)] = result.tangent_constraints[name, k, t]
-    end
+    tangent_target.data .= result.tangent_constraints.data
     return
 end
