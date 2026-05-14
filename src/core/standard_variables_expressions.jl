@@ -50,23 +50,23 @@ struct DCVoltage <: VariableType end
 # dispatches on `::Type{<:FlowSign}`. Both layers resolve at compile time so the
 # numeric multiplier folds away at every call site.
 abstract type FlowSign end
-struct Injection <: FlowSign end
-struct Withdrawal <: FlowSign end
-struct Unsigned <: FlowSign end
+struct FlowInjection <: FlowSign end
+struct FlowWithdrawal <: FlowSign end
+struct FlowUndirected <: FlowSign end
 
 # Default: no directional meaning attached to the variable type.
-flow_sign(::Type{<:VariableType}) = Unsigned
+flow_sign(::Type{<:VariableType}) = FlowUndirected
 
-multiplier_from_sign(::Type{Injection}) = 1.0
-multiplier_from_sign(::Type{Withdrawal}) = -1.0
+multiplier_from_sign(::Type{FlowInjection}) = 1.0
+multiplier_from_sign(::Type{FlowWithdrawal}) = -1.0
 # Variables without flow semantics (OnVariable, StartVariable, ...) keep the
 # legacy 1.0 default so callers that don't care about sign still work.
-multiplier_from_sign(::Type{Unsigned}) = 1.0
+multiplier_from_sign(::Type{FlowUndirected}) = 1.0
 
 # Standard variable types defined here:
-flow_sign(::Type{ActivePowerVariable}) = Injection
-flow_sign(::Type{ActivePowerInVariable}) = Withdrawal
-flow_sign(::Type{ActivePowerOutVariable}) = Injection
+flow_sign(::Type{ActivePowerVariable}) = FlowInjection
+flow_sign(::Type{ActivePowerInVariable}) = FlowWithdrawal
+flow_sign(::Type{ActivePowerOutVariable}) = FlowInjection
 
 #################################################################################
 # Standard Expression Types

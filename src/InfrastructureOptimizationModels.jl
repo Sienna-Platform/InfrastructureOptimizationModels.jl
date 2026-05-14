@@ -469,7 +469,7 @@ export PiecewiseLinearCostVariable
 export RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown
 export DCVoltage
 # Flow-direction trait for variable types
-export FlowSign, Injection, Withdrawal, Unsigned
+export FlowSign, FlowInjection, FlowWithdrawal, FlowUndirected
 export flow_sign, multiplier_from_sign
 # Abstract types needed by POM for type hierarchy
 export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariableType
