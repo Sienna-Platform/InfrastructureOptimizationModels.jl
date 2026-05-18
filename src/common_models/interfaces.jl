@@ -204,29 +204,17 @@ function start_up_cost(
 end
 
 """
-Extension point: Solve the power flow model and update aux-variable inputs.
-Signature: `solve_power_flow!(pf_e_data, container, system)`. Concrete
-implementations require PowerFlows integration; provided in PowerOperationsModels.
-"""
-function solve_power_flow! end
-
-"""
-Extension point: Get the underlying `PowerFlowData` from a `PowerFlowEvaluationData` wrapper.
-Concrete implementation lives in the PowerFlows extension of POM.
-"""
-function get_power_flow_data end
-
-"""
 Extension point: Calculate auxiliary variable values.
 Concrete implementations in PowerOperationsModels for specific aux variable types.
 """
 function calculate_aux_variable_value! end
 
 """
-Extension point: Check if an auxiliary variable type comes from power flow evaluation.
-Default: false. Override in POM for PowerFlowAuxVariableType subtypes.
+Extension point: Check if an auxiliary variable type is produced by an external
+evaluator (see `AbstractEvaluator`). Default: false. Override in POM for
+evaluator-bound aux variable subtypes.
 """
-is_from_power_flow(::Type{<:AuxVariableType}) = false
+is_from_evaluator(::Type{<:AuxVariableType}) = false
 
 """
 Extension point: Get minimum and maximum limits for a given component, constraint type, and device formulation.
