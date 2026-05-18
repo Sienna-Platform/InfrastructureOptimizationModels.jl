@@ -12,11 +12,6 @@ function _check_pm_formulation(::Type{T}) where {T <: AbstractPowerModel}
     end
 end
 
-# Note: PowerFlowEvaluationModel support has been moved to PowerOperationsModels
-# These stub functions maintain API compatibility
-_maybe_flatten_pfem(pfem::Vector) = pfem
-_maybe_flatten_pfem(pfem) = [pfem]
-
 """
 Establishes the NetworkModel for a given AC network formulation type.
 
@@ -39,8 +34,9 @@ Establishes the NetworkModel for a given AC network formulation type.
     subnetworks are inferred from PTDF/VirtualPTDF or discovered from the system.
 - `duals::Vector{DataType}` = Vector{DataType}()
     Constraint types for which duals should be recorded.
-- `power_flow_evaluation::Union{AbstractPowerFlowEvaluationModel, Vector{<:AbstractPowerFlowEvaluationModel}}`
-    Power-flow evaluation model(s). A single model is flattened to a vector internally.
+- `evaluations::EvaluationContainer`
+    External evaluators (e.g. power-flow) keyed by concrete evaluator type.
+    Default is an empty container — no evaluator runs.
 
 # Notes
 - `modeled_branch_types` and `reduced_branch_tracker` are internal fields managed by the model.
@@ -51,8 +47,10 @@ Establishes the NetworkModel for a given AC network formulation type.
 
 # Examples (concrete types like PTDFPowerModel, CopperPlatePowerModel are defined in PowerSimulations)
 # ptdf = PNM.VirtualPTDF(system)
+# ec = EvaluationContainer()
+# add_evaluator!(ec, PFS.PowerFlowEvaluationModel, PFS.PowerFlowEvaluationModel())
 # nw = NetworkModel(PTDFPowerModel; PTDF_matrix = ptdf, reduce_radial_branches = true,
-#                   power_flow_evaluation = PFS.PowerFlowEvaluationModel())
+#                   evaluations = ec)
 #
 # nw2 = NetworkModel(CopperPlatePowerModel; subnetworks = Dict(1 => Set([1,2,3])))
 """
@@ -66,11 +64,7 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
     network_reduction::PNM.NetworkReductionData
     reduce_radial_branches::Bool
     reduce_degree_two_branches::Bool
-    # Stored as Vector{<:Any} so external power flow types (e.g.,
-    # `PowerFlows.PowerFlowEvaluationModel`) that don't subtype IS's
-    # `AbstractPowerFlowEvaluationModel` can be supplied here. The actual
-    # validation/dispatch happens in `add_power_flow_data!` in POM/PowerFlowsExt.
-    power_flow_evaluation::Vector
+    evaluations::EvaluationContainer
     subsystem::Union{Nothing, String}
     hvdc_network_model::Union{Nothing, AbstractHVDCNetworkModel}
     modeled_branch_types::Vector{DataType}
@@ -85,7 +79,7 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
         reduce_degree_two_branches = false,
         subnetworks = Dict{Int, Set{Int}}(),
         duals = Vector{DataType}(),
-        power_flow_evaluation = AbstractPowerFlowEvaluationModel[],
+        evaluations = EvaluationContainer(),
         hvdc_network_model = nothing,
     ) where {T <: AbstractPowerModel}
         _check_pm_formulation(T)
@@ -99,7 +93,7 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
             PNM.NetworkReductionData(),
             reduce_radial_branches,
             reduce_degree_two_branches,
-            _maybe_flatten_pfem(power_flow_evaluation),
+            evaluations,
             nothing,
             hvdc_network_model,
             Vector{DataType}(),
@@ -120,7 +114,7 @@ get_reference_buses(m::NetworkModel{T}) where {T <: AbstractPowerModel} =
     collect(keys(m.subnetworks))
 get_subnetworks(m::NetworkModel) = m.subnetworks
 get_bus_area_map(m::NetworkModel) = m.bus_area_map
-get_power_flow_evaluation(m::NetworkModel) = m.power_flow_evaluation
+get_evaluations(m::NetworkModel) = m.evaluations
 has_subnetworks(m::NetworkModel) = !isempty(m.bus_area_map)
 get_subsystem(m::NetworkModel) = m.subsystem
 get_hvdc_network_model(m::NetworkModel) = m.hvdc_network_model
