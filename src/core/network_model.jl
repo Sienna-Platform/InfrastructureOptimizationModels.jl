@@ -138,6 +138,85 @@ function add_dual!(model::NetworkModel, dual)
     return
 end
 
+function _build_network_reductions(
+    model::NetworkModel,
+    irreducible_buses::Vector{Int64},
+)
+    reductions = PNM.NetworkReduction[]
+    if model.reduce_radial_branches
+        push!(reductions, PNM.RadialReduction(; irreducible_buses = irreducible_buses))
+    end
+    if model.reduce_degree_two_branches
+        push!(
+            reductions,
+            PNM.DegreeTwoReduction(; irreducible_buses = irreducible_buses),
+        )
+    end
+    return reductions
+end
+
+# Verify a user-provided MODF Matrix was built with the same network reduction
+# as the active reduction (derived from the PTDF Matrix). Equality of the bus
+# reduction map is the decisive check: it fixes the reduced bus/arc numbering
+# the post-contingency builder uses to index `modf_matrix[arc, outage_spec]`.
+function _validate_provided_modf_reduction!(
+    modf::PNM.VirtualMODF,
+    network_reduction::PNM.NetworkReductionData,
+)
+    if PNM.get_bus_reduction_map(modf.network_reduction_data) !=
+       PNM.get_bus_reduction_map(network_reduction)
+        throw(
+            IS.ConflictingInputsError(
+                "The provided MODF Matrix was built with a different network \
+                reduction than the active reduction derived from the PTDF \
+                Matrix. Rebuild the MODF with a consistent network reduction, \
+                or omit it so it is recalculated automatically.",
+            ),
+        )
+    end
+    return
+end
+
+"""
+True if any branch DeviceModel in `branch_models` uses a formulation that
+consumes `DeviceModel.outages` (per `_formulation_supports_outages`). POM's
+`AbstractSecurityConstrainedStaticBranch` specialization makes that trait
+return `true`; non-SC formulations default to `false`.
+"""
+function _template_has_outage_aware_branch(branch_models::BranchModelContainer)
+    for v in values(branch_models)
+        if _formulation_supports_outages(get_formulation(v))
+            return true
+        end
+    end
+    return false
+end
+
+"""
+Drop outages from each outage-aware-branch `DeviceModel` whose UUID isn't
+registered on `modf_matrix`; without this they'd `KeyError` downstream in
+post-contingency expression construction. PNM's `_register_outages!` silently
+skips outages it can't convert to a `NetworkModification`, so the IOM-side
+view of `m.outages` can be a strict superset of what's actually usable.
+"""
+function _consolidate_device_model_outages_with_modf!(
+    branch_models::BranchModelContainer,
+    modf_matrix::PNM.VirtualMODF,
+)
+    registered = PNM.get_registered_contingencies(modf_matrix)
+    for m in values(branch_models)
+        _formulation_supports_outages(get_formulation(m)) || continue
+        for uuid in setdiff(keys(m.outages), keys(registered))
+            @warn "Outage $(uuid) (DeviceModel{$(get_component_type(m)), \
+                   $(get_formulation(m))}) is not registered on the MODF \
+                   matrix and will not contribute any post-contingency \
+                   constraints." _group = LOG_GROUP_MODELS_VALIDATION
+            delete!(m.outages, uuid)
+        end
+    end
+    return
+end
+
 # Default implementations for network model compatibility checks
 # These can be extended in PowerOperationsModels for specific network formulations
 requires_all_branch_models(::Type{<:AbstractPowerModel}) = true
