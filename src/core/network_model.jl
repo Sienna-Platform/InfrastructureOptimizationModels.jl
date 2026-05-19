@@ -28,8 +28,11 @@ Establishes the NetworkModel for a given AC network formulation type.
     Adds slack buses to the network modeling.
 - `PTDF_matrix::Union{PNM.PowerNetworkMatrix, Nothing}` = nothing
     PTDF/VirtualPTDF matrix produced by PowerNetworkMatrices (optional).
-- `LODF_matrix::Union{PNM.PowerNetworkMatrix, Nothing}` = nothing
-    LODF/VirtualLODF matrix produced by PowerNetworkMatrices (optional).
+- `MODF_matrix::Union{PNM.VirtualMODF, Nothing}` = nothing
+    VirtualMODF matrix for security-constrained models (N-k contingencies).
+    If `nothing` and the template includes a security-constrained branch
+    formulation, the matrix is constructed from the system during
+    `instantiate_network_model!` (same pattern as PTDF).
 - `reduce_radial_branches::Bool` = false
     Enable radial branch reduction when building network matrices.
 - `reduce_degree_two_branches::Bool` = false
@@ -45,7 +48,7 @@ Establishes the NetworkModel for a given AC network formulation type.
 # Notes
 - `modeled_branch_types` and `reduced_branch_tracker` are internal fields managed by the model.
 - `subsystem` can be set after construction via `set_subsystem!(model, id)`.
-- PTDF/LODF inputs are validated against the requested reduction flags and may raise
+- PTDF inputs are validated against the requested reduction flags and may raise
   a ConflictingInputsError if they are inconsistent with `reduce_radial_branches`
   or `reduce_degree_two_branches`.
 
@@ -59,7 +62,7 @@ Establishes the NetworkModel for a given AC network formulation type.
 mutable struct NetworkModel{T <: AbstractPowerModel}
     use_slacks::Bool
     PTDF_matrix::Union{Nothing, PNM.PowerNetworkMatrix}
-    LODF_matrix::Union{Nothing, PNM.PowerNetworkMatrix}
+    MODF_matrix::Union{Nothing, PNM.VirtualMODF}
     subnetworks::Dict{Int, Set{Int}}
     bus_area_map::Dict{IS.InfrastructureSystemsComponent, Int}
     duals::Vector{DataType}
@@ -76,7 +79,7 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
         ::Type{T};
         use_slacks = false,
         PTDF_matrix = nothing,
-        LODF_matrix = nothing,
+        MODF_matrix = nothing,
         reduce_radial_branches = false,
         reduce_degree_two_branches = false,
         subnetworks = Dict{Int, Set{Int}}(),
@@ -91,7 +94,7 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
         new{T}(
             use_slacks,
             PTDF_matrix,
-            LODF_matrix,
+            MODF_matrix,
             subnetworks,
             Dict{IS.InfrastructureSystemsComponent, Int}(),
             duals,
@@ -109,7 +112,7 @@ end
 
 get_use_slacks(m::NetworkModel) = m.use_slacks
 get_PTDF_matrix(m::NetworkModel) = m.PTDF_matrix
-get_LODF_matrix(m::NetworkModel) = m.LODF_matrix
+get_MODF_matrix(m::NetworkModel) = m.MODF_matrix
 get_reduce_radial_branches(m::NetworkModel) = m.reduce_radial_branches
 get_network_reduction(m::NetworkModel) = m.network_reduction
 get_duals(m::NetworkModel) = m.duals

@@ -24,6 +24,7 @@ end
         duals::Vector{DataType},
         services::Vector{ServiceModel}
         attributes::Dict{String, Any}
+        outages::AbstractVector{<:IS.InfrastructureSystemsComponent}
     )
 
 Establishes the model for a particular device specified by type. Uses the keyword argument
@@ -38,6 +39,15 @@ feedforward to enable passing values between operation model at simulation time
   - `duals::Vector{DataType} = Vector{DataType}()`: use to pass constraint type to calculate the duals. The DataType needs to be a valid ConstraintType
   - `time_series_names::Dict{Type{<:TimeSeriesParameter}, String} = get_default_time_series_names(D, B)` : use to specify time series names associated to the device`
   - `attributes::Dict{String, Any} = get_default_attributes(D, B)` : use to specify attributes to the device
+  - `outages::AbstractVector{<:IS.InfrastructureSystemsComponent} = IS.InfrastructureSystemsComponent[]` :
+    N-1 contingencies to model when the formulation is security-constrained. The
+    constructor stores the `IS.get_uuid(outage)` of each entry as a key in the model's
+    `outages::Dict{UUID, Dict{DataType, Set{String}}}` field with empty inner maps;
+    template validation in downstream packages fills the inner maps with the per-type
+    set of monitored component names that each outage carries. Power-specific
+    validation (e.g. checking that entries are `PSY.Outage` subtypes) lives in
+    `PowerOperationsModels`. If `B` is not security-constrained, a non-empty value is
+    dropped with a warning.
 
 # Example
 ```julia
@@ -55,6 +65,7 @@ mutable struct DeviceModel{
     time_series_names::Dict{Type{<:ParameterType}, String}
     attributes::Dict{String, Any}
     subsystem::Union{Nothing, String}
+    outages::Dict{Base.UUID, Dict{DataType, Set{String}}}
     device_cache::Vector{D}
     function DeviceModel(
         ::Type{D},
@@ -64,6 +75,8 @@ mutable struct DeviceModel{
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
         attributes = Dict{String, Any}(),
+        outages::AbstractVector{<:IS.InfrastructureSystemsComponent} =
+        IS.InfrastructureSystemsComponent[],
     ) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
         attributes_ = get_default_attributes(D, B)
         for (k, v) in attributes
@@ -72,6 +85,7 @@ mutable struct DeviceModel{
 
         _check_device_formulation(D)
         _check_device_formulation(B)
+        outages_field = _add_device_model_outages(D, B, outages)
         new{D, B}(
             feedforwards,
             use_slacks,
@@ -80,10 +94,34 @@ mutable struct DeviceModel{
             time_series_names,
             attributes_,
             nothing,
+            outages_field,
             Vector{D}(),
         )
     end
 end
+
+function _add_device_model_outages(
+    ::Type{D},
+    ::Type{B},
+    outages::AbstractVector{<:IS.InfrastructureSystemsComponent},
+) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
+    field = Dict{Base.UUID, Dict{DataType, Set{String}}}()
+    isempty(outages) && return field
+    if !_formulation_supports_outages(B)
+        @warn "DeviceModel{$D, $B}: 'outages' kwarg ignored — formulation does \
+               not support N-1 contingencies."
+        return field
+    end
+    for outage in outages
+        field[IS.get_uuid(outage)] = Dict{DataType, Set{String}}()
+    end
+    return field
+end
+
+# Multi-dispatch flag for formulations that consume `DeviceModel.outages`.
+# Default: false. Security-constrained branch formulations live in
+# PowerOperationsModels and specialize this trait to `true` there.
+_formulation_supports_outages(::Type{<:AbstractDeviceFormulation}) = false
 
 get_component_type(
     ::DeviceModel{D, B},
@@ -101,6 +139,7 @@ get_attributes(m::DeviceModel) = m.attributes
 get_attribute(::Nothing, ::String) = nothing
 get_attribute(m::DeviceModel, key::String) = get(m.attributes, key, nothing)
 get_subsystem(m::DeviceModel) = m.subsystem
+get_outages(m::DeviceModel) = m.outages
 get_device_cache(m::DeviceModel) = m.device_cache
 
 set_subsystem!(m::DeviceModel, id::String) = m.subsystem = id

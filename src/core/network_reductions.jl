@@ -37,7 +37,8 @@ Base.isempty(
 ) =
     isempty(reduction_tracker.variable_dict) &&
     isempty(reduction_tracker.parameter_dict) &&
-    isempty(reduction_tracker.constraint_dict)
+    isempty(reduction_tracker.constraint_dict) &&
+    isempty(reduction_tracker.constraint_map_by_type)
 
 Base.empty!(
     reduction_tracker::BranchReductionOptimizationTracker,
@@ -45,6 +46,7 @@ Base.empty!(
     empty!(reduction_tracker.variable_dict)
     empty!(reduction_tracker.parameter_dict)
     empty!(reduction_tracker.constraint_dict)
+    empty!(reduction_tracker.constraint_map_by_type)
 end
 
 function BranchReductionOptimizationTracker()
