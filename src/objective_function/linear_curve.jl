@@ -20,7 +20,8 @@ function add_variable_cost_to_objective!(
     proportional_term = get_proportional_term(get_function_data(value_curve))
     multiplier = objective_function_multiplier(T, U)
     add_proportional_cost_invariant!(
-        container, T, component, proportional_term, power_units, multiplier)
+        container, T, component, proportional_term, power_units, multiplier,
+        FuelCostExpression)
     return
 end
 
@@ -59,7 +60,8 @@ function add_variable_cost_to_objective!(
     # Multiplier is not necessary here. There is no negative cost for fuel curves.
     if fuel_cost isa Float64
         add_proportional_cost_invariant!(
-            container, T, component, proportional_term, power_units, fuel_cost)
+            container, T, component, proportional_term, power_units, fuel_cost,
+            FuelCostExpression)
     else
         # Time-varying fuel cost: normalize, then delegate to variant path
         base_power = get_model_base_power(container)

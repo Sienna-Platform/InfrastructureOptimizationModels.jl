@@ -20,6 +20,8 @@ function add_cost_to_expression!(
             cost_expression,
         )
     end
+    _propagate_to_production_cost!(
+        container, S, T, component_name, time_period, cost_expression)
     return
 end
 
@@ -69,7 +71,8 @@ function _add_vom_cost_to_objective!(
     variable_cost_data = variable_cost(op_cost, T, C, U)
     power_units = IS.get_power_units(variable_cost_data)
     cost_term = IS.get_proportional_term(IS.get_vom_cost(variable_cost_data))
-    add_proportional_cost_invariant!(container, T, component, cost_term, power_units)
+    add_proportional_cost_invariant!(
+        container, T, component, cost_term, power_units, 1.0, VOMCostExpression)
     return
 end
 
@@ -114,7 +117,7 @@ function _add_time_varying_fuel_variable_cost!(
             container,
             expression[name, t],
             FuelCostParameter,
-            ProductionCostExpression,
+            FuelCostExpression,
             V,
             name,
             t,

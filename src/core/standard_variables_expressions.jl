@@ -50,6 +50,13 @@ abstract type PostContingencyExpressions <: ExpressionType end
 
 # Concrete expression types used in IOM code
 struct ProductionCostExpression <: CostExpressions end
+abstract type ConstituentCostExpression <: CostExpressions end
+struct FuelCostExpression <: ConstituentCostExpression end
+struct StartUpCostExpression <: ConstituentCostExpression end
+struct ShutDownCostExpression <: ConstituentCostExpression end
+struct FixedCostExpression <: ConstituentCostExpression end
+struct VOMCostExpression <: ConstituentCostExpression end
+struct CurtailmentCostExpression <: CostExpressions end
 struct FuelConsumptionExpression <: ExpressionType end
 struct ActivePowerRangeExpressionLB <: RangeConstraintLBExpressions end
 struct ActivePowerRangeExpressionUB <: RangeConstraintUBExpressions end
@@ -75,8 +82,11 @@ should_write_resulting_value(::Type{ActivePowerBalance}) = true
 should_write_resulting_value(::Type{ReactivePowerBalance}) = true
 should_write_resulting_value(::Type{DCCurrentBalance}) = true
 
-# ProductionCostExpression-specific container method (moved here from optimization_container.jl
-# because it requires ProductionCostExpression to be defined first)
+# CostExpressions container method (moved here from optimization_container.jl
+# because it requires the cost expression types to be defined first). Covers
+# ProductionCostExpression, ConstituentCostExpression subtypes, and
+# CurtailmentCostExpression — all use a JuMP.QuadExpr container so quadratic
+# fuel terms can be stored in the same expression.
 function add_expression_container!(
     container::OptimizationContainer,
     ::Type{T},
@@ -85,7 +95,7 @@ function add_expression_container!(
     sparse = false,
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {
-    T <: ProductionCostExpression,
+    T <: CostExpressions,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
 }
     expr_container =

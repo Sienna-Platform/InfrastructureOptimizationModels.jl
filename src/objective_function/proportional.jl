@@ -29,14 +29,14 @@ function add_proportional_cost!(
         skip = skip_proportional_cost(d)
         for t in get_time_steps(container)
             if skip
-                # must-run etc.: bookkeep in ProductionCostExpression but not in objective
+                # must-run etc.: bookkeep in FixedCostExpression but not in objective
                 add_cost_to_expression!(
-                    container, ProductionCostExpression, rate, T, name, t)
+                    container, FixedCostExpression, rate, T, name, t)
             else
                 variable = get_variable(container, U, T)[name, t]
                 add_cost_term_invariant!(
                     container, variable, rate,
-                    ProductionCostExpression, T, name, t,
+                    FixedCostExpression, T, name, t,
                 )
             end
         end
@@ -75,7 +75,7 @@ function add_proportional_cost_maybe_time_variant!(
                 # Only add to expression, not objective
                 add_cost_to_expression!(
                     container,
-                    ProductionCostExpression,
+                    FixedCostExpression,
                     rate,
                     T,
                     name,
@@ -85,10 +85,10 @@ function add_proportional_cost_maybe_time_variant!(
                 variable = get_variable(container, U, T)[name, t]
                 if add_as_time_variant
                     add_cost_term_variant!(
-                        container, variable, rate, ProductionCostExpression, T, name, t)
+                        container, variable, rate, FixedCostExpression, T, name, t)
                 else
                     add_cost_term_invariant!(
-                        container, variable, rate, ProductionCostExpression, T, name, t)
+                        container, variable, rate, FixedCostExpression, T, name, t)
                 end
             end
         end

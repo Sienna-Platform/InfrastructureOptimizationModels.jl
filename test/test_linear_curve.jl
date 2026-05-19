@@ -73,6 +73,8 @@ end
             device,
             25.0,
             IS.UnitSystem.NATURAL_UNITS,
+            1.0,
+            IOM.ProductionCostExpression,
         )
 
         expected_coef = 25.0 * 100.0 * 1.0
@@ -104,6 +106,7 @@ end
             20.0,
             IS.UnitSystem.SYSTEM_BASE,
             2.0,
+            IOM.ProductionCostExpression,
         )
 
         expected_coef = 20.0 * 2.0 * 0.25
@@ -128,6 +131,8 @@ end
             device,
             0.0,
             IS.UnitSystem.NATURAL_UNITS,
+            1.0,
+            IOM.ProductionCostExpression,
         )
 
         # Should have zero coefficients since cost_term is zero
