@@ -25,83 +25,169 @@ function HybSConfig(quad_config::QuadraticApproxConfig, epigraph_depth::Int)
 end
 
 """
-Pure-JuMP result of `build_bilinear_approx(::HybSConfig, ...)`.
-"""
-struct HybSBilinearResult{
-    A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
-    XSQ <: QuadraticApproxResult,
-    YSQ <: QuadraticApproxResult,
-    P1 <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
-    P2 <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
-    ZP1 <: EpigraphQuadResult,
-    ZP2 <: EpigraphQuadResult,
-    ZV <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 2},
-    BC <: JuMP.Containers.DenseAxisArray,
-    MC <: Union{Nothing, NamedTuple{(:lower, :upper)}},
-} <: BilinearApproxResult
-    approximation::A
-    xsq_result::XSQ
-    ysq_result::YSQ
-    sum_expression::P1
-    diff_expression::P2
-    sum_epigraph::ZP1
-    diff_epigraph::ZP2
-    z_var::ZV
-    bound_constraints::BC
-    mccormick_constraints::MC
-end
+    build_bilinear_approx(config::HybSConfig, model, x, y, x_min, x_max, y_min, y_max)
 
-"""
-    build_bilinear_approx(config::HybSConfig, model, x, y, x_bounds, y_bounds)
+Scalar form: build x² and y² via the chosen quadratic method, build
+(x+y)² and (x−y)² via the epigraph Q^{L1} relaxation, and constrain a
+fresh product variable z with two-sided bounds derived from the Bin2 lower
+/ Bin3 upper identities.
 
-HybS bilinear approximation. Builds x² and y² via the chosen quadratic
-method, builds (x+y)² and (x−y)² via the epigraph Q^{L1} relaxation, and
-constrains a fresh product variable z with two-sided bounds derived from
-the Bin2 lower / Bin3 upper identities.
+Returns `(; approximation, xsq, ysq, sum_expression, diff_expression,
+sum_epigraph, diff_epigraph, z_var, bound_constraints, mccormick_constraints)`.
 """
 function build_bilinear_approx(
     config::HybSConfig,
     model::JuMP.Model,
-    x,
-    y,
-    x_bounds::Vector{MinMax},
-    y_bounds::Vector{MinMax},
+    x::JuMP.AbstractJuMPScalar,
+    y::JuMP.AbstractJuMPScalar,
+    x_min::Float64,
+    x_max::Float64,
+    y_min::Float64,
+    y_max::Float64,
 )
-    xsq = build_quadratic_approx(config.quad_config, model, x, x_bounds)
-    ysq = build_quadratic_approx(config.quad_config, model, y, y_bounds)
-    return _build_hybs_with_precomputed(
-        config, model, x, y, xsq, ysq, x_bounds, y_bounds,
+    xsq = build_quadratic_approx(config.quad_config, model, x, x_min, x_max)
+    ysq = build_quadratic_approx(config.quad_config, model, y, y_min, y_max)
+    return _build_hybs_scalar(
+        config, model, x, y, xsq, ysq, x_min, x_max, y_min, y_max,
     )
 end
 
-# Shared math between the standard and precomputed-form entrypoints. Wraps
-# pre-existing x² / y² approximations behind a `QuadraticApproxResult`-shaped
-# adapter so the call site can come from either flow.
-function _build_hybs_with_precomputed(
+# Shared math between the standard and precomputed-form scalar entrypoints.
+# `xsq`/`ysq` are NamedTuples (or any object with an `.approximation` field).
+function _build_hybs_scalar(
     config::HybSConfig,
     model::JuMP.Model,
-    x,
-    y,
-    xsq::QuadraticApproxResult,
-    ysq::QuadraticApproxResult,
+    x::JuMP.AbstractJuMPScalar,
+    y::JuMP.AbstractJuMPScalar,
+    xsq,
+    ysq,
+    x_min::Float64,
+    x_max::Float64,
+    y_min::Float64,
+    y_max::Float64,
+)
+    p1_expr = JuMP.@expression(model, x + y)
+    p2_expr = JuMP.@expression(model, x - y)
+    p1_min, p1_max = x_min + y_min, x_max + y_max
+    p2_min, p2_max = x_min - y_max, x_max - y_min
+
+    epi_cfg = EpigraphQuadConfig(config.epigraph_depth)
+    zp1 = build_quadratic_approx(epi_cfg, model, p1_expr, p1_min, p1_max)
+    zp2 = build_quadratic_approx(epi_cfg, model, p2_expr, p2_min, p2_max)
+
+    z_lo = min(x_min * y_min, x_min * y_max, x_max * y_min, x_max * y_max)
+    z_hi = max(x_min * y_min, x_min * y_max, x_max * y_min, x_max * y_max)
+    z_var = JuMP.@variable(
+        model, lower_bound = z_lo, upper_bound = z_hi, base_name = "HybSProduct",
+    )
+
+    bound_1 = JuMP.@constraint(
+        model,
+        z_var >= 0.5 * (zp1.approximation - xsq.approximation - ysq.approximation),
+    )
+    bound_2 = JuMP.@constraint(
+        model,
+        z_var <= 0.5 * (xsq.approximation + ysq.approximation - zp2.approximation),
+    )
+    bound_cons = JuMP.Containers.DenseAxisArray{JuMP.ConstraintRef}(undef, 1:2)
+    bound_cons[1] = bound_1
+    bound_cons[2] = bound_2
+
+    approximation = JuMP.@expression(model, 1.0 * z_var)
+
+    mc = config.add_mccormick ?
+        build_mccormick_envelope(
+            model, x, y, z_var, x_min, x_max, y_min, y_max,
+        ) : nothing
+
+    return (;
+        approximation,
+        xsq,
+        ysq,
+        sum_expression = p1_expr,
+        diff_expression = p2_expr,
+        sum_epigraph = zp1,
+        diff_epigraph = zp2,
+        z_var,
+        bound_constraints = bound_cons,
+        mccormick_constraints = mc,
+    )
+end
+
+"""
+    add_bilinear_approx!(config::HybSConfig, container, ::Type{C}, x_var, y_var, x_bounds, y_bounds, meta)
+
+Build x² and y² via `add_quadratic_approx!(config.quad_config, ...)`,
+build the (x+y) and (x−y) expression containers, build their epigraphs via
+`add_quadratic_approx!(EpigraphQuadConfig(...), ...)`, then allocate the
+HybS product variable + bound constraints and assemble per cell.
+"""
+function add_bilinear_approx!(
+    config::HybSConfig,
+    container::OptimizationContainer,
+    ::Type{C},
+    x_var,
+    y_var,
     x_bounds::Vector{MinMax},
     y_bounds::Vector{MinMax},
-)
-    name_axis = axes(x, 1)
-    time_axis = axes(x, 2)
-    IS.@assert_op length(name_axis) == length(x_bounds)
-    IS.@assert_op length(name_axis) == length(y_bounds)
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    xsq = add_quadratic_approx!(config.quad_config, container, C, x_var, x_bounds, meta * "_x")
+    ysq = add_quadratic_approx!(config.quad_config, container, C, y_var, y_bounds, meta * "_y")
+    return _add_hybs_adapter!(
+        container, C, config, x_var, y_var, xsq, ysq, x_bounds, y_bounds, meta,
+    )
+end
 
-    p1_expr = JuMP.@expression(
-        model,
-        [name = name_axis, t = time_axis],
-        x[name, t] + y[name, t]
+"""
+    add_bilinear_approx!(config::HybSConfig, container, ::Type{C}, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
+
+Precomputed-form: accepts already-built `xsq` ≈ x² and `ysq` ≈ y² 2D
+expression containers; builds the HybS pieces on top.
+"""
+function add_bilinear_approx!(
+    config::HybSConfig,
+    container::OptimizationContainer,
+    ::Type{C},
+    xsq,
+    ysq,
+    x_var,
+    y_var,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    return _add_hybs_adapter!(
+        container, C, config, x_var, y_var, xsq, ysq, x_bounds, y_bounds, meta,
     )
-    p2_expr = JuMP.@expression(
-        model,
-        [name = name_axis, t = time_axis],
-        x[name, t] - y[name, t]
+end
+
+# Allocate the HybS-specific containers (sum/diff exprs, two epigraphs, z var,
+# bounds, approximation, optional McCormick) and loop (name, t) to assemble.
+function _add_hybs_adapter!(
+    container::OptimizationContainer, ::Type{C}, config::HybSConfig,
+    x_var, y_var, xsq, ysq, x_bounds, y_bounds, meta,
+) where {C <: IS.InfrastructureSystemsComponent}
+    name_axis = axes(x_var, 1)
+    time_axis = axes(x_var, 2)
+    @assert length(name_axis) == length(x_bounds)
+    @assert length(name_axis) == length(y_bounds)
+    model = get_jump_model(container)
+
+    p1_target = add_expression_container!(
+        container, VariableSumExpression, C, name_axis, time_axis;
+        meta = meta * "_plus",
     )
+    p2_target = add_expression_container!(
+        container, VariableDifferenceExpression, C, name_axis, time_axis;
+        meta = meta * "_diff",
+    )
+    for (i, name) in enumerate(name_axis)
+        for t in time_axis
+            p1_target[name, t] = x_var[name, t] + y_var[name, t]
+            p2_target[name, t] = x_var[name, t] - y_var[name, t]
+        end
+    end
     p1_bounds = [
         (min = x_bounds[i].min + y_bounds[i].min,
             max = x_bounds[i].max + y_bounds[i].max)
@@ -114,192 +200,51 @@ function _build_hybs_with_precomputed(
     ]
 
     epi_cfg = EpigraphQuadConfig(config.epigraph_depth)
-    zp1 = build_quadratic_approx(epi_cfg, model, p1_expr, p1_bounds)
-    zp2 = build_quadratic_approx(epi_cfg, model, p2_expr, p2_bounds)
+    zp1 = add_quadratic_approx!(epi_cfg, container, C, p1_target, p1_bounds, meta * "_plus")
+    zp2 = add_quadratic_approx!(epi_cfg, container, C, p2_target, p2_bounds, meta * "_diff")
 
-    z_lo = JuMP.Containers.DenseAxisArray(
-        [
-            min(
-                x_bounds[i].min * y_bounds[i].min,
-                x_bounds[i].min * y_bounds[i].max,
-                x_bounds[i].max * y_bounds[i].min,
-                x_bounds[i].max * y_bounds[i].max,
-            ) for i in eachindex(x_bounds)
-        ],
-        name_axis,
+    z_target = add_variable_container!(
+        container, BilinearProductVariable, C, name_axis, time_axis; meta,
     )
-    z_hi = JuMP.Containers.DenseAxisArray(
-        [
-            max(
-                x_bounds[i].min * y_bounds[i].min,
-                x_bounds[i].min * y_bounds[i].max,
-                x_bounds[i].max * y_bounds[i].min,
-                x_bounds[i].max * y_bounds[i].max,
-            ) for i in eachindex(x_bounds)
-        ],
-        name_axis,
+    bound_target = add_constraints_container!(
+        container, HybSBoundConstraint, C, name_axis, 1:2, time_axis; meta,
     )
+    approx_target = add_expression_container!(
+        container, BilinearProductExpression, C, name_axis, time_axis; meta,
+    )
+    mc_target = config.add_mccormick ?
+        add_constraints_container!(
+            container, McCormickConstraint, C, name_axis, 1:4, time_axis; meta,
+        ) : nothing
 
-    z_var = JuMP.@variable(
-        model,
-        [name = name_axis, t = time_axis],
-        lower_bound = z_lo[name],
-        upper_bound = z_hi[name],
-        base_name = "HybSProduct",
-    )
-
-    # Bin2 lower bound: z ≥ ½·(zp1 − zx − zy)
-    bound_1 = JuMP.@constraint(
-        model,
-        [name = name_axis, t = time_axis],
-        z_var[name, t] >=
-        0.5 * (
-            zp1.approximation[name, t] - xsq.approximation[name, t] -
-            ysq.approximation[name, t]
-        ),
-    )
-    # Bin3 upper bound: z ≤ ½·(zx + zy − zp2)
-    bound_2 = JuMP.@constraint(
-        model,
-        [name = name_axis, t = time_axis],
-        z_var[name, t] <=
-        0.5 * (
-            xsq.approximation[name, t] + ysq.approximation[name, t] -
-            zp2.approximation[name, t]
-        ),
-    )
-    # bound_1 is `z >= …` (GreaterThan), bound_2 is `z <= …` (LessThan) — use the
-    # abstract ConstraintRef so both kinds fit in the same container.
-    bound_cons = JuMP.Containers.DenseAxisArray{JuMP.ConstraintRef}(
-        undef, name_axis, 1:2, time_axis,
-    )
-    @views bound_cons.data[:, 1, :] .= bound_1.data
-    @views bound_cons.data[:, 2, :] .= bound_2.data
-
-    approximation = JuMP.@expression(
-        model,
-        [name = name_axis, t = time_axis],
-        1.0 * z_var[name, t]
-    )
-
-    mc = if config.add_mccormick
-        build_mccormick_envelope(model, x, y, z_var, x_bounds, y_bounds)
-    else
-        nothing
+    for (i, name) in enumerate(name_axis)
+        xmn, xmx = x_bounds[i].min, x_bounds[i].max
+        ymn, ymx = y_bounds[i].min, y_bounds[i].max
+        z_lo = min(xmn * ymn, xmn * ymx, xmx * ymn, xmx * ymx)
+        z_hi = max(xmn * ymn, xmn * ymx, xmx * ymn, xmx * ymx)
+        for t in time_axis
+            z_v = JuMP.@variable(
+                model, lower_bound = z_lo, upper_bound = z_hi,
+                base_name = "HybSProduct",
+            )
+            z_target[name, t] = z_v
+            bound_target[name, 1, t] = JuMP.@constraint(
+                model, z_v >= 0.5 * (zp1[name, t] - xsq[name, t] - ysq[name, t]),
+            )
+            bound_target[name, 2, t] = JuMP.@constraint(
+                model, z_v <= 0.5 * (xsq[name, t] + ysq[name, t] - zp2[name, t]),
+            )
+            approx_target[name, t] = JuMP.@expression(model, 1.0 * z_v)
+            if config.add_mccormick
+                r = build_mccormick_envelope(
+                    model, x_var[name, t], y_var[name, t], z_v,
+                    xmn, xmx, ymn, ymx,
+                )
+                for (k, ref) in enumerate(r)
+                    mc_target[name, k, t] = ref
+                end
+            end
+        end
     end
-
-    return HybSBilinearResult(
-        approximation, xsq, ysq, p1_expr, p2_expr, zp1, zp2,
-        z_var, bound_cons, mc,
-    )
-end
-
-function register_in_container!(
-    container::OptimizationContainer,
-    ::Type{C},
-    result::HybSBilinearResult,
-    meta::String,
-) where {C <: IS.InfrastructureSystemsComponent}
-    register_in_container!(container, C, result.xsq_result, meta * "_x")
-    register_in_container!(container, C, result.ysq_result, meta * "_y")
-    register_in_container!(container, C, result.sum_epigraph, meta * "_plus")
-    register_in_container!(container, C, result.diff_epigraph, meta * "_diff")
-
-    name_axis = axes(result.approximation, 1)
-    time_axis = axes(result.approximation, 2)
-
-    p1_target = add_expression_container!(
-        container, VariableSumExpression, C, name_axis, time_axis;
-        meta = meta * "_plus",
-    )
-    p1_target.data .= result.sum_expression.data
-
-    p2_target = add_expression_container!(
-        container, VariableDifferenceExpression, C, name_axis, time_axis;
-        meta = meta * "_diff",
-    )
-    p2_target.data .= result.diff_expression.data
-
-    z_target = add_variable_container!(
-        container, BilinearProductVariable, C, name_axis, time_axis; meta,
-    )
-    z_target.data .= result.z_var.data
-
-    bound_target = add_constraints_container!(
-        container, HybSBoundConstraint, C, name_axis, 1:2, time_axis; meta,
-    )
-    bound_target.data .= result.bound_constraints.data
-
-    result_target = add_expression_container!(
-        container, BilinearProductExpression, C, name_axis, time_axis; meta,
-    )
-    result_target.data .= result.approximation.data
-
-    register_mccormick_envelope!(container, C, result.mccormick_constraints, meta)
-    return
-end
-
-"""
-    add_bilinear_approx!(config::HybSConfig, container, C, names, time_steps,
-                         xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
-
-Precomputed-form entrypoint: accepts already-built quadratic approximation
-expression containers `xsq` ≈ x² and `ysq` ≈ y², and builds the HybS bilinear
-approximation on top without re-computing them.
-"""
-function add_bilinear_approx!(
-    config::HybSConfig,
-    container::OptimizationContainer,
-    ::Type{C},
-    names::Vector{String},
-    time_steps::UnitRange{Int},
-    xsq,
-    ysq,
-    x_var,
-    y_var,
-    x_bounds::Vector{MinMax},
-    y_bounds::Vector{MinMax},
-    meta::String,
-) where {C <: IS.InfrastructureSystemsComponent}
-    xsq_wrapped = _PrebuiltQuadApprox(xsq)
-    ysq_wrapped = _PrebuiltQuadApprox(ysq)
-    result = _build_hybs_with_precomputed(
-        config, get_jump_model(container), x_var, y_var,
-        xsq_wrapped, ysq_wrapped, x_bounds, y_bounds,
-    )
-    # Register only the new objects (epi, p_expr, z_var, bound_cons, approx, mc).
-    register_in_container!(container, C, result.sum_epigraph, meta * "_plus")
-    register_in_container!(container, C, result.diff_epigraph, meta * "_diff")
-
-    name_axis = axes(result.approximation, 1)
-    time_axis = axes(result.approximation, 2)
-
-    p1_target = add_expression_container!(
-        container, VariableSumExpression, C, name_axis, time_axis;
-        meta = meta * "_plus",
-    )
-    p1_target.data .= result.sum_expression.data
-    p2_target = add_expression_container!(
-        container, VariableDifferenceExpression, C, name_axis, time_axis;
-        meta = meta * "_diff",
-    )
-    p2_target.data .= result.diff_expression.data
-
-    z_target = add_variable_container!(
-        container, BilinearProductVariable, C, name_axis, time_axis; meta,
-    )
-    z_target.data .= result.z_var.data
-
-    bound_target = add_constraints_container!(
-        container, HybSBoundConstraint, C, name_axis, 1:2, time_axis; meta,
-    )
-    bound_target.data .= result.bound_constraints.data
-
-    result_target = add_expression_container!(
-        container, BilinearProductExpression, C, name_axis, time_axis; meta,
-    )
-    result_target.data .= result.approximation.data
-
-    register_mccormick_envelope!(container, C, result.mccormick_constraints, meta)
-    return result_target
+    return approx_target
 end

@@ -14,7 +14,7 @@ const NMDT_BILINEAR_META = "NMDTBilinearTest"
 
         IOM.add_quadratic_approx!(
             IOM.DNMDTQuadConfig(4, 0),
-            setup.container, MockThermalGen, names, ts,
+            setup.container, MockThermalGen,
             setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
         )
 
@@ -48,7 +48,7 @@ const NMDT_BILINEAR_META = "NMDTBilinearTest"
 
                 IOM.add_quadratic_approx!(
                     IOM.DNMDTQuadConfig(3, 0),
-                    setup.container, MockThermalGen, ["gen1"], 1:1,
+                    setup.container, MockThermalGen,
                     setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
                 )
                 expr = IOM.get_expression(
@@ -79,7 +79,7 @@ const NMDT_BILINEAR_META = "NMDTBilinearTest"
 
                     IOM.add_quadratic_approx!(
                         IOM.DNMDTQuadConfig(2 * L, 0),
-                        setup.container, MockThermalGen, ["gen1"], 1:1,
+                        setup.container, MockThermalGen,
                         setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
                     )
                     expr = IOM.get_expression(
@@ -111,7 +111,7 @@ end
 
                 IOM.add_quadratic_approx!(
                     (tighten ? IOM.DNMDTQuadConfig(2) : IOM.DNMDTQuadConfig(2, 0)),
-                    setup.container, MockThermalGen, ["gen1"], 1:1,
+                    setup.container, MockThermalGen,
                     setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
                 )
                 expr = IOM.get_expression(
@@ -148,7 +148,7 @@ end
 
             IOM.add_quadratic_approx!(
                 IOM.DNMDTQuadConfig(L),
-                setup.container, MockThermalGen, ["gen1"], 1:1,
+                setup.container, MockThermalGen,
                 setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
             )
             expr = IOM.get_expression(
@@ -182,7 +182,7 @@ end
 
                 IOM.add_bilinear_approx!(
                     IOM.DNMDTBilinearConfig(2),
-                    setup.container, MockThermalGen, ["dev1"], 1:1,
+                    setup.container, MockThermalGen,
                     setup.x_var_container, setup.y_var_container,
                     [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
                 )
@@ -216,7 +216,7 @@ end
 
                         IOM.add_bilinear_approx!(
                             IOM.DNMDTBilinearConfig(2 * L),
-                            setup.container, MockThermalGen, ["dev1"], 1:1,
+                            setup.container, MockThermalGen,
                             setup.x_var_container, setup.y_var_container,
                             [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
                         )
@@ -251,7 +251,7 @@ end
 
                 IOM.add_bilinear_approx!(
                     IOM.DNMDTBilinearConfig(8),
-                    setup.container, MockThermalGen, ["dev1"], 1:1,
+                    setup.container, MockThermalGen,
                     setup.x_var_container, setup.y_var_container,
                     [(min = x_min, max = x_max)], [(min = y_min, max = y_max)], DNMDT_META,
                 )
@@ -277,7 +277,7 @@ end
     #     setup = _setup_bilinear_test(["dev1"], 1:1)
 
     #     IOM.add_bilinear_approx!(
-    #         setup.container, MockThermalGen, ["dev1"], 1:1,
+    #         setup.container, MockThermalGen,
     #         setup.x_var_container, setup.y_var_container,
     #         0.0, 1.0, 0.0, 1.0, 2, DNMDT_META;
     #         add_mccormick = false,
@@ -295,7 +295,7 @@ end
 
         IOM.add_bilinear_approx!(
             IOM.DNMDTBilinearConfig(3),
-            setup.container, MockThermalGen, ["dev1"], 1:1,
+            setup.container, MockThermalGen,
             setup.y_var_container, setup.x_var_container,
             [(min = 0.0, max = 4.0)], [(min = 0.0, max = 4.0)], DNMDT_META,
         )
@@ -323,7 +323,7 @@ end
 
             IOM.add_bilinear_approx!(
                 IOM.DNMDTBilinearConfig(depth),
-                setup_d.container, MockThermalGen, ["dev1"], 1:1,
+                setup_d.container, MockThermalGen,
                 setup_d.x_var_container, setup_d.y_var_container,
                 [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
             )
@@ -345,7 +345,7 @@ end
 
             IOM.add_bilinear_approx!(
                 IOM.HybSConfig(IOM.SawtoothQuadConfig(depth), depth),
-                setup_h.container, MockThermalGen, ["dev1"], 1:1,
+                setup_h.container, MockThermalGen,
                 setup_h.x_var_container, setup_h.y_var_container,
                 [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_HYBS_META,
             )
@@ -382,7 +382,7 @@ end
 
         IOM.add_quadratic_approx!(
             IOM.NMDTQuadConfig(4, 0),
-            setup.container, MockThermalGen, names, ts,
+            setup.container, MockThermalGen,
             setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
         )
 
@@ -416,7 +416,7 @@ end
 
                 IOM.add_quadratic_approx!(
                     IOM.NMDTQuadConfig(3, 0),
-                    setup.container, MockThermalGen, ["gen1"], 1:1,
+                    setup.container, MockThermalGen,
                     setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
                 )
                 expr = IOM.get_expression(
@@ -449,7 +449,7 @@ end
 
                     IOM.add_quadratic_approx!(
                         IOM.NMDTQuadConfig(L, 0),
-                        setup.container, MockThermalGen, ["gen1"], 1:1,
+                        setup.container, MockThermalGen,
                         setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
                     )
                     expr = IOM.get_expression(
@@ -479,7 +479,7 @@ end
 
                 IOM.add_quadratic_approx!(
                     (tighten ? IOM.NMDTQuadConfig(2) : IOM.NMDTQuadConfig(2, 0)),
-                    setup.container, MockThermalGen, ["gen1"], 1:1,
+                    setup.container, MockThermalGen,
                     setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
                 )
                 expr = IOM.get_expression(
@@ -525,7 +525,7 @@ end
 
                         IOM.add_quadratic_approx!(
                             config_fn(L),
-                            setup.container, MockThermalGen, ["gen1"], 1:1,
+                            setup.container, MockThermalGen,
                             setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
                         )
                         expr = IOM.get_expression(
@@ -560,7 +560,7 @@ end
         setup_n = _setup_qa_test(["gen1"], 1:1)
         IOM.add_quadratic_approx!(
             IOM.NMDTQuadConfig(depth, 0),
-            setup_n.container, MockThermalGen, ["gen1"], 1:1,
+            setup_n.container, MockThermalGen,
             setup_n.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
         )
         n_bin_nmdt = count(JuMP.is_binary, JuMP.all_variables(setup_n.jump_model))
@@ -568,7 +568,7 @@ end
         setup_d = _setup_qa_test(["gen1"], 1:1)
         IOM.add_quadratic_approx!(
             IOM.DNMDTQuadConfig(depth, 0),
-            setup_d.container, MockThermalGen, ["gen1"], 1:1,
+            setup_d.container, MockThermalGen,
             setup_d.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
         )
         n_bin_dnmdt = count(JuMP.is_binary, JuMP.all_variables(setup_d.jump_model))
@@ -594,7 +594,7 @@ end
 
                 IOM.add_bilinear_approx!(
                     IOM.NMDTBilinearConfig(3),
-                    setup.container, MockThermalGen, ["dev1"], 1:1,
+                    setup.container, MockThermalGen,
                     setup.x_var_container, setup.y_var_container,
                     [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], NMDT_BILINEAR_META,
                 )
@@ -629,7 +629,7 @@ end
 
                         IOM.add_bilinear_approx!(
                             IOM.NMDTBilinearConfig(L),
-                            setup.container, MockThermalGen, ["dev1"], 1:1,
+                            setup.container, MockThermalGen,
                             setup.x_var_container, setup.y_var_container,
                             [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)],
                             NMDT_BILINEAR_META,
@@ -660,7 +660,7 @@ end
 
         IOM.add_bilinear_approx!(
             IOM.NMDTBilinearConfig(4),
-            setup.container, MockThermalGen, ["dev1"], 1:1,
+            setup.container, MockThermalGen,
             setup.x_var_container, setup.y_var_container,
             [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], NMDT_BILINEAR_META,
         )
@@ -686,7 +686,7 @@ end
         setup_n = _setup_bilinear_test(["dev1"], 1:1)
         IOM.add_bilinear_approx!(
             IOM.NMDTBilinearConfig(L),
-            setup_n.container, MockThermalGen, ["dev1"], 1:1,
+            setup_n.container, MockThermalGen,
             setup_n.x_var_container, setup_n.y_var_container,
             [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], NMDT_BILINEAR_META,
         )
@@ -695,7 +695,7 @@ end
         setup_d = _setup_bilinear_test(["dev1"], 1:1)
         IOM.add_bilinear_approx!(
             IOM.DNMDTBilinearConfig(L),
-            setup_d.container, MockThermalGen, ["dev1"], 1:1,
+            setup_d.container, MockThermalGen,
             setup_d.x_var_container, setup_d.y_var_container,
             [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
         )
@@ -716,7 +716,7 @@ end
 
             IOM.add_bilinear_approx!(
                 IOM.NMDTBilinearConfig(L),
-                setup_n.container, MockThermalGen, ["dev1"], 1:1,
+                setup_n.container, MockThermalGen,
                 setup_n.x_var_container, setup_n.y_var_container,
                 [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], NMDT_BILINEAR_META,
             )
@@ -737,7 +737,7 @@ end
 
             IOM.add_bilinear_approx!(
                 IOM.DNMDTBilinearConfig(L),
-                setup_d.container, MockThermalGen, ["dev1"], 1:1,
+                setup_d.container, MockThermalGen,
                 setup_d.x_var_container, setup_d.y_var_container,
                 [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
             )

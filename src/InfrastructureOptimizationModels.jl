@@ -625,18 +625,16 @@ include("objective_function/piecewise_linear.jl")    # CostCurve/FuelCurve → l
 include("objective_function/value_curve_cost.jl")    # ValueCurve → delta PWL
 
 # Quadratic and bilinear approximations.
-# Layered architecture: pure-JuMP `build_*_approx` functions return result
-# structs holding all JuMP objects; the generic IOM wrappers in common.jl
-# dispatch `register_in_container!` on the result struct to write everything
-# into the OptimizationContainer.
+# Each method ships a scalar `build_*` (pure JuMP) and an `add_*_approx!`
+# IOM adapter (allocate, loop, write) in the same file.
 include("approximations/common.jl")
 include("approximations/pwl_utils.jl")
 include("approximations/mccormick.jl")
-include("approximations/nmdt_discretization.jl")
 include("approximations/pwmcc_cuts.jl")
-# Quadratic methods (each file is self-contained: config + result + build + register)
+include("approximations/epigraph.jl")  # must precede sawtooth and NMDT (tightening)
+include("approximations/nmdt_discretization.jl")  # must precede NMDT quad/bilinear
+# Quadratic methods (each file is self-contained: config + scalar build + IOM adapter)
 include("approximations/no_approx_quadratic.jl")
-include("approximations/epigraph.jl")  # must precede sawtooth (epigraph tightening)
 include("approximations/solver_sos2.jl")
 include("approximations/manual_sos2.jl")
 include("approximations/sawtooth.jl")
@@ -644,9 +642,9 @@ include("approximations/nmdt_quadratic.jl")
 include("approximations/incremental.jl")
 # Bilinear methods (compose with quadratic — must follow)
 include("approximations/no_approx_bilinear.jl")
+include("approximations/nmdt_bilinear.jl")
 include("approximations/bin2.jl")
 include("approximations/hybs.jl")
-include("approximations/nmdt_bilinear.jl")
 
 # add_param_container! wrappers — must come after piecewise_linear.jl
 # (which defines VariableValueParameter and FixValueParameter)

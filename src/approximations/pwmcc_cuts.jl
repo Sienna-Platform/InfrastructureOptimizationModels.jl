@@ -3,9 +3,6 @@
 # v's domain into K sub-intervals. The LP gap shrinks from Delta²/4 to
 # Delta²/(4·K²). These cuts supplement (do not replace) the underlying PWL
 # (SOS2 or manual-SOS2) constraints.
-#
-# Shared between solver_sos2.jl and manual_sos2.jl — both call the scalar
-# `build_pwmcc_concave_cuts` per cell from inside their own scalar build.
 
 # --- Container key types ---
 
@@ -36,25 +33,16 @@ struct PiecewiseMcCormickTangentLBL <: ConstraintType end
 "Piecewise McCormick tangent lower-bound constraint (right endpoint)."
 struct PiecewiseMcCormickTangentLBR <: ConstraintType end
 
-# --- Scalar build (pure JuMP, primary API) ---
-
 """
     build_pwmcc_concave_cuts(model, v, q_expr, v_min, v_max, K)
 
-Scalar form: build the K-segment PWMCC cuts at a single cell. `v` is a
-JuMP scalar (the original variable) and `q_expr` is the scalar expression
-for the existing PWL v² approximation at this cell.
+Scalar form: build the K-segment PWMCC cuts at a single cell. `v` is the
+JuMP scalar variable and `q_expr` is the scalar expression for the
+existing PWL v² approximation at this cell.
 
-Returns a NamedTuple:
-- `delta_var`               :: DenseAxisArray{VariableRef, 1} over `1:K` (binary)
-- `vd_var`                  :: DenseAxisArray{VariableRef, 1} over `1:K` (continuous)
-- `selector_constraint`     :: scalar (Σ_k δ_k == 1)
-- `linking_constraint`      :: scalar (Σ_k vd_k == v)
-- `interval_lb_constraints` :: DenseAxisArray{Constraint, 1} over `1:K`
-- `interval_ub_constraints` :: DenseAxisArray{Constraint, 1} over `1:K`
-- `chord_ub_constraint`     :: scalar
-- `tangent_lb_l_constraint` :: scalar
-- `tangent_lb_r_constraint` :: scalar
+Returns a NamedTuple with `(delta_var, vd_var, selector_constraint,
+linking_constraint, interval_lb_constraints, interval_ub_constraints,
+chord_ub_constraint, tangent_lb_l_constraint, tangent_lb_r_constraint)`.
 """
 function build_pwmcc_concave_cuts(
     model::JuMP.Model,
@@ -64,20 +52,15 @@ function build_pwmcc_concave_cuts(
     v_max::Float64,
     K::Int,
 )
-    IS.@assert_op K >= 1
-    IS.@assert_op v_min < v_max
+    @assert K >= 1
+    @assert v_min < v_max
 
-    brk = [v_min + k * (v_max - v_min) / K for k in 0:K]  # length K+1, indexed 1..K+1
+    brk = [v_min + k * (v_max - v_min) / K for k in 0:K]
 
     delta_var = JuMP.@variable(
-        model, [k = 1:K],
-        binary = true,
-        base_name = "PwMcCBin",
+        model, [k = 1:K], binary = true, base_name = "PwMcCBin",
     )
-    vd_var = JuMP.@variable(
-        model, [k = 1:K],
-        base_name = "PwMcCDis",
-    )
+    vd_var = JuMP.@variable(model, [k = 1:K], base_name = "PwMcCDis")
 
     selector_con = JuMP.@constraint(model, sum(delta_var[k] for k in 1:K) == 1.0)
     linking_con = JuMP.@constraint(model, sum(vd_var[k] for k in 1:K) == v)
@@ -121,205 +104,56 @@ function build_pwmcc_concave_cuts(
     )
 end
 
-# --- Legacy vectorized build + register (kept for SolverSOS2/ManualSOS2's
-# vectorized build_quadratic_approx until those callers migrate; removed in
-# sweep) ---
+# --- Allocation + per-cell write helpers (used by SOS2 adapters) ---
 
-"""
-Pure-JuMP result of legacy vectorized `build_pwmcc_concave_cuts`. Fields are
-JuMP container arrays indexed by (name, k, t) for the K-segment pieces or
-(name, t) for the once-per-element constraints.
-"""
-struct PWMCCResult{
-    DV <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
-    VDV <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
-    SC <: JuMP.Containers.DenseAxisArray,
-    LC <: JuMP.Containers.DenseAxisArray,
-    ILBC <: JuMP.Containers.DenseAxisArray,
-    IUBC <: JuMP.Containers.DenseAxisArray,
-    CUBC <: JuMP.Containers.DenseAxisArray,
-    TLLC <: JuMP.Containers.DenseAxisArray,
-    TLRC <: JuMP.Containers.DenseAxisArray,
-}
-    delta_var::DV
-    vd_var::VDV
-    selector_constraints::SC
-    linking_constraints::LC
-    interval_lb_constraints::ILBC
-    interval_ub_constraints::IUBC
-    chord_ub_constraints::CUBC
-    tangent_lb_l_constraints::TLLC
-    tangent_lb_r_constraints::TLRC
-end
-
-"""
-    build_pwmcc_concave_cuts(model, v_var, q_expr, bounds, K) -> PWMCCResult
-
-Legacy vectorized form. Build piecewise McCormick cuts on the concave term
-(−v²) to tighten the LP relaxation of a PWL approximation `q_expr ≈ v²`.
-Partitions each name's [v_min, v_max] into K uniform sub-intervals.
-"""
-function build_pwmcc_concave_cuts(
-    model::JuMP.Model,
-    v_var,
-    q_expr,
-    bounds::Vector{MinMax},
-    K::Int,
-)
-    IS.@assert_op K >= 1
-    name_axis = axes(v_var, 1)
-    time_axis = axes(v_var, 2)
-    IS.@assert_op length(name_axis) == length(bounds)
-    for b in bounds
-        IS.@assert_op b.min < b.max
-    end
-
-    brk = JuMP.Containers.DenseAxisArray(
-        [
-            bounds[i].min + k * (bounds[i].max - bounds[i].min) / K
-            for i in eachindex(name_axis), k in 0:K
-        ],
-        name_axis,
-        0:K,
-    )
-
-    delta_var = JuMP.@variable(
-        model,
-        [name = name_axis, k = 1:K, t = time_axis],
-        binary = true,
-        base_name = "PwMcCBin",
-    )
-    vd_var = JuMP.@variable(
-        model,
-        [name = name_axis, k = 1:K, t = time_axis],
-        base_name = "PwMcCDis",
-    )
-
-    selector_cons = JuMP.@constraint(
-        model,
-        [name = name_axis, t = time_axis],
-        sum(delta_var[name, k, t] for k in 1:K) == 1.0
-    )
-    linking_cons = JuMP.@constraint(
-        model,
-        [name = name_axis, t = time_axis],
-        sum(vd_var[name, k, t] for k in 1:K) == v_var[name, t]
-    )
-    interval_lb = JuMP.@constraint(
-        model,
-        [name = name_axis, k = 1:K, t = time_axis],
-        brk[name, k - 1] * delta_var[name, k, t] <= vd_var[name, k, t]
-    )
-    interval_ub = JuMP.@constraint(
-        model,
-        [name = name_axis, k = 1:K, t = time_axis],
-        vd_var[name, k, t] <= brk[name, k] * delta_var[name, k, t]
-    )
-    chord_ub = JuMP.@constraint(
-        model,
-        [name = name_axis, t = time_axis],
-        q_expr[name, t] <= sum(
-            (brk[name, k - 1] + brk[name, k]) * vd_var[name, k, t] -
-            brk[name, k - 1] * brk[name, k] * delta_var[name, k, t] for k in 1:K
-        )
-    )
-    tangent_lb_l = JuMP.@constraint(
-        model,
-        [name = name_axis, t = time_axis],
-        q_expr[name, t] >= sum(
-            2.0 * brk[name, k - 1] * vd_var[name, k, t] -
-            brk[name, k - 1]^2 * delta_var[name, k, t] for k in 1:K
-        )
-    )
-    tangent_lb_r = JuMP.@constraint(
-        model,
-        [name = name_axis, t = time_axis],
-        q_expr[name, t] >= sum(
-            2.0 * brk[name, k] * vd_var[name, k, t] -
-            brk[name, k]^2 * delta_var[name, k, t] for k in 1:K
-        )
-    )
-
-    return PWMCCResult(
-        delta_var,
-        vd_var,
-        selector_cons,
-        linking_cons,
-        interval_lb,
-        interval_ub,
-        chord_ub,
-        tangent_lb_l,
-        tangent_lb_r,
-    )
-end
-
-"""
-    register_pwmcc!(container, ::Type{C}, pwmcc::PWMCCResult, meta)
-
-Legacy registration helper for the vectorized PWMCC result.
-"""
-function register_pwmcc!(
-    container::OptimizationContainer,
-    ::Type{C},
-    pwmcc::PWMCCResult,
-    meta::String,
+function _alloc_pwmcc_targets!(
+    container::OptimizationContainer, ::Type{C}, name_axis, time_axis, K::Int, meta,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    name_axis = axes(pwmcc.delta_var, 1)
-    k_axis = axes(pwmcc.delta_var, 2)
-    time_axis = axes(pwmcc.delta_var, 3)
-
-    delta_target = add_variable_container!(
-        container, PiecewiseMcCormickBinary, C, name_axis, k_axis, time_axis; meta,
+    return (
+        delta = add_variable_container!(
+            container, PiecewiseMcCormickBinary, C, name_axis, 1:K, time_axis; meta,
+        ),
+        vd = add_variable_container!(
+            container, PiecewiseMcCormickDisaggregated, C,
+            name_axis, 1:K, time_axis; meta,
+        ),
+        selector = add_constraints_container!(
+            container, PiecewiseMcCormickSelectorSum, C, name_axis, time_axis; meta,
+        ),
+        linking = add_constraints_container!(
+            container, PiecewiseMcCormickLinking, C, name_axis, time_axis; meta,
+        ),
+        interval_lb = add_constraints_container!(
+            container, PiecewiseMcCormickIntervalLB, C,
+            name_axis, 1:K, time_axis; meta,
+        ),
+        interval_ub = add_constraints_container!(
+            container, PiecewiseMcCormickIntervalUB, C,
+            name_axis, 1:K, time_axis; meta,
+        ),
+        chord = add_constraints_container!(
+            container, PiecewiseMcCormickChordUB, C, name_axis, time_axis; meta,
+        ),
+        tangent_l = add_constraints_container!(
+            container, PiecewiseMcCormickTangentLBL, C, name_axis, time_axis; meta,
+        ),
+        tangent_r = add_constraints_container!(
+            container, PiecewiseMcCormickTangentLBR, C, name_axis, time_axis; meta,
+        ),
     )
-    delta_target.data .= pwmcc.delta_var.data
+end
 
-    vd_target = add_variable_container!(
-        container, PiecewiseMcCormickDisaggregated, C, name_axis, k_axis, time_axis;
-        meta,
-    )
-    vd_target.data .= pwmcc.vd_var.data
-
-    selector_target = add_constraints_container!(
-        container, PiecewiseMcCormickSelectorSum, C, name_axis, time_axis; meta,
-    )
-    selector_target.data .= pwmcc.selector_constraints.data
-
-    linking_target = add_constraints_container!(
-        container, PiecewiseMcCormickLinking, C, name_axis, time_axis; meta,
-    )
-    linking_target.data .= pwmcc.linking_constraints.data
-
-    chord_target = add_constraints_container!(
-        container, PiecewiseMcCormickChordUB, C, name_axis, time_axis; meta,
-    )
-    chord_target.data .= pwmcc.chord_ub_constraints.data
-
-    tangent_l_target = add_constraints_container!(
-        container, PiecewiseMcCormickTangentLBL, C, name_axis, time_axis; meta,
-    )
-    tangent_l_target.data .= pwmcc.tangent_lb_l_constraints.data
-
-    tangent_r_target = add_constraints_container!(
-        container, PiecewiseMcCormickTangentLBR, C, name_axis, time_axis; meta,
-    )
-    tangent_r_target.data .= pwmcc.tangent_lb_r_constraints.data
-
-    interval_lb_target = add_constraints_container!(
-        container, PiecewiseMcCormickIntervalLB, C, name_axis, k_axis, time_axis; meta,
-    )
-    interval_lb_target.data .= pwmcc.interval_lb_constraints.data
-
-    interval_ub_target = add_constraints_container!(
-        container, PiecewiseMcCormickIntervalUB, C, name_axis, k_axis, time_axis; meta,
-    )
-    interval_ub_target.data .= pwmcc.interval_ub_constraints.data
+function _write_pwmcc_cell!(targets, name, t, r, K::Int)
+    for k in 1:K
+        targets.delta[name, k, t] = r.delta_var[k]
+        targets.vd[name, k, t] = r.vd_var[k]
+        targets.interval_lb[name, k, t] = r.interval_lb_constraints[k]
+        targets.interval_ub[name, k, t] = r.interval_ub_constraints[k]
+    end
+    targets.selector[name, t] = r.selector_constraint
+    targets.linking[name, t] = r.linking_constraint
+    targets.chord[name, t] = r.chord_ub_constraint
+    targets.tangent_l[name, t] = r.tangent_lb_l_constraint
+    targets.tangent_r[name, t] = r.tangent_lb_r_constraint
     return
 end
-
-# No-op when the caller did not build PWMCC cuts.
-register_pwmcc!(
-    ::OptimizationContainer,
-    ::Type{<:IS.InfrastructureSystemsComponent},
-    ::Nothing,
-    ::String,
-) = nothing

@@ -22,56 +22,30 @@ struct DNMDTBilinearConfig <: BilinearApproxConfig
     depth::Int
 end
 
-# --- NMDT (single discretization) ---
+# --- Scalar build (pure JuMP) ---
 
 """
-Pure-JuMP result of `build_bilinear_approx(::NMDTBilinearConfig, ...)`.
-"""
-struct NMDTBilinearResult{
-    A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
-    XD <: NMDTDiscretization,
-    YN <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
-    BX <: NMDTBinaryContinuousProduct,
-    DZ <: NMDTResidualProduct,
-} <: BilinearApproxResult
-    approximation::A
-    x_discretization::XD
-    yh_expression::YN
-    bx_yh_product::BX
-    residual_product::DZ
-end
+    build_bilinear_approx(config::NMDTBilinearConfig, model, x, y, x_min, x_max, y_min, y_max)
 
-"""
-    build_bilinear_approx(config::NMDTBilinearConfig, model, x, y, x_bounds, y_bounds)
+Scalar form: approximate x·y via NMDT for one cell. Discretize x, normalize
+y to yh ∈ [0,1], build the binary-continuous product β·yh and residual
+δ·yh, reassemble x·y.
 
-Approximate x·y via NMDT: discretize x, normalize y to yh ∈ [0,1], build the
-binary-continuous product β·yh and residual δ·yh, reassemble x·y from
-normalized components.
+Returns `(; approximation, x_discretization, yh_expression, bx_yh_product,
+residual_product)`.
 """
 function build_bilinear_approx(
     config::NMDTBilinearConfig,
     model::JuMP.Model,
-    x,
-    y,
-    x_bounds::Vector{MinMax},
-    y_bounds::Vector{MinMax},
+    x::JuMP.AbstractJuMPScalar,
+    y::JuMP.AbstractJuMPScalar,
+    x_min::Float64,
+    x_max::Float64,
+    y_min::Float64,
+    y_max::Float64,
 )
-    x_disc = build_discretization(model, x, x_bounds, config.depth)
-    yh_expr = build_normed_variable(model, y, y_bounds)
-    return _build_nmdt_with_precomputed(
-        config, model, x_disc, yh_expr, x_bounds, y_bounds,
-    )
-end
-
-# Shared math between the standard and precomputed-form entrypoints.
-function _build_nmdt_with_precomputed(
-    config::NMDTBilinearConfig,
-    model::JuMP.Model,
-    x_disc::NMDTDiscretization,
-    yh_expr,
-    x_bounds::Vector{MinMax},
-    y_bounds::Vector{MinMax},
-)
+    x_disc = build_discretization(model, x, x_min, x_max, config.depth)
+    yh_expr = (y - y_min) / (y_max - y_min)
     bx_yh = build_binary_continuous_product(
         model, x_disc.beta_var, yh_expr, 0.0, 1.0, config.depth,
     )
@@ -79,136 +53,37 @@ function _build_nmdt_with_precomputed(
         model, x_disc.delta_var, yh_expr, 1.0, config.depth,
     )
     approximation = build_assembled_product(
-        model,
-        [bx_yh.result_expression],
-        dz.z_var,
-        x_disc.norm_expr,
-        yh_expr,
-        x_bounds,
-        y_bounds,
+        model, [bx_yh.result_expression], dz.z_var,
+        x_disc.norm_expr, yh_expr,
+        x_min, x_max, y_min, y_max,
     )
-    return NMDTBilinearResult(approximation, x_disc, yh_expr, bx_yh, dz)
-end
-
-function register_in_container!(
-    container::OptimizationContainer,
-    ::Type{C},
-    result::NMDTBilinearResult,
-    meta::String,
-) where {C <: IS.InfrastructureSystemsComponent}
-    register_discretization!(container, C, result.x_discretization, meta * "_x")
-
-    name_axis = axes(result.yh_expression, 1)
-    time_axis = axes(result.yh_expression, 2)
-    yh_target = add_expression_container!(
-        container, NormedVariableExpression, C, name_axis, time_axis;
-        meta = meta * "_y",
+    return (;
+        approximation,
+        x_discretization = x_disc,
+        yh_expression = yh_expr,
+        bx_yh_product = bx_yh,
+        residual_product = dz,
     )
-    yh_target.data .= result.yh_expression.data
-
-    register_binary_continuous_product!(container, C, result.bx_yh_product, meta)
-    register_residual_product!(container, C, result.residual_product, meta)
-
-    result_name_axis = axes(result.approximation, 1)
-    result_time_axis = axes(result.approximation, 2)
-    result_target = add_expression_container!(
-        container, BilinearProductExpression, C, result_name_axis, result_time_axis;
-        meta,
-    )
-    result_target.data .= result.approximation.data
-    return
 end
 
 """
-    add_bilinear_approx!(config::NMDTBilinearConfig, container, C, names, time_steps,
-                         x_disc, yh_expr, x_var, y_var, x_bounds, y_bounds, meta)
+    build_bilinear_approx(config::DNMDTBilinearConfig, model, x, y, x_min, x_max, y_min, y_max)
 
-Precomputed-form entrypoint: accepts an already-built `x_disc::NMDTDiscretization`
-and `yh_expr` (the normalized-y expression container) and builds only the
-binary-continuous product, residual product, and final assembly on top.
-"""
-function add_bilinear_approx!(
-    config::NMDTBilinearConfig,
-    container::OptimizationContainer,
-    ::Type{C},
-    names::Vector{String},
-    time_steps::UnitRange{Int},
-    x_disc::NMDTDiscretization,
-    yh_expr::JuMP.Containers.DenseAxisArray,
-    x_var,
-    y_var,
-    x_bounds::Vector{MinMax},
-    y_bounds::Vector{MinMax},
-    meta::String,
-) where {C <: IS.InfrastructureSystemsComponent}
-    result = _build_nmdt_with_precomputed(
-        config, get_jump_model(container), x_disc, yh_expr, x_bounds, y_bounds,
-    )
-    register_binary_continuous_product!(container, C, result.bx_yh_product, meta)
-    register_residual_product!(container, C, result.residual_product, meta)
-    name_axis = axes(result.approximation, 1)
-    time_axis = axes(result.approximation, 2)
-    result_target = add_expression_container!(
-        container, BilinearProductExpression, C, name_axis, time_axis; meta,
-    )
-    result_target.data .= result.approximation.data
-    return result_target
-end
-
-# --- DNMDT (double discretization) ---
-
-"""
-Pure-JuMP result of `build_bilinear_approx(::DNMDTBilinearConfig, ...)`.
-"""
-struct DNMDTBilinearResult{
-    A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
-    XD <: NMDTDiscretization,
-    YD <: NMDTDiscretization,
-    BXY <: NMDTBinaryContinuousProduct,
-    BYD <: NMDTBinaryContinuousProduct,
-    BYX <: NMDTBinaryContinuousProduct,
-    BXD <: NMDTBinaryContinuousProduct,
-    DZ <: NMDTResidualProduct,
-} <: BilinearApproxResult
-    approximation::A
-    x_discretization::XD
-    y_discretization::YD
-    bx_yh_product::BXY
-    by_dx_product::BYD
-    by_xh_product::BYX
-    bx_dy_product::BXD
-    residual_product::DZ
-end
-
-"""
-    build_bilinear_approx(config::DNMDTBilinearConfig, model, x, y, x_bounds, y_bounds)
-
-DNMDT bilinear approximation: discretize both x and y, form all four cross
-binary-continuous products, and convexly combine two NMDT estimates.
+Scalar form: DNMDT bilinear approximation at one cell. Discretize both x
+and y, form all four cross binary-continuous products, convex-combine.
 """
 function build_bilinear_approx(
     config::DNMDTBilinearConfig,
     model::JuMP.Model,
-    x,
-    y,
-    x_bounds::Vector{MinMax},
-    y_bounds::Vector{MinMax},
+    x::JuMP.AbstractJuMPScalar,
+    y::JuMP.AbstractJuMPScalar,
+    x_min::Float64,
+    x_max::Float64,
+    y_min::Float64,
+    y_max::Float64,
 )
-    x_disc = build_discretization(model, x, x_bounds, config.depth)
-    y_disc = build_discretization(model, y, y_bounds, config.depth)
-    return _build_dnmdt_with_precomputed(
-        config, model, x_disc, y_disc, x_bounds, y_bounds,
-    )
-end
-
-function _build_dnmdt_with_precomputed(
-    config::DNMDTBilinearConfig,
-    model::JuMP.Model,
-    x_disc::NMDTDiscretization,
-    y_disc::NMDTDiscretization,
-    x_bounds::Vector{MinMax},
-    y_bounds::Vector{MinMax},
-)
+    x_disc = build_discretization(model, x, x_min, x_max, config.depth)
+    y_disc = build_discretization(model, y, y_min, y_max, config.depth)
     bx_yh = build_binary_continuous_product(
         model, x_disc.beta_var, y_disc.norm_expr, 0.0, 1.0, config.depth,
     )
@@ -234,75 +109,154 @@ function _build_dnmdt_with_precomputed(
         by_xh.result_expression,
         bx_dy.result_expression,
         dz.z_var,
-        x_disc,
-        y_disc,
-        x_bounds,
-        y_bounds,
+        x_disc.norm_expr, y_disc.norm_expr,
+        x_min, x_max, y_min, y_max,
     )
-    return DNMDTBilinearResult(
-        approximation, x_disc, y_disc, bx_yh, by_dx, by_xh, bx_dy, dz,
+    return (;
+        approximation,
+        x_discretization = x_disc,
+        y_discretization = y_disc,
+        bx_yh_product = bx_yh,
+        by_dx_product = by_dx,
+        by_xh_product = by_xh,
+        bx_dy_product = bx_dy,
+        residual_product = dz,
     )
 end
 
-function register_in_container!(
-    container::OptimizationContainer,
-    ::Type{C},
-    result::DNMDTBilinearResult,
-    meta::String,
-) where {C <: IS.InfrastructureSystemsComponent}
-    register_discretization!(container, C, result.x_discretization, meta * "_x")
-    register_discretization!(container, C, result.y_discretization, meta * "_y")
-
-    register_binary_continuous_product!(container, C, result.bx_yh_product, meta * "_bx_yh")
-    register_binary_continuous_product!(container, C, result.by_dx_product, meta * "_by_dx")
-    register_binary_continuous_product!(container, C, result.by_xh_product, meta * "_by_xh")
-    register_binary_continuous_product!(container, C, result.bx_dy_product, meta * "_bx_dy")
-    register_residual_product!(container, C, result.residual_product, meta)
-
-    name_axis = axes(result.approximation, 1)
-    time_axis = axes(result.approximation, 2)
-    result_target = add_expression_container!(
-        container, BilinearProductExpression, C, name_axis, time_axis; meta,
-    )
-    result_target.data .= result.approximation.data
-    return
-end
+# --- IOM adapter ---
 
 """
-    add_bilinear_approx!(config::DNMDTBilinearConfig, container, C, names, time_steps,
-                         x_disc, y_disc, x_var, y_var, x_bounds, y_bounds, meta)
+    add_bilinear_approx!(config::NMDTBilinearConfig, container, ::Type{C}, x_var, y_var, x_bounds, y_bounds, meta)
 
-Precomputed-form entrypoint: accepts already-built `x_disc` and `y_disc`
-NMDT discretizations and builds only the four cross binary-continuous
-products, the shared residual product, and the final convex assembly.
+Allocate x discretization + yh expression + binary-continuous-product +
+residual-product + BilinearProductExpression containers. Loop `(name, t)`.
 """
 function add_bilinear_approx!(
-    config::DNMDTBilinearConfig,
+    config::NMDTBilinearConfig,
     container::OptimizationContainer,
     ::Type{C},
-    names::Vector{String},
-    time_steps::UnitRange{Int},
-    x_disc::NMDTDiscretization,
-    y_disc::NMDTDiscretization,
     x_var,
     y_var,
     x_bounds::Vector{MinMax},
     y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    result = _build_dnmdt_with_precomputed(
-        config, get_jump_model(container), x_disc, y_disc, x_bounds, y_bounds,
+    name_axis = axes(x_var, 1)
+    time_axis = axes(x_var, 2)
+    depth = config.depth
+    @assert length(name_axis) == length(x_bounds)
+    @assert length(name_axis) == length(y_bounds)
+    for i in eachindex(x_bounds)
+        @assert x_bounds[i].max > x_bounds[i].min
+        @assert y_bounds[i].max > y_bounds[i].min
+    end
+
+    model = get_jump_model(container)
+
+    x_disc_targets = _alloc_discretization_targets!(
+        container, C, name_axis, time_axis, depth, meta * "_x",
     )
-    register_binary_continuous_product!(container, C, result.bx_yh_product, meta * "_bx_yh")
-    register_binary_continuous_product!(container, C, result.by_dx_product, meta * "_by_dx")
-    register_binary_continuous_product!(container, C, result.by_xh_product, meta * "_by_xh")
-    register_binary_continuous_product!(container, C, result.bx_dy_product, meta * "_bx_dy")
-    register_residual_product!(container, C, result.residual_product, meta)
-    name_axis = axes(result.approximation, 1)
-    time_axis = axes(result.approximation, 2)
-    result_target = add_expression_container!(
+    yh_target = add_expression_container!(
+        container, NormedVariableExpression, C, name_axis, time_axis;
+        meta = meta * "_y",
+    )
+    bx_yh_targets = _alloc_binary_continuous_product_targets!(
+        container, C, name_axis, time_axis, depth, meta; tighten = false,
+    )
+    res_targets = _alloc_residual_product_targets!(
+        container, C, name_axis, time_axis, meta; tighten = false,
+    )
+    approx_target = add_expression_container!(
         container, BilinearProductExpression, C, name_axis, time_axis; meta,
     )
-    result_target.data .= result.approximation.data
-    return result_target
+
+    for (i, name) in enumerate(name_axis)
+        xmn, xmx = x_bounds[i].min, x_bounds[i].max
+        ymn, ymx = y_bounds[i].min, y_bounds[i].max
+        for t in time_axis
+            r = build_bilinear_approx(
+                config, model, x_var[name, t], y_var[name, t], xmn, xmx, ymn, ymx,
+            )
+            _write_discretization_cell!(x_disc_targets, name, t, r.x_discretization, depth)
+            yh_target[name, t] = r.yh_expression
+            _write_binary_continuous_product_cell!(bx_yh_targets, name, t, r.bx_yh_product, depth)
+            _write_residual_product_cell!(res_targets, name, t, r.residual_product)
+            approx_target[name, t] = r.approximation
+        end
+    end
+    return approx_target
+end
+
+"""
+    add_bilinear_approx!(config::DNMDTBilinearConfig, container, ::Type{C}, x_var, y_var, x_bounds, y_bounds, meta)
+
+Allocate two discretizations + four binary-continuous-product + one
+residual-product + BilinearProductExpression containers. Loop `(name, t)`.
+"""
+function add_bilinear_approx!(
+    config::DNMDTBilinearConfig,
+    container::OptimizationContainer,
+    ::Type{C},
+    x_var,
+    y_var,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    name_axis = axes(x_var, 1)
+    time_axis = axes(x_var, 2)
+    depth = config.depth
+    @assert length(name_axis) == length(x_bounds)
+    @assert length(name_axis) == length(y_bounds)
+    for i in eachindex(x_bounds)
+        @assert x_bounds[i].max > x_bounds[i].min
+        @assert y_bounds[i].max > y_bounds[i].min
+    end
+
+    model = get_jump_model(container)
+
+    x_disc_targets = _alloc_discretization_targets!(
+        container, C, name_axis, time_axis, depth, meta * "_x",
+    )
+    y_disc_targets = _alloc_discretization_targets!(
+        container, C, name_axis, time_axis, depth, meta * "_y",
+    )
+    bx_yh_targets = _alloc_binary_continuous_product_targets!(
+        container, C, name_axis, time_axis, depth, meta * "_bx_yh"; tighten = false,
+    )
+    by_dx_targets = _alloc_binary_continuous_product_targets!(
+        container, C, name_axis, time_axis, depth, meta * "_by_dx"; tighten = false,
+    )
+    by_xh_targets = _alloc_binary_continuous_product_targets!(
+        container, C, name_axis, time_axis, depth, meta * "_by_xh"; tighten = false,
+    )
+    bx_dy_targets = _alloc_binary_continuous_product_targets!(
+        container, C, name_axis, time_axis, depth, meta * "_bx_dy"; tighten = false,
+    )
+    res_targets = _alloc_residual_product_targets!(
+        container, C, name_axis, time_axis, meta; tighten = false,
+    )
+    approx_target = add_expression_container!(
+        container, BilinearProductExpression, C, name_axis, time_axis; meta,
+    )
+
+    for (i, name) in enumerate(name_axis)
+        xmn, xmx = x_bounds[i].min, x_bounds[i].max
+        ymn, ymx = y_bounds[i].min, y_bounds[i].max
+        for t in time_axis
+            r = build_bilinear_approx(
+                config, model, x_var[name, t], y_var[name, t], xmn, xmx, ymn, ymx,
+            )
+            _write_discretization_cell!(x_disc_targets, name, t, r.x_discretization, depth)
+            _write_discretization_cell!(y_disc_targets, name, t, r.y_discretization, depth)
+            _write_binary_continuous_product_cell!(bx_yh_targets, name, t, r.bx_yh_product, depth)
+            _write_binary_continuous_product_cell!(by_dx_targets, name, t, r.by_dx_product, depth)
+            _write_binary_continuous_product_cell!(by_xh_targets, name, t, r.by_xh_product, depth)
+            _write_binary_continuous_product_cell!(bx_dy_targets, name, t, r.bx_dy_product, depth)
+            _write_residual_product_cell!(res_targets, name, t, r.residual_product)
+            approx_target[name, t] = r.approximation
+        end
+    end
+    return approx_target
 end

@@ -20,130 +20,115 @@ function Bin2Config(quad_config::QuadraticApproxConfig)
 end
 
 """
-Pure-JuMP result of `build_bilinear_approx(::Bin2Config, ...)`.
-"""
-struct Bin2BilinearResult{
-    A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
-    XSQ <: QuadraticApproxResult,
-    YSQ <: QuadraticApproxResult,
-    PSQ <: QuadraticApproxResult,
-    P <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
-    MC <: Union{
-        Nothing,
-        Tuple{
-            <:JuMP.Containers.DenseAxisArray,
-            <:JuMP.Containers.DenseAxisArray,
-            <:JuMP.Containers.DenseAxisArray,
-            <:JuMP.Containers.DenseAxisArray,
-        },
-    },
-} <: BilinearApproxResult
-    approximation::A
-    xsq_result::XSQ
-    ysq_result::YSQ
-    psq_result::PSQ
-    sum_expression::P
-    mccormick_constraints::MC
-end
+    build_bilinear_approx(config::Bin2Config, model, x, y, x_min, x_max, y_min, y_max)
 
-"""
-    build_bilinear_approx(config::Bin2Config, model, x, y, x_bounds, y_bounds)
+Scalar form: build x², y², (x+y)² via the chosen quadratic method, combine
+via z = ½·(psq − xsq − ysq). If `config.add_mccormick`, also build the
+four reformulated McCormick cuts.
 
-Bin2 separable bilinear approximation: build x², y², and (x+y)² via the
-chosen quadratic method, then combine via z = ½·(psq − xsq − ysq).
-If `config.add_mccormick`, append the four reformulated McCormick cuts.
+Returns `(; approximation, xsq, ysq, psq, sum_expression, mccormick_constraints)`
+where `mccormick_constraints` is `nothing` or a NamedTuple `(c1, c2, c3, c4)`.
 """
 function build_bilinear_approx(
     config::Bin2Config,
     model::JuMP.Model,
-    x,
-    y,
-    x_bounds::Vector{MinMax},
-    y_bounds::Vector{MinMax},
+    x::JuMP.AbstractJuMPScalar,
+    y::JuMP.AbstractJuMPScalar,
+    x_min::Float64,
+    x_max::Float64,
+    y_min::Float64,
+    y_max::Float64,
 )
-    xsq = build_quadratic_approx(config.quad_config, model, x, x_bounds)
-    ysq = build_quadratic_approx(config.quad_config, model, y, y_bounds)
-
-    name_axis = axes(x, 1)
-    time_axis = axes(x, 2)
-
-    p_expr = JuMP.@expression(
-        model,
-        [name = name_axis, t = time_axis],
-        x[name, t] + y[name, t]
+    xsq = build_quadratic_approx(config.quad_config, model, x, x_min, x_max)
+    ysq = build_quadratic_approx(config.quad_config, model, y, y_min, y_max)
+    p_expr = JuMP.@expression(model, x + y)
+    psq = build_quadratic_approx(
+        config.quad_config, model, p_expr, x_min + y_min, x_max + y_max,
     )
-    p_bounds = [
-        (min = x_bounds[i].min + y_bounds[i].min,
-            max = x_bounds[i].max + y_bounds[i].max)
-        for i in eachindex(x_bounds)
-    ]
-    psq = build_quadratic_approx(config.quad_config, model, p_expr, p_bounds)
-
     approximation = JuMP.@expression(
         model,
-        [name = name_axis, t = time_axis],
-        0.5 * (
-            psq.approximation[name, t] - xsq.approximation[name, t] -
-            ysq.approximation[name, t]
-        )
+        0.5 * (psq.approximation - xsq.approximation - ysq.approximation),
     )
-    mc = if config.add_mccormick
+    mc = config.add_mccormick ?
         build_reformulated_mccormick(
             model, x, y,
             psq.approximation, xsq.approximation, ysq.approximation,
-            x_bounds, y_bounds,
-        )
-    else
+            x_min, x_max, y_min, y_max,
+        ) :
         nothing
-    end
-
-    return Bin2BilinearResult(approximation, xsq, ysq, psq, p_expr, mc)
-end
-
-function register_in_container!(
-    container::OptimizationContainer,
-    ::Type{C},
-    result::Bin2BilinearResult,
-    meta::String,
-) where {C <: IS.InfrastructureSystemsComponent}
-    register_in_container!(container, C, result.xsq_result, meta * "_x")
-    register_in_container!(container, C, result.ysq_result, meta * "_y")
-    register_in_container!(container, C, result.psq_result, meta * "_plus")
-
-    name_axis = axes(result.approximation, 1)
-    time_axis = axes(result.approximation, 2)
-
-    p_target = add_expression_container!(
-        container, VariableSumExpression, C, name_axis, time_axis;
-        meta = meta * "_plus",
+    return (;
+        approximation,
+        xsq,
+        ysq,
+        psq,
+        sum_expression = p_expr,
+        mccormick_constraints = mc,
     )
-    p_target.data .= result.sum_expression.data
-
-    result_target = add_expression_container!(
-        container, BilinearProductExpression, C, name_axis, time_axis; meta,
-    )
-    result_target.data .= result.approximation.data
-
-    register_reformulated_mccormick!(container, C, result.mccormick_constraints, meta)
-    return
 end
 
 """
-    add_bilinear_approx!(config::Bin2Config, container, C, names, time_steps,
-                         xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
+    add_bilinear_approx!(config::Bin2Config, container, ::Type{C}, x_var, y_var, x_bounds, y_bounds, meta)
 
-Precomputed-form entrypoint: accepts already-built quadratic approximation
-expression containers `xsq` ≈ x² and `ysq` ≈ y² (rather than re-computing
-them). The Bin2 identity z = ½·((x+y)² − xsq − ysq) is built on top, along
-with the (x+y)² approximation, sum expression, and optional reformulated
-McCormick cuts.
+Build x² and y² via `add_quadratic_approx!(config.quad_config, ...)`,
+build the (x+y) expression container and its psq via the same quad
+adapter, then assemble z = ½·(psq − xsq − ysq) and (optionally) the
+reformulated McCormick cuts.
 """
 function add_bilinear_approx!(
     config::Bin2Config,
     container::OptimizationContainer,
     ::Type{C},
-    names::Vector{String},
-    time_steps::UnitRange{Int},
+    x_var,
+    y_var,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    name_axis = axes(x_var, 1)
+    time_axis = axes(x_var, 2)
+    @assert length(name_axis) == length(x_bounds)
+    @assert length(name_axis) == length(y_bounds)
+    model = get_jump_model(container)
+
+    p_target = add_expression_container!(
+        container, VariableSumExpression, C, name_axis, time_axis;
+        meta = meta * "_plus",
+    )
+    for (i, name) in enumerate(name_axis)
+        for t in time_axis
+            p_target[name, t] = x_var[name, t] + y_var[name, t]
+        end
+    end
+    p_bounds = [
+        (min = x_bounds[i].min + y_bounds[i].min,
+            max = x_bounds[i].max + y_bounds[i].max)
+        for i in eachindex(x_bounds)
+    ]
+
+    xsq = add_quadratic_approx!(config.quad_config, container, C, x_var, x_bounds, meta * "_x")
+    ysq = add_quadratic_approx!(config.quad_config, container, C, y_var, y_bounds, meta * "_y")
+    psq = add_quadratic_approx!(
+        config.quad_config, container, C, p_target, p_bounds, meta * "_plus",
+    )
+
+    return _bin2_assemble_and_mccormick!(
+        container, C, name_axis, time_axis, model,
+        x_var, y_var, xsq, ysq, psq, x_bounds, y_bounds, meta;
+        add_mccormick = config.add_mccormick,
+    )
+end
+
+"""
+    add_bilinear_approx!(config::Bin2Config, container, ::Type{C}, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
+
+Precomputed-form: accepts already-built `xsq` ≈ x² and `ysq` ≈ y² 2D
+expression containers (rather than rebuilding them). Builds only the
+(x+y)² approximation on top, the Bin2 assembly, and the optional cuts.
+"""
+function add_bilinear_approx!(
+    config::Bin2Config,
+    container::OptimizationContainer,
+    ::Type{C},
     xsq,
     ysq,
     x_var,
@@ -152,46 +137,71 @@ function add_bilinear_approx!(
     y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    model = get_jump_model(container)
     name_axis = axes(x_var, 1)
     time_axis = axes(x_var, 2)
-
-    p_expr = JuMP.@expression(
-        model,
-        [name = name_axis, t = time_axis],
-        x_var[name, t] + y_var[name, t]
-    )
-    p_bounds = [
-        (min = x_bounds[i].min + y_bounds[i].min,
-            max = x_bounds[i].max + y_bounds[i].max)
-        for i in eachindex(x_bounds)
-    ]
-    psq = build_quadratic_approx(config.quad_config, model, p_expr, p_bounds)
-    register_in_container!(container, C, psq, meta * "_plus")
-
-    approximation = JuMP.@expression(
-        model,
-        [name = name_axis, t = time_axis],
-        0.5 * (psq.approximation[name, t] - xsq[name, t] - ysq[name, t])
-    )
+    @assert length(name_axis) == length(x_bounds)
+    @assert length(name_axis) == length(y_bounds)
+    model = get_jump_model(container)
 
     p_target = add_expression_container!(
         container, VariableSumExpression, C, name_axis, time_axis;
         meta = meta * "_plus",
     )
-    p_target.data .= p_expr.data
+    for (i, name) in enumerate(name_axis)
+        for t in time_axis
+            p_target[name, t] = x_var[name, t] + y_var[name, t]
+        end
+    end
+    p_bounds = [
+        (min = x_bounds[i].min + y_bounds[i].min,
+            max = x_bounds[i].max + y_bounds[i].max)
+        for i in eachindex(x_bounds)
+    ]
+    psq = add_quadratic_approx!(
+        config.quad_config, container, C, p_target, p_bounds, meta * "_plus",
+    )
 
-    result_target = add_expression_container!(
+    return _bin2_assemble_and_mccormick!(
+        container, C, name_axis, time_axis, model,
+        x_var, y_var, xsq, ysq, psq, x_bounds, y_bounds, meta;
+        add_mccormick = config.add_mccormick,
+    )
+end
+
+# Allocate the BilinearProductExpression result + optional ReformulatedMcCormick
+# container, then loop (name, t) to assemble z and the McCormick cuts.
+function _bin2_assemble_and_mccormick!(
+    container, ::Type{C}, name_axis, time_axis, model,
+    x_var, y_var, xsq, ysq, psq, x_bounds, y_bounds, meta;
+    add_mccormick::Bool,
+) where {C <: IS.InfrastructureSystemsComponent}
+    approx_target = add_expression_container!(
         container, BilinearProductExpression, C, name_axis, time_axis; meta,
     )
-    result_target.data .= approximation.data
+    mc_target = add_mccormick ?
+        add_constraints_container!(
+            container, ReformulatedMcCormickConstraint, C,
+            name_axis, 1:4, time_axis; meta,
+        ) : nothing
 
-    if config.add_mccormick
-        mc = build_reformulated_mccormick(
-            model, x_var, y_var, psq.approximation, xsq, ysq,
-            x_bounds, y_bounds,
-        )
-        register_reformulated_mccormick!(container, C, mc, meta)
+    for (i, name) in enumerate(name_axis)
+        xmn, xmx = x_bounds[i].min, x_bounds[i].max
+        ymn, ymx = y_bounds[i].min, y_bounds[i].max
+        for t in time_axis
+            approx_target[name, t] =
+                0.5 * (psq[name, t] - xsq[name, t] - ysq[name, t])
+            if add_mccormick
+                r = build_reformulated_mccormick(
+                    model,
+                    x_var[name, t], y_var[name, t],
+                    psq[name, t], xsq[name, t], ysq[name, t],
+                    xmn, xmx, ymn, ymx,
+                )
+                for (k, ref) in enumerate(r)
+                    mc_target[name, k, t] = ref
+                end
+            end
+        end
     end
-    return result_target
+    return approx_target
 end

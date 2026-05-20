@@ -134,9 +134,7 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_pwl_methods.jl"))
 
                     # --- approximations/ subfolder ---
-                    # Pure-JuMP layer (exercises build_* directly, no container).
-                    include(joinpath(TEST_DIR, "test_pure_jump_approximations.jl"))
-                    # IOM-wrapper regression tests (exercise _add_*_approx! end-to-end).
+                    # IOM-wrapper regression tests (exercise add_*_approx! end-to-end).
                     include(joinpath(TEST_DIR, "test_quadratic_approximations.jl"))
                     include(joinpath(TEST_DIR, "test_bilinear_approximations.jl"))
                     include(joinpath(TEST_DIR, "test_hybs_approximations.jl"))
