@@ -356,7 +356,7 @@ const _PROBLEM_OUTPUTS_FILENAME = "problem_outputs.bin"
 Serialize the outputs to a binary file.
 
 It is recommended that `directory` be the directory that contains a serialized
-OperationModel. That will allow automatic deserialization of the PowerSystems.System.
+AbstractOptimizationModel. That will allow automatic deserialization of the PowerSystems.System.
 The `OptimizationProblemOutputs` instance can be deserialized with `OptimizationProblemOutputs(directory)`.
 """
 function serialize_outputs(res::OptimizationProblemOutputs, directory::AbstractString)

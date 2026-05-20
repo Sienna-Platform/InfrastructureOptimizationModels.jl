@@ -1,4 +1,4 @@
-mutable struct EmulationModel{M <: AbstractOptimizationProblem} <: OperationModel
+mutable struct EmulationModel{M <: AbstractOptimizationProblem} <: AbstractOptimizationModel
     name::Symbol
     template::AbstractProblemTemplate
     sys::IS.InfrastructureSystemsContainer

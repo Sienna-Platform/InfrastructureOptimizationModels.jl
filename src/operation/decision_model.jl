@@ -18,7 +18,7 @@ function get_deterministic_time_series_type(sys::IS.InfrastructureSystemsContain
     end
 end
 
-mutable struct DecisionModel{M <: AbstractOptimizationProblem} <: OperationModel
+mutable struct DecisionModel{M <: AbstractOptimizationProblem} <: AbstractOptimizationModel
     name::Symbol
     template::AbstractProblemTemplate
     sys::IS.InfrastructureSystemsContainer

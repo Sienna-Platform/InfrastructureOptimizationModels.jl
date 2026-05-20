@@ -379,7 +379,7 @@ export get_incompatible_devices
 
 # Bulk export: symbols POM needs that weren't previously exported
 # Core types
-export OptimizationContainer, OperationModel
+export OptimizationContainer, AbstractOptimizationModel
 export ArgumentConstructStage, ModelConstructStage
 export EmulationModelStore, DeviceModelForBranches
 export SOSStatusVariable

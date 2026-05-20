@@ -13,7 +13,7 @@ struct MyCustomProblem <: IOM.AbstractOptimizationProblem end
 abstract type AbstractOptimizationProblem end
 
 """
-Abstract supertype for `DecisionModel` and `EmulationModel`. `OperationModel` structs
+Abstract supertype for `DecisionModel` and `EmulationModel`. Concrete subtypes
 are parameterized with an `AbstractOptimizationProblem` subtype.
 """
-abstract type OperationModel end
+abstract type AbstractOptimizationModel end

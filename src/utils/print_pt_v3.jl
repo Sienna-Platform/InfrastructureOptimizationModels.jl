@@ -188,16 +188,16 @@ function _show_method(io::IO, network_model::NetworkModel, backend::Symbol; kwar
     return
 end
 
-function Base.show(io::IO, ::MIME"text/plain", input::OperationModel)
+function Base.show(io::IO, ::MIME"text/plain", input::AbstractOptimizationModel)
     _show_method(io, input, :auto)
 end
 
-function Base.show(io::IO, ::MIME"text/html", input::OperationModel)
+function Base.show(io::IO, ::MIME"text/html", input::AbstractOptimizationModel)
     # The tf_html_simple format was eliminated from PrettyTables and it was added to PowerSystems
     _show_method(io, input, :html; stand_alone = false, table_format = tf_html_simple)
 end
 
-function _show_method(io::IO, model::OperationModel, backend::Symbol; kwargs...)
+function _show_method(io::IO, model::AbstractOptimizationModel, backend::Symbol; kwargs...)
     _show_method(io, model.template, backend; kwargs...)
 end
 
