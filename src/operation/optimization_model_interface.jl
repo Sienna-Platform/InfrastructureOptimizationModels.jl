@@ -21,7 +21,8 @@ end
 
 get_name(model::AbstractOptimizationModel) = model.name
 get_store(model::AbstractOptimizationModel) = model.store
-is_synchronized(model::AbstractOptimizationModel) = is_synchronized(get_optimization_container(model))
+is_synchronized(model::AbstractOptimizationModel) =
+    is_synchronized(get_optimization_container(model))
 
 function get_rebuild_model(model::AbstractOptimizationModel)
     sim_info = model.simulation_info
@@ -80,7 +81,8 @@ end
 get_status(model::AbstractOptimizationModel) = get_status(get_internal(model))
 get_system(model::AbstractOptimizationModel) = model.sys
 get_template(model::AbstractOptimizationModel) = model.template
-get_log_file(model::AbstractOptimizationModel) = joinpath(get_output_dir(model), PROBLEM_LOG_FILENAME)
+get_log_file(model::AbstractOptimizationModel) =
+    joinpath(get_output_dir(model), PROBLEM_LOG_FILENAME)
 get_store_params(model::AbstractOptimizationModel) =
     get_store_params(get_internal(model))
 get_output_dir(model::AbstractOptimizationModel) = get_output_dir(get_internal(model))
@@ -88,15 +90,18 @@ get_initial_conditions_file(model::AbstractOptimizationModel) =
     joinpath(get_output_dir(model), "initial_conditions.bin")
 get_recorder_dir(model::AbstractOptimizationModel) =
     joinpath(get_output_dir(model), "recorder")
-get_variables(model::AbstractOptimizationModel) = get_variables(get_optimization_container(model))
-get_parameters(model::AbstractOptimizationModel) = get_parameters(get_optimization_container(model))
+get_variables(model::AbstractOptimizationModel) =
+    get_variables(get_optimization_container(model))
+get_parameters(model::AbstractOptimizationModel) =
+    get_parameters(get_optimization_container(model))
 get_duals(model::AbstractOptimizationModel) = get_duals(get_optimization_container(model))
 get_initial_conditions(model::AbstractOptimizationModel) =
     get_initial_conditions(get_optimization_container(model))
 
 get_interval(model::AbstractOptimizationModel) = get_store_params(model).interval
 
-get_run_status(model::AbstractOptimizationModel) = get_run_status(get_simulation_info(model))
+get_run_status(model::AbstractOptimizationModel) =
+    get_run_status(get_simulation_info(model))
 
 set_run_status!(model::AbstractOptimizationModel, status) =
     set_run_status!(get_simulation_info(model), status)
@@ -258,24 +263,32 @@ function _pre_solve_model_checks(model::AbstractOptimizationModel, optimizer = n
     return
 end
 
-function list_names(model::AbstractOptimizationModel, ::Type{T}) where {T <: OptimizationKeyType}
+function list_names(
+    model::AbstractOptimizationModel,
+    ::Type{T},
+) where {T <: OptimizationKeyType}
     return encode_keys_as_strings(
         list_keys(get_store(model), T),
     )
 end
 
 read_dual(model::AbstractOptimizationModel, key::ConstraintKey) = _read_outputs(model, key)
-read_parameter(model::AbstractOptimizationModel, key::ParameterKey) = _read_outputs(model, key)
-read_aux_variable(model::AbstractOptimizationModel, key::AuxVarKey) = _read_outputs(model, key)
-read_variable(model::AbstractOptimizationModel, key::VariableKey) = _read_outputs(model, key)
-read_expression(model::AbstractOptimizationModel, key::ExpressionKey) = _read_outputs(model, key)
+read_parameter(model::AbstractOptimizationModel, key::ParameterKey) =
+    _read_outputs(model, key)
+read_aux_variable(model::AbstractOptimizationModel, key::AuxVarKey) =
+    _read_outputs(model, key)
+read_variable(model::AbstractOptimizationModel, key::VariableKey) =
+    _read_outputs(model, key)
+read_expression(model::AbstractOptimizationModel, key::ExpressionKey) =
+    _read_outputs(model, key)
 
 function _read_outputs(model::AbstractOptimizationModel, key::OptimizationContainerKey)
     array = read_outputs(get_store(model), key)
     return to_outputs_dataframe(array, nothing, Val(TableFormat.LONG))
 end
 
-read_optimizer_stats(model::AbstractOptimizationModel) = read_optimizer_stats(get_store(model))
+read_optimizer_stats(model::AbstractOptimizationModel) =
+    read_optimizer_stats(get_store(model))
 
 function add_recorders!(model::AbstractOptimizationModel, recorders)
     internal = get_internal(model)
@@ -322,7 +335,8 @@ function instantiate_network_model!(model::AbstractOptimizationModel)
     return
 end
 
-list_aux_variable_keys(x::AbstractOptimizationModel) = list_keys(get_store(x), AuxVariableType)
+list_aux_variable_keys(x::AbstractOptimizationModel) =
+    list_keys(get_store(x), AuxVariableType)
 list_aux_variable_names(x::AbstractOptimizationModel) = list_names(x, AuxVariableType)
 list_variable_keys(x::AbstractOptimizationModel) = list_keys(get_store(x), VariableType)
 list_variable_names(x::AbstractOptimizationModel) = list_names(x, VariableType)

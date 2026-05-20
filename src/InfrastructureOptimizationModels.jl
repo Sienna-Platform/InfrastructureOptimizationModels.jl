@@ -649,7 +649,7 @@ include("bilinear_approximations/nmdt.jl")
 # (which defines VariableValueParameter and FixValueParameter)
 include("common_models/add_param_container.jl")
 
-include("operation/operation_model_interface.jl")
+include("operation/optimization_model_interface.jl")
 include("operation/decision_model_store.jl")
 include("operation/emulation_model_store.jl")
 include("operation/store_common.jl")
