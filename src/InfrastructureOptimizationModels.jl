@@ -112,6 +112,10 @@ function get_bustype end
 function has_service end
 function set_units_base_system! end
 
+# Operation-model lifecycle extension points — downstream (e.g. POM) supplies methods
+# dispatched on concrete problem types.
+function validate_time_series! end
+
 import TimerOutputs
 
 # Base Imports
@@ -500,10 +504,7 @@ export RunStatus
 export SimulationBuildStatus
 
 # Problem Types
-export DecisionProblem
-export EmulationProblem
-export DefaultDecisionProblem
-export DefaultEmulationProblem
+export AbstractOptimizationProblem
 
 # Settings and Data Types
 export Settings

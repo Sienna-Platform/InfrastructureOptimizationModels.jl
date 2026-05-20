@@ -1050,7 +1050,7 @@ Save the optimizer statistics to CSV or JSON
 
 # Arguments
 
-  - `res::Union{OptimizationProblemOutputs, SimulationProblmeOutputs`: Outputs
+  - `res::OptimizationProblemOutputs`: Outputs
   - `directory::AbstractString` : target directory
   - `format = "CSV"` : can be "csv" or "json
 """
