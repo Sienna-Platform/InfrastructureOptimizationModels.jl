@@ -4,8 +4,8 @@
 # Delta²/(4·K²). These cuts supplement (do not replace) the underlying PWL
 # (SOS2 or manual-SOS2) constraints.
 #
-# Shared between solver_sos2.jl and manual_sos2.jl — both reference these
-# container keys and the build/register helpers below.
+# Shared between solver_sos2.jl and manual_sos2.jl — both call the scalar
+# `build_pwmcc_concave_cuts` per cell from inside their own scalar build.
 
 # --- Container key types ---
 
@@ -36,12 +36,99 @@ struct PiecewiseMcCormickTangentLBL <: ConstraintType end
 "Piecewise McCormick tangent lower-bound constraint (right endpoint)."
 struct PiecewiseMcCormickTangentLBR <: ConstraintType end
 
-# --- Result struct ---
+# --- Scalar build (pure JuMP, primary API) ---
 
 """
-Pure-JuMP result of `build_pwmcc_concave_cuts`. All fields are JuMP container
-arrays indexed by (name, k, t) for the K-segment pieces or (name, t) for the
-once-per-element constraints.
+    build_pwmcc_concave_cuts(model, v, q_expr, v_min, v_max, K)
+
+Scalar form: build the K-segment PWMCC cuts at a single cell. `v` is a
+JuMP scalar (the original variable) and `q_expr` is the scalar expression
+for the existing PWL v² approximation at this cell.
+
+Returns a NamedTuple:
+- `delta_var`               :: DenseAxisArray{VariableRef, 1} over `1:K` (binary)
+- `vd_var`                  :: DenseAxisArray{VariableRef, 1} over `1:K` (continuous)
+- `selector_constraint`     :: scalar (Σ_k δ_k == 1)
+- `linking_constraint`      :: scalar (Σ_k vd_k == v)
+- `interval_lb_constraints` :: DenseAxisArray{Constraint, 1} over `1:K`
+- `interval_ub_constraints` :: DenseAxisArray{Constraint, 1} over `1:K`
+- `chord_ub_constraint`     :: scalar
+- `tangent_lb_l_constraint` :: scalar
+- `tangent_lb_r_constraint` :: scalar
+"""
+function build_pwmcc_concave_cuts(
+    model::JuMP.Model,
+    v::JuMP.AbstractJuMPScalar,
+    q_expr,
+    v_min::Float64,
+    v_max::Float64,
+    K::Int,
+)
+    IS.@assert_op K >= 1
+    IS.@assert_op v_min < v_max
+
+    brk = [v_min + k * (v_max - v_min) / K for k in 0:K]  # length K+1, indexed 1..K+1
+
+    delta_var = JuMP.@variable(
+        model, [k = 1:K],
+        binary = true,
+        base_name = "PwMcCBin",
+    )
+    vd_var = JuMP.@variable(
+        model, [k = 1:K],
+        base_name = "PwMcCDis",
+    )
+
+    selector_con = JuMP.@constraint(model, sum(delta_var[k] for k in 1:K) == 1.0)
+    linking_con = JuMP.@constraint(model, sum(vd_var[k] for k in 1:K) == v)
+
+    interval_lb = JuMP.@constraint(
+        model, [k = 1:K], brk[k] * delta_var[k] <= vd_var[k],
+    )
+    interval_ub = JuMP.@constraint(
+        model, [k = 1:K], vd_var[k] <= brk[k + 1] * delta_var[k],
+    )
+    chord_ub = JuMP.@constraint(
+        model,
+        q_expr <= sum(
+            (brk[k] + brk[k + 1]) * vd_var[k] -
+            brk[k] * brk[k + 1] * delta_var[k] for k in 1:K
+        ),
+    )
+    tangent_lb_l = JuMP.@constraint(
+        model,
+        q_expr >= sum(
+            2.0 * brk[k] * vd_var[k] - brk[k]^2 * delta_var[k] for k in 1:K
+        ),
+    )
+    tangent_lb_r = JuMP.@constraint(
+        model,
+        q_expr >= sum(
+            2.0 * brk[k + 1] * vd_var[k] - brk[k + 1]^2 * delta_var[k] for k in 1:K
+        ),
+    )
+
+    return (;
+        delta_var,
+        vd_var,
+        selector_constraint = selector_con,
+        linking_constraint = linking_con,
+        interval_lb_constraints = interval_lb,
+        interval_ub_constraints = interval_ub,
+        chord_ub_constraint = chord_ub,
+        tangent_lb_l_constraint = tangent_lb_l,
+        tangent_lb_r_constraint = tangent_lb_r,
+    )
+end
+
+# --- Legacy vectorized build + register (kept for SolverSOS2/ManualSOS2's
+# vectorized build_quadratic_approx until those callers migrate; removed in
+# sweep) ---
+
+"""
+Pure-JuMP result of legacy vectorized `build_pwmcc_concave_cuts`. Fields are
+JuMP container arrays indexed by (name, k, t) for the K-segment pieces or
+(name, t) for the once-per-element constraints.
 """
 struct PWMCCResult{
     DV <: JuMP.Containers.DenseAxisArray{JuMP.VariableRef, 3},
@@ -65,21 +152,12 @@ struct PWMCCResult{
     tangent_lb_r_constraints::TLRC
 end
 
-# --- Pure-JuMP build ---
-
 """
     build_pwmcc_concave_cuts(model, v_var, q_expr, bounds, K) -> PWMCCResult
 
-Build piecewise McCormick cuts on the concave term (−v²) to tighten the LP
-relaxation of a PWL approximation `q_expr ≈ v²`. Partitions each name's
-[v_min, v_max] into K uniform sub-intervals.
-
-# Arguments
-- `model::JuMP.Model`: JuMP model.
-- `v_var`: 2D container of the original variable v, indexed by (name, t).
-- `q_expr`: 2D container of the existing PWL approximation expressions for v².
-- `bounds`: per-name (v_min, v_max).
-- `K::Int`: number of sub-intervals (K = 1 is degenerate; K ≥ 2 useful).
+Legacy vectorized form. Build piecewise McCormick cuts on the concave term
+(−v²) to tighten the LP relaxation of a PWL approximation `q_expr ≈ v²`.
+Partitions each name's [v_min, v_max] into K uniform sub-intervals.
 """
 function build_pwmcc_concave_cuts(
     model::JuMP.Model,
@@ -96,7 +174,6 @@ function build_pwmcc_concave_cuts(
         IS.@assert_op b.min < b.max
     end
 
-    # Per-name breakpoint coefficients: brk[name, k] = v_min + k·(v_max − v_min)/K.
     brk = JuMP.Containers.DenseAxisArray(
         [
             bounds[i].min + k * (bounds[i].max - bounds[i].min) / K
@@ -118,9 +195,6 @@ function build_pwmcc_concave_cuts(
         base_name = "PwMcCDis",
     )
 
-    # JuMP's `sum(...)` inside a constraint macro is recognized by the parser
-    # and expanded into an efficient affine-sum build — no manual unrolling
-    # required here.
     selector_cons = JuMP.@constraint(
         model,
         [name = name_axis, t = time_axis],
@@ -141,7 +215,6 @@ function build_pwmcc_concave_cuts(
         [name = name_axis, k = 1:K, t = time_axis],
         vd_var[name, k, t] <= brk[name, k] * delta_var[name, k, t]
     )
-    # Chord upper bound: q ≤ Σ_k (brk[k-1]+brk[k]) * vd_k − brk[k-1]*brk[k] * δ_k
     chord_ub = JuMP.@constraint(
         model,
         [name = name_axis, t = time_axis],
@@ -150,7 +223,6 @@ function build_pwmcc_concave_cuts(
             brk[name, k - 1] * brk[name, k] * delta_var[name, k, t] for k in 1:K
         )
     )
-    # Tangent lower bound at left endpoint: q ≥ Σ_k 2·brk[k-1]*vd_k − brk[k-1]²·δ_k
     tangent_lb_l = JuMP.@constraint(
         model,
         [name = name_axis, t = time_axis],
@@ -159,7 +231,6 @@ function build_pwmcc_concave_cuts(
             brk[name, k - 1]^2 * delta_var[name, k, t] for k in 1:K
         )
     )
-    # Tangent lower bound at right endpoint: q ≥ Σ_k 2·brk[k]*vd_k − brk[k]²·δ_k
     tangent_lb_r = JuMP.@constraint(
         model,
         [name = name_axis, t = time_axis],
@@ -182,13 +253,10 @@ function build_pwmcc_concave_cuts(
     )
 end
 
-# --- IOM-side register helper ---
-
 """
     register_pwmcc!(container, ::Type{C}, pwmcc::PWMCCResult, meta)
 
-Register all PWMCC variables and constraints in the optimization container
-under the corresponding key types, suffixed by `meta`.
+Legacy registration helper for the vectorized PWMCC result.
 """
 function register_pwmcc!(
     container::OptimizationContainer,
