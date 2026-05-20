@@ -268,10 +268,14 @@ function _alloc_binary_continuous_product_targets!(
         container, McCormickUpperConstraint, C,
         name_axis, 1:depth, 1:2, time_axis; meta = mc_meta,
     )
-    mc_lower_target = tighten ? nothing : add_constraints_container!(
+    mc_lower_target = if tighten
+        nothing
+    else
+        add_constraints_container!(
         container, McCormickUpperConstraint, C,
         name_axis, 1:depth, 1:2, time_axis; meta = mc_meta * "_lb",
     )
+    end
     result_expr_target = add_expression_container!(
         container, NMDTBinaryContinuousProductExpression, C,
         name_axis, time_axis; meta,

@@ -45,7 +45,13 @@ function add_quadratic_approx!(
     for (i, name) in enumerate(name_axis)
         xmn, xmx = x_bounds[i].min, x_bounds[i].max
         for t in time_axis
-            r = build_quadratic_approx(NoQuadApproxConfig(), model, x_var[name, t], xmn, xmx)
+            r = build_quadratic_approx(
+                NoQuadApproxConfig(),
+                model,
+                x_var[name, t],
+                xmn,
+                xmx,
+            )
             target[name, t] = r.approximation
         end
     end

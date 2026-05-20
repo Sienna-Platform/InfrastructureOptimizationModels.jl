@@ -49,13 +49,15 @@ function build_bilinear_approx(
         model,
         0.5 * (psq.approximation - xsq.approximation - ysq.approximation),
     )
-    mc = config.add_mccormick ?
+    mc = if config.add_mccormick
         build_reformulated_mccormick(
-            model, x, y,
-            psq.approximation, xsq.approximation, ysq.approximation,
-            x_min, x_max, y_min, y_max,
-        ) :
+        model, x, y,
+        psq.approximation, xsq.approximation, ysq.approximation,
+        x_min, x_max, y_min, y_max,
+    )
+    else
         nothing
+    end
     return (;
         approximation,
         xsq,
@@ -105,8 +107,22 @@ function add_bilinear_approx!(
         for i in eachindex(x_bounds)
     ]
 
-    xsq = add_quadratic_approx!(config.quad_config, container, C, x_var, x_bounds, meta * "_x")
-    ysq = add_quadratic_approx!(config.quad_config, container, C, y_var, y_bounds, meta * "_y")
+    xsq = add_quadratic_approx!(
+        config.quad_config,
+        container,
+        C,
+        x_var,
+        x_bounds,
+        meta * "_x",
+    )
+    ysq = add_quadratic_approx!(
+        config.quad_config,
+        container,
+        C,
+        y_var,
+        y_bounds,
+        meta * "_y",
+    )
     psq = add_quadratic_approx!(
         config.quad_config, container, C, p_target, p_bounds, meta * "_plus",
     )
@@ -178,11 +194,14 @@ function _bin2_assemble_and_mccormick!(
     approx_target = add_expression_container!(
         container, BilinearProductExpression, C, name_axis, time_axis; meta,
     )
-    mc_target = add_mccormick ?
+    mc_target = if add_mccormick
         add_constraints_container!(
-            container, ReformulatedMcCormickConstraint, C,
-            name_axis, 1:4, time_axis; meta,
-        ) : nothing
+        container, ReformulatedMcCormickConstraint, C,
+        name_axis, 1:4, time_axis; meta,
+    )
+    else
+        nothing
+    end
 
     for (i, name) in enumerate(name_axis)
         xmn, xmx = x_bounds[i].min, x_bounds[i].max

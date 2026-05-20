@@ -77,7 +77,8 @@ function build_quadratic_approx(
     )
     tightening = if tighten
         epi = build_quadratic_approx(
-            EpigraphQuadConfig(config.epigraph_depth), model, disc.norm_expr, 0.0, 1.0,
+            EpigraphQuadConfig(config.epigraph_depth), model, disc.norm_expr, 0.0,
+            1.0,
         )
         tcon = JuMP.@constraint(model, approximation >= epi.approximation)
         (; epigraph = epi, constraint = tcon)
@@ -134,7 +135,8 @@ function build_quadratic_approx(
     )
     tightening = if tighten
         epi = build_quadratic_approx(
-            EpigraphQuadConfig(config.epigraph_depth), model, disc.norm_expr, 0.0, 1.0,
+            EpigraphQuadConfig(config.epigraph_depth), model, disc.norm_expr, 0.0,
+            1.0,
         )
         tcon = JuMP.@constraint(model, approximation >= epi.approximation)
         (; epigraph = epi, constraint = tcon)
@@ -209,17 +211,26 @@ function add_quadratic_approx!(
     approx_target = add_expression_container!(
         container, QuadraticExpression, C, name_axis, time_axis; meta,
     )
-    tighten_targets = tighten ?
+    tighten_targets = if tighten
         _alloc_nmdt_tightening_targets!(
-            container, C, name_axis, time_axis, config.epigraph_depth, meta,
-        ) : nothing
+        container, C, name_axis, time_axis, config.epigraph_depth, meta,
+    )
+    else
+        nothing
+    end
 
     for (i, name) in enumerate(name_axis)
         xmn, xmx = x_bounds[i].min, x_bounds[i].max
         for t in time_axis
             r = build_quadratic_approx(config, model, x_var[name, t], xmn, xmx)
             _write_discretization_cell!(disc_targets, name, t, r.discretization, depth)
-            _write_binary_continuous_product_cell!(bx_targets, name, t, r.bx_xh_product, depth)
+            _write_binary_continuous_product_cell!(
+                bx_targets,
+                name,
+                t,
+                r.bx_xh_product,
+                depth,
+            )
             _write_residual_product_cell!(res_targets, name, t, r.residual_product)
             approx_target[name, t] = r.approximation
             if tighten
@@ -272,10 +283,13 @@ function add_quadratic_approx!(
     approx_target = add_expression_container!(
         container, QuadraticExpression, C, name_axis, time_axis; meta,
     )
-    tighten_targets = tighten ?
+    tighten_targets = if tighten
         _alloc_nmdt_tightening_targets!(
-            container, C, name_axis, time_axis, config.epigraph_depth, meta,
-        ) : nothing
+        container, C, name_axis, time_axis, config.epigraph_depth, meta,
+    )
+    else
+        nothing
+    end
 
     for (i, name) in enumerate(name_axis)
         xmn, xmx = x_bounds[i].min, x_bounds[i].max

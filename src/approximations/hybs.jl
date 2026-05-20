@@ -95,10 +95,13 @@ function _build_hybs_scalar(
 
     approximation = JuMP.@expression(model, 1.0 * z_var)
 
-    mc = config.add_mccormick ?
+    mc = if config.add_mccormick
         build_mccormick_envelope(
-            model, x, y, z_var, x_min, x_max, y_min, y_max,
-        ) : nothing
+        model, x, y, z_var, x_min, x_max, y_min, y_max,
+    )
+    else
+        nothing
+    end
 
     return (;
         approximation,
@@ -132,8 +135,22 @@ function add_bilinear_approx!(
     y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    xsq = add_quadratic_approx!(config.quad_config, container, C, x_var, x_bounds, meta * "_x")
-    ysq = add_quadratic_approx!(config.quad_config, container, C, y_var, y_bounds, meta * "_y")
+    xsq = add_quadratic_approx!(
+        config.quad_config,
+        container,
+        C,
+        x_var,
+        x_bounds,
+        meta * "_x",
+    )
+    ysq = add_quadratic_approx!(
+        config.quad_config,
+        container,
+        C,
+        y_var,
+        y_bounds,
+        meta * "_y",
+    )
     return _add_hybs_adapter!(
         container, C, config, x_var, y_var, xsq, ysq, x_bounds, y_bounds, meta,
     )
@@ -212,10 +229,13 @@ function _add_hybs_adapter!(
     approx_target = add_expression_container!(
         container, BilinearProductExpression, C, name_axis, time_axis; meta,
     )
-    mc_target = config.add_mccormick ?
+    mc_target = if config.add_mccormick
         add_constraints_container!(
-            container, McCormickConstraint, C, name_axis, 1:4, time_axis; meta,
-        ) : nothing
+        container, McCormickConstraint, C, name_axis, 1:4, time_axis; meta,
+    )
+    else
+        nothing
+    end
 
     for (i, name) in enumerate(name_axis)
         xmn, xmx = x_bounds[i].min, x_bounds[i].max

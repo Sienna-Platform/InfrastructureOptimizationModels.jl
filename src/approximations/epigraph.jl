@@ -109,8 +109,8 @@ function build_quadratic_approx(
     tangent_levels = JuMP.@constraint(
         model, [j = 1:depth],
         z_var >=
-            scale_back_g_basis(x_min, delta, g_var, 1:j) -
-            delta^2 * 2.0^(-2j - 2),
+        scale_back_g_basis(x_min, delta, g_var, 1:j) -
+        delta^2 * 2.0^(-2j - 2),
     )
 
     tangent_cons = JuMP.Containers.DenseAxisArray{typeof(tangent_zero)}(

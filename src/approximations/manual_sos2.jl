@@ -179,9 +179,11 @@ function add_quadratic_approx!(
 
     use_pwmcc = config.pwmcc_segments > 0
     K = config.pwmcc_segments
-    pwmcc_targets = use_pwmcc ?
-        _alloc_pwmcc_targets!(container, C, name_axis, time_axis, K, meta * "_pwmcc") :
+    pwmcc_targets = if use_pwmcc
+        _alloc_pwmcc_targets!(container, C, name_axis, time_axis, K, meta * "_pwmcc")
+    else
         nothing
+    end
 
     for (i, name) in enumerate(name_axis)
         xmn, xmx = x_bounds[i].min, x_bounds[i].max

@@ -180,7 +180,13 @@ function add_bilinear_approx!(
             )
             _write_discretization_cell!(x_disc_targets, name, t, r.x_discretization, depth)
             yh_target[name, t] = r.yh_expression
-            _write_binary_continuous_product_cell!(bx_yh_targets, name, t, r.bx_yh_product, depth)
+            _write_binary_continuous_product_cell!(
+                bx_yh_targets,
+                name,
+                t,
+                r.bx_yh_product,
+                depth,
+            )
             _write_residual_product_cell!(res_targets, name, t, r.residual_product)
             approx_target[name, t] = r.approximation
         end
@@ -250,10 +256,34 @@ function add_bilinear_approx!(
             )
             _write_discretization_cell!(x_disc_targets, name, t, r.x_discretization, depth)
             _write_discretization_cell!(y_disc_targets, name, t, r.y_discretization, depth)
-            _write_binary_continuous_product_cell!(bx_yh_targets, name, t, r.bx_yh_product, depth)
-            _write_binary_continuous_product_cell!(by_dx_targets, name, t, r.by_dx_product, depth)
-            _write_binary_continuous_product_cell!(by_xh_targets, name, t, r.by_xh_product, depth)
-            _write_binary_continuous_product_cell!(bx_dy_targets, name, t, r.bx_dy_product, depth)
+            _write_binary_continuous_product_cell!(
+                bx_yh_targets,
+                name,
+                t,
+                r.bx_yh_product,
+                depth,
+            )
+            _write_binary_continuous_product_cell!(
+                by_dx_targets,
+                name,
+                t,
+                r.by_dx_product,
+                depth,
+            )
+            _write_binary_continuous_product_cell!(
+                by_xh_targets,
+                name,
+                t,
+                r.by_xh_product,
+                depth,
+            )
+            _write_binary_continuous_product_cell!(
+                bx_dy_targets,
+                name,
+                t,
+                r.bx_dy_product,
+                depth,
+            )
             _write_residual_product_cell!(res_targets, name, t, r.residual_product)
             approx_target[name, t] = r.approximation
         end
