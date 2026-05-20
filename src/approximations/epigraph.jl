@@ -44,6 +44,18 @@ express the parabola anchor + residual decomposition in this form.
 end
 
 """
+    scale_back_g_basis_scalar(x_min, delta, g_var, levels)
+
+Scalar form of `scale_back_g_basis`: `g_var` is a 1D `DenseAxisArray`
+indexed by j (the levels axis) for a single (name, t) cell.
+"""
+@inline function scale_back_g_basis_scalar(x_min, delta, g_var, levels)
+    return x_min^2 +
+           (2.0 * x_min * delta + delta^2) * g_var[0] -
+           sum(delta^2 * 2.0^(-2j) * g_var[j] for j in levels)
+end
+
+"""
 Config for epigraph (Q^{L1}) LP-only lower-bound quadratic approximation.
 
 # Fields
@@ -54,8 +66,185 @@ struct EpigraphQuadConfig <: QuadraticApproxConfig
     depth::Int
 end
 
+# --- Scalar build (pure JuMP, primary API) ---
+
 """
-Pure-JuMP result of `build_quadratic_approx(::EpigraphQuadConfig, ...)`.
+    build_quadratic_approx(config::EpigraphQuadConfig, model, x, x_min, x_max)
+
+Scalar form: build the epigraph relaxation for a single JuMP scalar `x`
+with bounds `[x_min, x_max]`. Creates the per-cell g basis (j ∈ 0:depth),
+LP relaxation constraints, z variable, tangent expression `fL`, and the
+`depth + 2` tangent cuts.
+
+Returns a NamedTuple:
+- `approximation`     :: JuMP.AffExpr   (1.0 · z)
+- `z_var`             :: JuMP.VariableRef
+- `g_var`             :: DenseAxisArray{VariableRef, 1} over `0:depth`
+- `link_constraint`   :: scalar constraint linking g₀ to (x − x_min)/δ
+- `lp_constraints`    :: DenseAxisArray{Constraint, 2} over `(1:depth, 1:2)`
+- `tangent_expression`:: JuMP.AffExpr   (full-depth residual sum)
+- `tangent_constraints`:: DenseAxisArray{Constraint, 1} over `1:(depth+2)`
+"""
+function build_quadratic_approx(
+    config::EpigraphQuadConfig,
+    model::JuMP.Model,
+    x::JuMP.AbstractJuMPScalar,
+    x_min::Float64,
+    x_max::Float64,
+)
+    IS.@assert_op config.depth >= 1
+    IS.@assert_op x_max > x_min
+
+    depth = config.depth
+    delta = x_max - x_min
+    z_ub = max(x_min^2, x_max^2)
+
+    g_var = JuMP.@variable(
+        model, [j = 0:depth],
+        lower_bound = 0.0, upper_bound = 1.0,
+        base_name = "SawtoothAux",
+    )
+
+    link_con = JuMP.@constraint(model, g_var[0] == (x - x_min) / delta)
+
+    # T^L constraints: g_j ≤ 2 g_{j-1} and g_j ≤ 2(1 − g_{j-1}) for j = 1..L.
+    lp_a = JuMP.@constraint(model, [j = 1:depth], g_var[j] <= 2.0 * g_var[j - 1])
+    lp_b = JuMP.@constraint(
+        model, [j = 1:depth], g_var[j] <= 2.0 * (1.0 - g_var[j - 1]),
+    )
+    lp_cons = JuMP.Containers.DenseAxisArray{eltype(lp_a.data)}(
+        undef, 1:depth, 1:2,
+    )
+    @views lp_cons.data[:, 1] .= lp_a.data
+    @views lp_cons.data[:, 2] .= lp_b.data
+
+    z_var = JuMP.@variable(
+        model, lower_bound = 0.0, upper_bound = z_ub, base_name = "EpigraphVar",
+    )
+
+    fL_expr = JuMP.@expression(
+        model,
+        sum(delta^2 * 2.0^(-2j) * g_var[j] for j in 1:depth),
+    )
+
+    # Tangent cuts:
+    #   k=1: z ≥ 0
+    #   k=2: z ≥ 2·x_min + 2·δ·g₀ − 1
+    #   k=j+2 for j=1..L: z ≥ scale_back_g_basis_scalar(1:j) − δ²·2^{−2j−2}
+    tangent_zero = JuMP.@constraint(model, z_var >= 0.0)
+    tangent_anchor = JuMP.@constraint(
+        model, z_var >= 2.0 * x_min - 1.0 + 2.0 * delta * g_var[0],
+    )
+    tangent_levels = JuMP.@constraint(
+        model, [j = 1:depth],
+        z_var >=
+            scale_back_g_basis_scalar(x_min, delta, g_var, 1:j) -
+            delta^2 * 2.0^(-2j - 2),
+    )
+
+    tangent_cons = JuMP.Containers.DenseAxisArray{typeof(tangent_zero)}(
+        undef, 1:(depth + 2),
+    )
+    tangent_cons[1] = tangent_zero
+    tangent_cons[2] = tangent_anchor
+    @views tangent_cons.data[3:end] .= tangent_levels.data
+
+    approximation = JuMP.@expression(model, 1.0 * z_var)
+
+    return (;
+        approximation,
+        z_var,
+        g_var,
+        link_constraint = link_con,
+        lp_constraints = lp_cons,
+        tangent_expression = fL_expr,
+        tangent_constraints = tangent_cons,
+    )
+end
+
+# --- IOM adapter (allocate, loop, write) ---
+
+"""
+    add_quadratic_approx!(config::EpigraphQuadConfig, container, ::Type{C}, x_var, x_bounds, meta)
+
+Allocate all output containers (z, g, link/lp/tangent constraints, fL and
+approximation expressions) with axes drawn from `x_var`'s `(name, t)` plus
+the internal `(depth)` axes, then loop `(name, t)` calling the scalar
+`build_quadratic_approx(::EpigraphQuadConfig, ...)` per cell. Writes the
+scalar refs and small inner-axis arrays into the container slots.
+
+Returns the registered `EpigraphExpression` container (the approximation).
+"""
+function add_quadratic_approx!(
+    config::EpigraphQuadConfig,
+    container::OptimizationContainer,
+    ::Type{C},
+    x_var,
+    x_bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    name_axis = axes(x_var, 1)
+    time_axis = axes(x_var, 2)
+    depth = config.depth
+    IS.@assert_op depth >= 1
+    IS.@assert_op length(name_axis) == length(x_bounds)
+    for b in x_bounds
+        IS.@assert_op b.max > b.min
+    end
+
+    model = get_jump_model(container)
+
+    z_target = add_variable_container!(
+        container, EpigraphVariable, C, name_axis, time_axis; meta,
+    )
+    g_target = add_variable_container!(
+        container, SawtoothAuxVariable, C, name_axis, 0:depth, time_axis; meta,
+    )
+    link_target = add_constraints_container!(
+        container, SawtoothLinkingConstraint, C, name_axis, time_axis; meta,
+    )
+    fL_target = add_expression_container!(
+        container, EpigraphTangentExpression, C, name_axis, time_axis; meta,
+    )
+    approx_target = add_expression_container!(
+        container, EpigraphExpression, C, name_axis, time_axis; meta,
+    )
+    lp_target = add_constraints_container!(
+        container, SawtoothLPConstraint, C, name_axis, 1:depth, 1:2, time_axis; meta,
+    )
+    tangent_target = add_constraints_container!(
+        container, EpigraphTangentConstraint, C, name_axis, 1:(depth + 2), time_axis;
+        meta,
+    )
+
+    for (i, name) in enumerate(name_axis)
+        xmn, xmx = x_bounds[i].min, x_bounds[i].max
+        for t in time_axis
+            r = build_quadratic_approx(config, model, x_var[name, t], xmn, xmx)
+            z_target[name, t] = r.z_var
+            for j in 0:depth
+                g_target[name, j, t] = r.g_var[j]
+            end
+            link_target[name, t] = r.link_constraint
+            fL_target[name, t] = r.tangent_expression
+            approx_target[name, t] = r.approximation
+            for j in 1:depth, k in 1:2
+                lp_target[name, j, k, t] = r.lp_constraints[j, k]
+            end
+            for j in 1:(depth + 2)
+                tangent_target[name, j, t] = r.tangent_constraints[j]
+            end
+        end
+    end
+    return approx_target
+end
+
+# --- Legacy result struct + vectorized build + register
+# (kept for the generic add_quadratic_approx! wrapper in common.jl until
+# callers migrate; removed in sweep) ---
+
+"""
+Pure-JuMP result of legacy vectorized `build_quadratic_approx(::EpigraphQuadConfig, ...)`.
 """
 struct EpigraphQuadResult{
     A <: JuMP.Containers.DenseAxisArray{JuMP.AffExpr, 2},
@@ -78,8 +267,9 @@ end
 """
     build_quadratic_approx(config::EpigraphQuadConfig, model, x, bounds)
 
-LP-only lower bound for x² via 2^depth + 1 tangent-line cuts on the
-parabola at uniformly spaced breakpoints in [x_min, x_max].
+Legacy vectorized form. LP-only lower bound for x² via 2^depth + 1
+tangent-line cuts on the parabola at uniformly spaced breakpoints in
+[x_min, x_max].
 """
 function build_quadratic_approx(
     config::EpigraphQuadConfig,
@@ -117,8 +307,6 @@ function build_quadratic_approx(
         g_var[name, 0, t] == (x[name, t] - x_min_arr[name]) / delta[name]
     )
 
-    # T^L constraints: g_j ≤ 2 g_{j-1} and g_j ≤ 2(1 − g_{j-1}) for j = 1..L.
-    # Stack two depth × N × T families into a (name, j, k, t) container.
     lp_a = JuMP.@constraint(
         model,
         [name = name_axis, j = 1:(config.depth), t = time_axis],
@@ -143,19 +331,12 @@ function build_quadratic_approx(
         base_name = "EpigraphVar",
     )
 
-    # fL = Σ_{j=1..L} δ²·2^{−2j}·g_j  (full-depth residual sum used downstream
-    # by the optional sawtooth tightening; the per-j partial sums for the
-    # tangent cuts are formed inline below).
     fL_expr = JuMP.@expression(
         model,
         [name = name_axis, t = time_axis],
         sum(delta[name]^2 * 2.0^(-2j) * g_var[name, j, t] for j in 1:(config.depth))
     )
 
-    # Tangent-line cuts:
-    #   k=1: z ≥ 0
-    #   k=2: z ≥ 2·x_min + 2·δ·g₀ − 1               (anchor at xh = 1/2)
-    #   k=j+2 for j=1..L: z ≥ scale_back_g_basis(1:j) − δ²·2^{−2j−2}
     tangent_zero = JuMP.@constraint(
         model, [name = name_axis, t = time_axis], z_var[name, t] >= 0.0,
     )
