@@ -6,17 +6,25 @@ end
 
 @testset "NetworkModel Tests" begin
     @test_throws ArgumentError NetworkModel(AbstractPowerModel)
+    ec_multi = EvaluationContainer()
+    add_evaluator!(ec_multi, DCPowerFlow, DCPowerFlow())
+    add_evaluator!(
+        ec_multi,
+        PSSEExportPowerFlow,
+        PSSEExportPowerFlow(:v33, "exports"),
+    )
     @test NetworkModel(
         PTDFPowerModel;
         use_slacks = true,
-        power_flow_evaluation = [DCPowerFlow(), PSSEExportPowerFlow(:v33, "exports")],
+        evaluations = ec_multi,
     ) isa NetworkModel
-    @test NetworkModel(
-        PTDFPowerModel;
-        use_slacks = true,
-        power_flow_evaluation = ACPowerFlow(;
-            exporter =
-            PSSEExportPowerFlow(
+
+    ec_ac = EvaluationContainer()
+    add_evaluator!(
+        ec_ac,
+        ACPowerFlow,
+        ACPowerFlow(;
+            exporter = PSSEExportPowerFlow(
                 :v33,
                 "exports";
                 name = "my_export_name",
@@ -24,6 +32,11 @@ end
                 overwrite = true,
             ),
         ),
+    )
+    @test NetworkModel(
+        PTDFPowerModel;
+        use_slacks = true,
+        evaluations = ec_ac,
     ) isa NetworkModel
 end
 
