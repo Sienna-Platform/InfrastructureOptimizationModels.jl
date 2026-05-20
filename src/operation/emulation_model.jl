@@ -6,33 +6,6 @@ mutable struct EmulationModel{M <: AbstractOptimizationProblem} <: OperationMode
     simulation_info::SimulationInfo
     store::EmulationModelStore # might be extended to other stores for simulation
     ext::Dict{String, Any}
-
-    function EmulationModel{M}(
-        template::AbstractProblemTemplate,
-        sys::IS.InfrastructureSystemsContainer,
-        settings::Settings,
-        jump_model::Union{Nothing, JuMP.Model} = nothing;
-        name = nothing,
-    ) where {M <: AbstractOptimizationProblem}
-        if name === nothing
-            name = nameof(M)
-        elseif name isa String
-            name = Symbol(name)
-        end
-        finalize_template!(template, sys)
-        internal = ModelInternal(
-            OptimizationContainer(sys, settings, jump_model, IS.SingleTimeSeries),
-        )
-        new{M}(
-            name,
-            template,
-            sys,
-            internal,
-            SimulationInfo(),
-            EmulationModelStore(),
-            Dict{String, Any}(),
-        )
-    end
 end
 
 get_problem_type(::EmulationModel{M}) where {M <: AbstractOptimizationProblem} = M
