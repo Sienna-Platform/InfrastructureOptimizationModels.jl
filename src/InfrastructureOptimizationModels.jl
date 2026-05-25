@@ -59,9 +59,7 @@ import InfrastructureSystems.Optimization:
     AbstractStorageFormulation,
     AbstractLoadFormulation,
     AbstractHVDCNetworkModel,
-    AbstractPowerModel,
-    AbstractPowerFlowEvaluationModel,
-    AbstractPowerFlowEvaluationData
+    AbstractPowerModel
 
 import InfrastructureSystems:
     @scoped_enum,
@@ -171,7 +169,7 @@ export NetworkModel
 export get_PTDF_matrix, get_MODF_matrix, get_reduce_radial_branches
 export get_outages
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
-export get_power_flow_evaluation, has_subnetworks, get_subsystem
+export get_evaluations, has_subnetworks, get_subsystem
 export set_subsystem!, add_dual!
 export requires_all_branch_models, supports_branch_filtering, ignores_branch_filtering
 export validate_network_model
@@ -224,6 +222,7 @@ export add_constant_to_jump_expression!
 export add_proportional_to_jump_expression!
 export add_linear_to_jump_expression!
 # Cost term helpers (generic objective function building blocks)
+export add_cost_term_to_expression!
 export add_cost_term_invariant!
 export add_cost_term_variant!
 export add_pwl_variables_delta!
@@ -377,7 +376,7 @@ export get_incompatible_devices
 
 # Bulk export: symbols POM needs that weren't previously exported
 # Core types
-export OptimizationContainer, OperationModel, AbstractPowerFlowEvaluationModel
+export OptimizationContainer, OperationModel
 export ArgumentConstructStage, ModelConstructStage
 export EmulationModelStore, DeviceModelForBranches
 export SOSStatusVariable
@@ -444,6 +443,13 @@ export EmergencyUp
 export EmergencyDown
 export RawACE
 export ProductionCostExpression
+export ConstituentCostExpression
+export FuelCostExpression
+export StartUpCostExpression
+export ShutDownCostExpression
+export FixedCostExpression
+export VOMCostExpression
+export CurtailmentCostExpression
 export FuelConsumptionExpression
 export ActivePowerRangeExpressionLB
 export ActivePowerRangeExpressionUB
@@ -469,8 +475,25 @@ export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariabl
 export UpperBound, LowerBound, BoundDirection, get_bound_direction
 export EventParameter
 
-# Abstract types for extensions (from InfrastructureSystems.Optimization)
-export AbstractPowerFlowEvaluationData
+# External evaluation abstraction (replaces the PowerFlows-specific shims)
+export AbstractEvaluator
+export AbstractEvaluationData
+export EvaluationContainer
+export initialize_evaluation_data
+export evaluate!
+export reset!
+export is_solved
+export get_evaluation_data
+export get_inner_data
+export get_evaluators
+export get_evaluator
+export add_evaluator!
+export add_evaluation_data!
+export reset_evaluations!
+export is_from_evaluator
+export lookup_value
+export get_entry_type
+export get_component_names
 
 # Status Enums (from InfrastructureSystems)
 export ModelBuildStatus
@@ -551,6 +574,7 @@ include("core/operation_model_abstract_types.jl")
 include("core/network_reductions.jl")
 include("core/service_model.jl")
 include("core/device_model.jl")
+include("core/external_evaluation.jl")
 include("core/network_model.jl")
 include("core/initial_conditions.jl")
 include("core/settings.jl")

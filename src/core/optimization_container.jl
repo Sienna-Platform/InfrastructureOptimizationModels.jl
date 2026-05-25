@@ -79,11 +79,11 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     model_base_power::Float64
     optimizer_stats::OptimizerStats
     built_for_recurrent_solves::Bool
-    pf_aux_var_keys::Vector{AuxVarKey}
-    non_pf_aux_var_keys::Vector{AuxVarKey}
+    evaluator_aux_var_keys::Vector{AuxVarKey}
+    standalone_aux_var_keys::Vector{AuxVarKey}
     metadata::OptimizationContainerMetadata
     default_time_series_type::Type
-    power_flow_evaluation_data::Vector{<:AbstractPowerFlowEvaluationData}
+    evaluations::EvaluationContainer
 end
 
 function OptimizationContainer(
@@ -127,7 +127,7 @@ function OptimizationContainer(
         AuxVarKey[],
         OptimizationContainerMetadata(),
         T,
-        AbstractPowerFlowEvaluationData[],
+        EvaluationContainer(),
     )
 end
 
@@ -165,8 +165,7 @@ get_jump_model(container::OptimizationContainer) = container.JuMPmodel
 get_metadata(container::OptimizationContainer) = container.metadata
 get_optimizer_stats(container::OptimizationContainer) = container.optimizer_stats
 get_parameters(container::OptimizationContainer) = container.parameters
-get_power_flow_evaluation_data(container::OptimizationContainer) =
-    container.power_flow_evaluation_data
+get_evaluations(container::OptimizationContainer) = container.evaluations
 get_resolution(container::OptimizationContainer) = get_resolution(container.settings)
 get_settings(container::OptimizationContainer) = container.settings
 get_time_steps(container::OptimizationContainer) = container.time_steps
@@ -180,9 +179,9 @@ is_synchronized(container::OptimizationContainer) =
 set_time_steps!(container::OptimizationContainer, time_steps::UnitRange{Int64}) =
     container.time_steps = time_steps
 
-function reset_power_flow_is_solved!(container::OptimizationContainer)
-    for pf_e_data in get_power_flow_evaluation_data(container)
-        pf_e_data.is_solved = false
+function reset_evaluations!(container::OptimizationContainer)
+    for data in values(get_evaluation_data(get_evaluations(container)))
+        reset!(data)
     end
 end
 
@@ -352,8 +351,8 @@ function reset_optimization_model!(container::OptimizationContainer)
     for field in [:variables, :aux_variables, :constraints, :expressions, :duals]
         empty!(getfield(container, field))
     end
-    empty!(container.pf_aux_var_keys)
-    empty!(container.non_pf_aux_var_keys)
+    empty!(container.evaluator_aux_var_keys)
+    empty!(container.standalone_aux_var_keys)
     container.initial_conditions_data = InitialConditionsData()
     container.objective_function = ObjectiveFunction()
     container.primal_values_cache = PrimalValuesCache()
@@ -1230,9 +1229,9 @@ end
 
 function _cache_aux_variable_key_partitions!(container::OptimizationContainer)
     aux_var_keys = keys(get_aux_variables(container))
-    pf_keys = filter(is_from_power_flow ∘ get_entry_type, aux_var_keys)
-    container.pf_aux_var_keys = collect(pf_keys)
-    container.non_pf_aux_var_keys = collect(setdiff(aux_var_keys, pf_keys))
+    evaluator_keys = filter(is_from_evaluator ∘ get_entry_type, aux_var_keys)
+    container.evaluator_aux_var_keys = collect(evaluator_keys)
+    container.standalone_aux_var_keys = collect(setdiff(aux_var_keys, evaluator_keys))
     return
 end
 
@@ -1240,28 +1239,30 @@ function calculate_aux_variables!(
     container::OptimizationContainer,
     system::IS.InfrastructureSystemsContainer,
 )
-    if isempty(container.pf_aux_var_keys) && isempty(container.non_pf_aux_var_keys)
+    if isempty(container.evaluator_aux_var_keys) &&
+       isempty(container.standalone_aux_var_keys)
         _cache_aux_variable_key_partitions!(container)
     end
-    pf_aux_var_keys = container.pf_aux_var_keys
-    non_pf_aux_var_keys = container.non_pf_aux_var_keys
-    # We should only have power flow aux vars if we have power flow evaluators
-    @assert isempty(pf_aux_var_keys) || !isempty(get_power_flow_evaluation_data(container))
+    evaluator_aux_var_keys = container.evaluator_aux_var_keys
+    standalone_aux_var_keys = container.standalone_aux_var_keys
+    evaluation_data = get_evaluation_data(get_evaluations(container))
+    # We should only have evaluator-bound aux vars if we have evaluators registered
+    @assert isempty(evaluator_aux_var_keys) || !isempty(evaluation_data)
 
-    TimerOutputs.@timeit RUN_SIMULATION_TIMER "Power Flow Evaluation" begin
-        reset_power_flow_is_solved!(container)
-        # Power flow-related aux vars get calculated once per power flow
-        for (i, pf_e_data) in enumerate(get_power_flow_evaluation_data(container))
-            @debug "Processing power flow $i"
-            solve_powerflow!(pf_e_data, container)
-            for key in pf_aux_var_keys
+    TimerOutputs.@timeit RUN_SIMULATION_TIMER "External Evaluation" begin
+        reset_evaluations!(container)
+        # Evaluator-bound aux vars get calculated once per evaluator
+        for (T, data) in evaluation_data
+            @debug "Processing evaluator $(T)"
+            evaluate!(data, container, system)
+            for key in evaluator_aux_var_keys
                 calculate_aux_variable_value!(container, key, system)
             end
         end
     end
 
     # Other aux vars get calculated once at the end
-    for key in non_pf_aux_var_keys
+    for key in standalone_aux_var_keys
         calculate_aux_variable_value!(container, key, system)
     end
     return RunStatus.SUCCESSFULLY_FINALIZED
