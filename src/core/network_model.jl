@@ -174,13 +174,16 @@ end
 
 """
 True if any branch DeviceModel in `branch_models` uses a formulation that
-consumes `DeviceModel.outages` (per `_formulation_supports_outages`). POM's
+consumes `DeviceModel.outages` (per `supports_outages`). POM's
 `AbstractSecurityConstrainedStaticBranch` specialization makes that trait
 return `true`; non-SC formulations default to `false`.
+
+`BranchModelContainer` (`Dict{Symbol, DeviceModelForBranches}`) is defined at
+the top of this file and exported from IOM.
 """
 function _template_has_outage_aware_branch(branch_models::BranchModelContainer)
     for v in values(branch_models)
-        if _formulation_supports_outages(get_formulation(v))
+        if supports_outages(get_formulation(v))
             return true
         end
     end
@@ -200,7 +203,7 @@ function _consolidate_device_model_outages_with_modf!(
 )
     registered = PNM.get_registered_contingencies(modf_matrix)
     for m in values(branch_models)
-        _formulation_supports_outages(get_formulation(m)) || continue
+        supports_outages(get_formulation(m)) || continue
         for uuid in setdiff(keys(m.outages), keys(registered))
             @warn "Outage $(uuid) (DeviceModel{$(get_component_type(m)), \
                    $(get_formulation(m))}) is not registered on the MODF \

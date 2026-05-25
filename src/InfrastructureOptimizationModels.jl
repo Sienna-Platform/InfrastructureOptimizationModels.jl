@@ -172,6 +172,7 @@ export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, has_subnetworks, get_subsystem
 export set_subsystem!, add_dual!
 export requires_all_branch_models, supports_branch_filtering, ignores_branch_filtering
+export supports_outages
 export validate_network_model
 export BranchReductionOptimizationTracker
 export get_variable_dict, get_constraint_dict, get_constraint_map_by_type

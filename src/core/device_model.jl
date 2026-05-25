@@ -65,6 +65,10 @@ mutable struct DeviceModel{
     time_series_names::Dict{Type{<:ParameterType}, String}
     attributes::Dict{String, Any}
     subsystem::Union{Nothing, String}
+    # Keyed by UUID to match PNM's `get_registered_contingencies(::VirtualMODF) ::
+    # Dict{UUID, ContingencySpec}` so the consolidation step in network_model.jl can
+    # set-diff directly. UUIDs are also stable across (de)serialization in a way that
+    # live component references aren't.
     outages::Dict{Base.UUID, Dict{DataType, Set{String}}}
     device_cache::Vector{D}
     function DeviceModel(
@@ -107,7 +111,7 @@ function _add_device_model_outages(
 ) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
     field = Dict{Base.UUID, Dict{DataType, Set{String}}}()
     isempty(outages) && return field
-    if !_formulation_supports_outages(B)
+    if !supports_outages(B)
         @warn "DeviceModel{$D, $B}: 'outages' kwarg ignored — formulation does \
                not support N-1 contingencies."
         return field
@@ -118,10 +122,14 @@ function _add_device_model_outages(
     return field
 end
 
-# Multi-dispatch flag for formulations that consume `DeviceModel.outages`.
-# Default: false. Security-constrained branch formulations live in
-# PowerOperationsModels and specialize this trait to `true` there.
-_formulation_supports_outages(::Type{<:AbstractDeviceFormulation}) = false
+"""
+    supports_outages(::Type{<:AbstractDeviceFormulation}) -> Bool
+
+Trait declaring whether a device formulation consumes `DeviceModel.outages`.
+Defaults to `false`. POM specializes this to `true` for security-constrained branch
+formulations (`AbstractSecurityConstrainedStaticBranch`).
+"""
+supports_outages(::Type{<:AbstractDeviceFormulation}) = false
 
 get_component_type(
     ::DeviceModel{D, B},
