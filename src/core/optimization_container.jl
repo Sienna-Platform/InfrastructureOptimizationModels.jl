@@ -287,9 +287,6 @@ function finalize_jump_model!(container::OptimizationContainer, settings::Settin
     return
 end
 
-# Dispatch extension points: default behavior is no-op / sentinel. Concrete system
-# implementations (e.g. PSY.System in POM) should add their own methods.
-temp_set_units_base_system!(::IS.InfrastructureSystemsContainer, ::String) = nothing
 temp_get_forecast_initial_timestamp(::IS.InfrastructureSystemsContainer) =
     UNSET_FORECAST_INI_TIME
 
@@ -298,9 +295,9 @@ function init_optimization_container!(
     network_model::NetworkModel{T},
     sys::IS.InfrastructureSystemsContainer,
 ) where {T <: AbstractPowerModel}
-    # set_units_base_system!(sys, "SYSTEM_BASE")
-    temp_set_units_base_system!(sys, "SYSTEM_BASE")
     # The order of operations matter
+    # stateful unit system is being phased out; POM should no longer need this.
+    # temp_set_units_base_system!(sys, "SYSTEM_BASE")
     settings = get_settings(container)
 
     if get_initial_time(settings) == UNSET_INI_TIME

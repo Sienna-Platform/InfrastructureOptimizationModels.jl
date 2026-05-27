@@ -110,7 +110,6 @@ function get_operation_cost end
 function get_dc_bus end
 function get_bustype end
 function has_service end
-function set_units_base_system! end
 
 import TimerOutputs
 
