@@ -20,6 +20,10 @@ struct SawtoothTightenedConstraint <: ConstraintType end
 """
 Config for sawtooth MIP quadratic approximation.
 
+Construct with either `depth` directly or `(tolerance, max_delta)`; the latter
+inverts the closed-form bound `Δ²·2^{-2L-2}` to pick the smallest `depth` whose
+worst-case overestimation gap is within `tolerance`.
+
 # Fields
 - `depth::Int`: recursion depth L; uses L binary variables for 2^L + 1 breakpoints
 - `epigraph_depth::Int`: LP tightening depth via epigraph Q^{L1} lower bound; 0 to disable (default 0)
@@ -27,18 +31,25 @@ Config for sawtooth MIP quadratic approximation.
 struct SawtoothQuadConfig <: QuadraticApproxConfig
     depth::Int
     epigraph_depth::Int
-end
-SawtoothQuadConfig(depth::Int) = SawtoothQuadConfig(depth, 0)
 
-# Sawtooth maximum overestimation error is Δ²·2^{-2L-2}.
-SawtoothQuadConfig(;
-    tolerance::Float64,
-    max_delta::Float64,
-    epigraph_depth::Int = 0,
-) = SawtoothQuadConfig(
-    max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2)),
-    epigraph_depth,
-)
+    function SawtoothQuadConfig(;
+        depth::Union{Int, Nothing} = nothing,
+        tolerance::Union{Float64, Nothing} = nothing,
+        max_delta::Union{Float64, Nothing} = nothing,
+        epigraph_depth::Int = 0,
+    )
+        if depth !== nothing
+            return new(depth, epigraph_depth)
+        elseif tolerance !== nothing && max_delta !== nothing
+            d = max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
+            return new(d, epigraph_depth)
+        else
+            error(
+                "SawtoothQuadConfig requires either `depth` or both `tolerance` and `max_delta`.",
+            )
+        end
+    end
+end
 
 """
     _add_quadratic_approx!(config::SawtoothQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
@@ -126,7 +137,7 @@ function _add_quadratic_approx!(
 
     if config.epigraph_depth > 0
         lp_expr = _add_quadratic_approx!(
-            EpigraphQuadConfig(config.epigraph_depth),
+            EpigraphQuadConfig(; depth = config.epigraph_depth),
             container, C, names, time_steps,
             x_var, bounds, meta * "_lb",
         )

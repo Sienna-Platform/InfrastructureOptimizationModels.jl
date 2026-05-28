@@ -1112,7 +1112,7 @@ end
 epi_C = 1.5
 
 function Bin2_(R, quad_config)
-    q = quad_config(R)
+    q = quad_config(; depth = R)
     IOM.Bin2Config(q), q
 end
 Bin2_sSOS(R) = Bin2_(R, IOM.SolverSOS2QuadConfig)
@@ -1120,15 +1120,16 @@ Bin2_mSOS(R) = Bin2_(R, IOM.ManualSOS2QuadConfig)
 Bin2_Saw(R) = Bin2_(R, IOM.SawtoothQuadConfig)
 
 function HybS_(R, quad_config)
-    q = quad_config(R)
-    IOM.HybSConfig(q, ceil(Int, epi_C * R)), q
+    q = quad_config(; depth = R)
+    IOM.HybSConfig(q; epigraph_depth = ceil(Int, epi_C * R)), q
 end
 HybS_sSOS(R) = HybS_(R, IOM.SolverSOS2QuadConfig)
 HybS_mSOS(R) = HybS_(R, IOM.ManualSOS2QuadConfig)
 HybS_Saw(R) = HybS_(R, IOM.SawtoothQuadConfig)
 
 function DNMDT_DNMDT(R)
-    IOM.DNMDTBilinearConfig(R), IOM.DNMDTQuadConfig(R, ceil(Int, epi_C * R))
+    IOM.DNMDTBilinearConfig(; depth = R),
+    IOM.DNMDTQuadConfig(; depth = R, epigraph_depth = ceil(Int, epi_C * R))
 end
 
 exact(_) = (IOM.NoBilinearApproxConfig(), IOM.NoQuadApproxConfig())

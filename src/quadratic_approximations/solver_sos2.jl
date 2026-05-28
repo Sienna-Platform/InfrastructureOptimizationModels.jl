@@ -18,6 +18,10 @@ struct SolverSOS2Constraint <: ConstraintType end
 """
 Config for solver-native SOS2 quadratic approximation (MOI.SOS2 adjacency).
 
+Construct with either `depth` directly or `(tolerance, max_delta)`; the latter
+inverts the PWL interpolation bound `Δ²/(4·depth²)` to pick the smallest `depth`
+whose worst-case gap is within `tolerance`.
+
 # Fields
 - `depth::Int`: number of PWL segments (breakpoints = depth + 1)
 - `pwmcc_segments::Int`: number of piecewise McCormick cut partitions; 0 to disable (default 4)
@@ -25,18 +29,27 @@ Config for solver-native SOS2 quadratic approximation (MOI.SOS2 adjacency).
 struct SolverSOS2QuadConfig <: QuadraticApproxConfig
     depth::Int
     pwmcc_segments::Int
-end
-SolverSOS2QuadConfig(depth::Int) = SolverSOS2QuadConfig(depth, 4)
 
-# PWL interpolation error for x² with `depth` uniform segments is bounded by Δ²/(4·depth²).
-SolverSOS2QuadConfig(;
-    tolerance::Float64,
-    max_delta::Float64,
-    pwmcc_segments::Int = 4,
-) = SolverSOS2QuadConfig(
-    max(1, ceil(Int, max_delta / (2 * sqrt(tolerance)))),
-    pwmcc_segments,
-)
+    function SolverSOS2QuadConfig(;
+        depth::Union{Int, Nothing} = nothing,
+        tolerance::Union{Float64, Nothing} = nothing,
+        max_delta::Union{Float64, Nothing} = nothing,
+        pwmcc_segments::Int = 4,
+    )
+        if depth !== nothing
+            return new(depth, pwmcc_segments)
+        elseif tolerance !== nothing && max_delta !== nothing
+            return new(
+                max(1, ceil(Int, max_delta / (2 * sqrt(tolerance)))),
+                pwmcc_segments,
+            )
+        else
+            error(
+                "SolverSOS2QuadConfig requires either `depth` or both `tolerance` and `max_delta`.",
+            )
+        end
+    end
+end
 
 """
     _add_quadratic_approx!(config::SolverSOS2QuadConfig, container, C, names, time_steps, x_var, bounds, meta)

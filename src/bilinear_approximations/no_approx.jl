@@ -4,10 +4,6 @@
 "No-op bilinear config: returns exact x·y as a QuadExpr."
 struct NoBilinearApproxConfig <: BilinearApproxConfig end
 
-# No tolerance-form constructor — see the matching note in
-# src/quadratic_approximations/no_approx.jl: an empty-struct kw constructor
-# would clobber the auto-generated `NoBilinearApproxConfig()` constructor.
-
 """
     _add_bilinear_approx!(::NoBilinearApproxConfig, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
 

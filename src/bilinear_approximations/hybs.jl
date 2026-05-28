@@ -21,16 +21,20 @@ struct HybSConfig <: BilinearApproxConfig
     quad_config::QuadraticApproxConfig
     epigraph_depth::Int
     add_mccormick::Bool
-end
-HybSConfig(quad_config::QuadraticApproxConfig, epigraph_depth::Int) =
-    HybSConfig(quad_config, epigraph_depth, false)
 
-HybSConfig(; tolerance::Float64, kwargs...) =
-    error(
-        "Tolerance-based dispatch is not yet implemented for HybSConfig. " *
-        "Construct the inner quad_config with a tolerance and specify epigraph_depth explicitly: " *
-        "HybSConfig(quad_config, epigraph_depth).",
-    )
+    HybSConfig(
+        quad_config::QuadraticApproxConfig;
+        epigraph_depth::Int,
+        add_mccormick::Bool = false,
+    ) = new(quad_config, epigraph_depth, add_mccormick)
+
+    HybSConfig(; tolerance::Float64, kwargs...) =
+        error(
+            "Tolerance-based dispatch is not yet implemented for HybSConfig. " *
+            "Construct the inner quad_config with a tolerance and specify epigraph_depth explicitly: " *
+            "HybSConfig(quad_config; epigraph_depth = …).",
+        )
+end
 
 # --- Unified HybS dispatch methods ---
 
@@ -152,7 +156,7 @@ function _add_bilinear_approx!(
     end
 
     # --- Epigraph Q^{L1} lower bound for (x+y)² and (x−y)² (no binaries) ---
-    epi_cfg = EpigraphQuadConfig(config.epigraph_depth)
+    epi_cfg = EpigraphQuadConfig(; depth = config.epigraph_depth)
     zp1_expr = _add_quadratic_approx!(
         epi_cfg,
         container, C, names, time_steps,

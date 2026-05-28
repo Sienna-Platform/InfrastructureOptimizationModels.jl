@@ -28,15 +28,17 @@ Config for Bin2 bilinear approximation using z = ½((x+y)² − x² − y²).
 struct Bin2Config <: BilinearApproxConfig
     quad_config::QuadraticApproxConfig
     add_mccormick::Bool
-end
-Bin2Config(quad_config::QuadraticApproxConfig) = Bin2Config(quad_config, true)
 
-Bin2Config(; tolerance::Float64, kwargs...) =
-    error(
-        "Tolerance-based dispatch is not yet implemented for Bin2Config. " *
-        "Construct the inner quad_config with a tolerance " *
-        "(e.g. SawtoothQuadConfig(; tolerance, max_delta)) and wrap it: Bin2Config(quad_config).",
-    )
+    Bin2Config(quad_config::QuadraticApproxConfig; add_mccormick::Bool = true) =
+        new(quad_config, add_mccormick)
+
+    Bin2Config(; tolerance::Float64, kwargs...) =
+        error(
+            "Tolerance-based dispatch is not yet implemented for Bin2Config. " *
+            "Construct the inner quad_config with a tolerance " *
+            "(e.g. SawtoothQuadConfig(; tolerance, max_delta)) and wrap it: Bin2Config(quad_config).",
+        )
+end
 
 # --- Unified bilinear approximation dispatch ---
 

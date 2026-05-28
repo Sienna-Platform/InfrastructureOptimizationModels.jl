@@ -8,40 +8,68 @@
 """
 Config for double-NMDT bilinear approximation (discretizes both x and y).
 
+Construct with either `depth` directly or `(tolerance, max_delta_x, max_delta_y)`;
+the latter inverts the bound `Δx·Δy·2^{-2L-2}` to pick the smallest `depth` whose
+worst-case relaxation gap is within `tolerance`.
+
 # Fields
 - `depth::Int`: number of binary discretization levels L for both x and y
 """
 struct DNMDTBilinearConfig <: BilinearApproxConfig
     depth::Int
-end
 
-# D-NMDT bilinear relaxation gap is bounded by Δx·Δy·2^{-2L-2}.
-DNMDTBilinearConfig(;
-    tolerance::Float64,
-    max_delta_x::Float64,
-    max_delta_y::Float64,
-) = DNMDTBilinearConfig(
-    max(1, ceil(Int, (log2(max_delta_x * max_delta_y / tolerance) - 2) / 2)),
-)
+    function DNMDTBilinearConfig(;
+        depth::Union{Int, Nothing} = nothing,
+        tolerance::Union{Float64, Nothing} = nothing,
+        max_delta_x::Union{Float64, Nothing} = nothing,
+        max_delta_y::Union{Float64, Nothing} = nothing,
+    )
+        if depth !== nothing
+            return new(depth)
+        elseif tolerance !== nothing && max_delta_x !== nothing && max_delta_y !== nothing
+            return new(
+                max(1, ceil(Int, (log2(max_delta_x * max_delta_y / tolerance) - 2) / 2)),
+            )
+        else
+            error(
+                "DNMDTBilinearConfig requires either `depth` or all of `tolerance`, `max_delta_x`, `max_delta_y`.",
+            )
+        end
+    end
+end
 
 """
 Config for single-NMDT bilinear approximation (discretizes x only).
+
+Construct with either `depth` directly or `(tolerance, max_delta_x, max_delta_y)`;
+the latter inverts the bound `Δx·Δy·2^{-L-2}` to pick the smallest `depth` whose
+worst-case relaxation gap is within `tolerance`.
 
 # Fields
 - `depth::Int`: number of binary discretization levels L for x
 """
 struct NMDTBilinearConfig <: BilinearApproxConfig
     depth::Int
-end
 
-# NMDT bilinear relaxation gap is bounded by Δx·Δy·2^{-L-2}.
-NMDTBilinearConfig(;
-    tolerance::Float64,
-    max_delta_x::Float64,
-    max_delta_y::Float64,
-) = NMDTBilinearConfig(
-    max(1, ceil(Int, log2(max_delta_x * max_delta_y / tolerance) - 2)),
-)
+    function NMDTBilinearConfig(;
+        depth::Union{Int, Nothing} = nothing,
+        tolerance::Union{Float64, Nothing} = nothing,
+        max_delta_x::Union{Float64, Nothing} = nothing,
+        max_delta_y::Union{Float64, Nothing} = nothing,
+    )
+        if depth !== nothing
+            return new(depth)
+        elseif tolerance !== nothing && max_delta_x !== nothing && max_delta_y !== nothing
+            return new(
+                max(1, ceil(Int, log2(max_delta_x * max_delta_y / tolerance) - 2)),
+            )
+        else
+            error(
+                "NMDTBilinearConfig requires either `depth` or all of `tolerance`, `max_delta_x`, `max_delta_y`.",
+            )
+        end
+    end
+end
 
 # --- DNMDT bilinear approximation ---
 
