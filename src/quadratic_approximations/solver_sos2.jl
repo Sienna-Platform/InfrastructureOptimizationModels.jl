@@ -18,37 +18,42 @@ struct SolverSOS2Constraint <: ConstraintType end
 """
 Config for solver-native SOS2 quadratic approximation (MOI.SOS2 adjacency).
 
-Construct with either `depth` directly or `(tolerance, max_delta)`; the latter
-inverts the PWL interpolation bound `Δ²/(4·depth²)` to pick the smallest `depth`
-whose worst-case gap is within `tolerance`.
-
 # Fields
 - `depth::Int`: number of PWL segments (breakpoints = depth + 1)
 - `pwmcc_segments::Int`: number of piecewise McCormick cut partitions; 0 to disable (default 4)
+
+The worst-case PWL overestimation gap is `Δ²/(4·depth²)`. `pwmcc_segments` is
+an LP-relaxation tightener (adds piecewise-McCormick cuts on the concave
+relaxation surface); it does **not** change the MIP-optimal worst-case error,
+only the LP relaxation given to branch-and-bound. See
+`tol_depth(::Type{SolverSOS2QuadConfig}; …)` to derive `depth` from a target
+tolerance.
 """
 struct SolverSOS2QuadConfig <: QuadraticApproxConfig
     depth::Int
     pwmcc_segments::Int
 
-    function SolverSOS2QuadConfig(;
-        depth::Union{Int, Nothing} = nothing,
-        tolerance::Union{Float64, Nothing} = nothing,
-        max_delta::Union{Float64, Nothing} = nothing,
-        pwmcc_segments::Int = 4,
-    )
-        if depth !== nothing
-            return new(depth, pwmcc_segments)
-        elseif tolerance !== nothing && max_delta !== nothing
-            return new(
-                max(1, ceil(Int, max_delta / (2 * sqrt(tolerance)))),
-                pwmcc_segments,
-            )
-        else
-            error(
-                "SolverSOS2QuadConfig requires either `depth` or both `tolerance` and `max_delta`.",
-            )
-        end
-    end
+    SolverSOS2QuadConfig(; depth::Int, pwmcc_segments::Int = 4) =
+        new(depth, pwmcc_segments)
+end
+
+"""
+    tol_depth(::Type{SolverSOS2QuadConfig}; tolerance, max_delta)::Int
+
+Smallest SOS2 segment count `d` whose worst-case PWL gap on `[a, a+Δ]` falls
+within `tolerance`. Inverts `Δ²/(4·d²) ≤ τ`:
+```
+d = ⌈Δ / (2·√τ)⌉
+```
+clamped to `d ≥ 1`. `pwmcc_segments` does not enter the error bound, so it is
+left to the constructor.
+"""
+function tol_depth(
+    ::Type{SolverSOS2QuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    return max(1, ceil(Int, max_delta / (2 * sqrt(tolerance))))
 end
 
 """

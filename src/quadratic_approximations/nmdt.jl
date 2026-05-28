@@ -10,69 +10,76 @@
 """
 Config for double-NMDT quadratic approximation.
 
-Construct with either `depth` directly or `(tolerance, max_delta)`; the latter
-inverts the closed-form bound `Δ²·2^{-2L-2}` to pick the smallest `depth` whose
-worst-case relaxation gap is within `tolerance`. `epigraph_depth` defaults to
-`3*depth` when not specified.
-
 # Fields
 - `depth::Int`: number of binary discretization levels L
 - `epigraph_depth::Int`: LP tightening depth via epigraph Q^{L1} lower bound; 0 to disable (default 3×depth)
+
+The worst-case relaxation gap is `Δ²·2^{-2L-2}`. See
+`tol_depth(::Type{DNMDTQuadConfig}; …)` to derive `depth` from a target
+tolerance.
 """
 struct DNMDTQuadConfig <: QuadraticApproxConfig
     depth::Int
     epigraph_depth::Int
 
-    function DNMDTQuadConfig(;
-        depth::Union{Int, Nothing} = nothing,
-        tolerance::Union{Float64, Nothing} = nothing,
-        max_delta::Union{Float64, Nothing} = nothing,
-        epigraph_depth::Union{Int, Nothing} = nothing,
-    )
-        d = if depth !== nothing
-            depth
-        elseif tolerance !== nothing && max_delta !== nothing
-            max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
-        else
-            error(
-                "DNMDTQuadConfig requires either `depth` or both `tolerance` and `max_delta`.",
-            )
-        end
-        return new(d, epigraph_depth === nothing ? 3 * d : epigraph_depth)
-    end
+    DNMDTQuadConfig(; depth::Int, epigraph_depth::Int = 3 * depth) =
+        new(depth, epigraph_depth)
+end
+
+"""
+    tol_depth(::Type{DNMDTQuadConfig}; tolerance, max_delta)::Int
+
+Smallest DNMDT depth `L` whose worst-case relaxation gap on `[a, a+Δ]` falls
+within `tolerance`. Inverts `Δ²·2^{-2L-2} ≤ τ`:
+```
+L = ⌈(log₂(Δ²/τ) − 2) / 2⌉
+```
+clamped to `L ≥ 1`.
+"""
+function tol_depth(
+    ::Type{DNMDTQuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    return max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
 end
 
 """
 Config for single-NMDT quadratic approximation.
 
-Construct with either `depth` directly or `(tolerance, max_delta)`; the latter
-inverts the closed-form bound `Δ²·2^{-L-2}` to pick the smallest `depth` whose
-worst-case relaxation gap is within `tolerance`. `epigraph_depth` defaults to
-`3*depth` when not specified.
-
 # Fields
 - `depth::Int`: number of binary discretization levels L
 - `epigraph_depth::Int`: LP tightening depth via epigraph Q^{L1} lower bound; 0 to disable (default 3×depth)
+
+The worst-case relaxation gap is `Δ²·2^{-L-2}` (note the single `L`, not
+`2L` — single NMDT discretizes only one factor). See
+`tol_depth(::Type{NMDTQuadConfig}; …)` to derive `depth` from a target
+tolerance.
 """
 struct NMDTQuadConfig <: QuadraticApproxConfig
     depth::Int
     epigraph_depth::Int
 
-    function NMDTQuadConfig(;
-        depth::Union{Int, Nothing} = nothing,
-        tolerance::Union{Float64, Nothing} = nothing,
-        max_delta::Union{Float64, Nothing} = nothing,
-        epigraph_depth::Union{Int, Nothing} = nothing,
-    )
-        d = if depth !== nothing
-            depth
-        elseif tolerance !== nothing && max_delta !== nothing
-            max(1, ceil(Int, log2(max_delta^2 / tolerance) - 2))
-        else
-            error("NMDTQuadConfig requires either `depth` or both `tolerance` and `max_delta`.")
-        end
-        return new(d, epigraph_depth === nothing ? 3 * d : epigraph_depth)
-    end
+    NMDTQuadConfig(; depth::Int, epigraph_depth::Int = 3 * depth) =
+        new(depth, epigraph_depth)
+end
+
+"""
+    tol_depth(::Type{NMDTQuadConfig}; tolerance, max_delta)::Int
+
+Smallest NMDT depth `L` whose worst-case relaxation gap on `[a, a+Δ]` falls
+within `tolerance`. Inverts `Δ²·2^{-L-2} ≤ τ`:
+```
+L = ⌈log₂(Δ²/τ) − 2⌉
+```
+clamped to `L ≥ 1`.
+"""
+function tol_depth(
+    ::Type{NMDTQuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    return max(1, ceil(Int, log2(max_delta^2 / tolerance) - 2))
 end
 
 """

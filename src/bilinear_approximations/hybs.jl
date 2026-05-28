@@ -13,27 +13,94 @@ Combines Bin2 lower bound and Bin3 upper bound with shared quadratic for x², y�
 and LP-only epigraph for (x+y)², (x−y)².
 
 # Fields
-- `quad_config::QuadraticApproxConfig`: quadratic method used for the shared x² and y² terms
+- `quad_config::Q`: quadratic method used for the shared x² and y² terms
 - `epigraph_depth::Int`: depth for the epigraph Q^{L1} LP-only approximation of cross-terms (x±y)²
 - `add_mccormick::Bool`: whether to add standard McCormick envelope cuts on the product variable (default false)
+
+The Q type parameter lets tolerance helpers dispatch on the inner quad method.
+HybS sandwich validity requires Q to over-estimate (so `lower ≤ xy ≤ upper`):
+only `Sawtooth`, `SolverSOS2`, `ManualSOS2` are supported by the tolerance
+helpers; see `tol_depth(::Type{HybSConfig{Q}}; …)` and
+`tol_epigraph_depth(::Type{HybSConfig{Q}}; …)`.
 """
-struct HybSConfig <: BilinearApproxConfig
-    quad_config::QuadraticApproxConfig
+struct HybSConfig{Q <: QuadraticApproxConfig} <: BilinearApproxConfig
+    quad_config::Q
     epigraph_depth::Int
     add_mccormick::Bool
 
     HybSConfig(
-        quad_config::QuadraticApproxConfig;
+        quad_config::Q;
         epigraph_depth::Int,
         add_mccormick::Bool = false,
-    ) = new(quad_config, epigraph_depth, add_mccormick)
+    ) where {Q <: QuadraticApproxConfig} =
+        new{Q}(quad_config, epigraph_depth, add_mccormick)
+end
 
-    HybSConfig(; tolerance::Float64, kwargs...) =
-        error(
-            "Tolerance-based dispatch is not yet implemented for HybSConfig. " *
-            "Construct the inner quad_config with a tolerance and specify epigraph_depth explicitly: " *
-            "HybSConfig(quad_config; epigraph_depth = …).",
-        )
+# --- Tolerance helpers ---
+#
+# HybS adds:
+#   z ≥ ½(z_p1 − z_x − z_y)    z_p1 ≈ (x+y)² via Epigraph (one-sided under)
+#   z ≤ ½(z_x + z_y − z_p2)    z_p2 ≈ (x−y)² via Epigraph (one-sided under)
+#                              z_x ≈ x², z_y ≈ y² via inner Q (one-sided over)
+# So z is free in [lower, upper] with
+#   lower = xy + ½(Δ_p1 − Δ_x − Δ_y)    Δ_p ∈ [−ε_e, 0],  Δ_x,Δ_y ∈ [0, ε_q]
+#   upper = xy + ½(Δ_x + Δ_y − Δ_p2)
+# giving |z − xy| ≤ ε_q + ½ε_e.
+#
+# Helpers below use a half-and-half budget split:
+#   ε_q ≤ τ/2  ⇒ inner Q at tolerance τ/2 over max_delta = max(Δx, Δy)
+#   ε_e ≤ τ    ⇒ epigraph at tolerance τ   over max_delta = Δx + Δy
+# Total worst-case: ε_q + ½ε_e ≤ τ/2 + ½·τ = τ.
+#
+# Restricted to one-sided-over Q. Two-sided Q (NMDT, DNMDT) or one-sided-under
+# (Epigraph) make `lower > xy` reachable, breaking sandwich validity, so those
+# combinations raise MethodError.
+
+"""
+    tol_depth(::Type{HybSConfig{Q}}; tolerance, max_delta_x, max_delta_y)::Int
+
+Inner-quad depth for HybS at target tolerance `τ`. Returns the smallest depth
+whose inner-quad error on `[ax, ax+Δx]` (and `[ay, ay+Δy]`) is `≤ τ/2`, which
+satisfies the `ε_q ≤ τ/2` half of the HybS budget.
+
+Only defined for `Q ∈ {SawtoothQuadConfig, SolverSOS2QuadConfig,
+ManualSOS2QuadConfig}` — the one-sided-over inner quads for which the HybS
+sandwich is valid. Other Q raise `MethodError`.
+
+See also `tol_epigraph_depth(::Type{HybSConfig{Q}}; …)` for the second knob.
+"""
+function tol_depth(
+    ::Type{HybSConfig{Q}};
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+) where {Q <: Union{SawtoothQuadConfig, SolverSOS2QuadConfig, ManualSOS2QuadConfig}}
+    return tol_depth(Q;
+        tolerance = tolerance / 2,
+        max_delta = max(max_delta_x, max_delta_y),
+    )
+end
+
+"""
+    tol_epigraph_depth(::Type{HybSConfig{Q}}; tolerance, max_delta_x, max_delta_y)::Int
+
+Epigraph depth for HybS at target tolerance `τ`. Returns the smallest depth
+whose epigraph error on the cross-term range `Δx + Δy` is `≤ τ`, which
+satisfies the `½ε_e ≤ τ/2` half of the HybS budget.
+
+Only defined for `Q ∈ {SawtoothQuadConfig, SolverSOS2QuadConfig,
+ManualSOS2QuadConfig}`. Other Q raise `MethodError`.
+"""
+function tol_epigraph_depth(
+    ::Type{HybSConfig{Q}};
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+) where {Q <: Union{SawtoothQuadConfig, SolverSOS2QuadConfig, ManualSOS2QuadConfig}}
+    return tol_depth(EpigraphQuadConfig;
+        tolerance = tolerance,
+        max_delta = max_delta_x + max_delta_y,
+    )
 end
 
 # --- Unified HybS dispatch methods ---

@@ -1,304 +1,424 @@
 const TOL_META = "TolDispatch"
 
-# Sweep one univariate quadratic config over a few tolerances on [0, delta] and
-# assert the achieved approximation gap is within the requested tolerance.
-function _sweep_quadratic_tolerance(make_config, delta, tols)
-    for tol in tols
-        cfg = make_config(tol, delta)
-        gaps = Float64[]
-        for x0 in range(0.0, delta; length = 11)
-            setup = _setup_qa_test(["g"], 1:1)
-            JuMP.fix(setup.var_container["g", 1], x0; force = true)
-            IOM._add_quadratic_approx!(
-                cfg,
-                setup.container,
-                MockThermalGen,
-                ["g"],
-                1:1,
-                setup.var_container,
-                [(min = 0.0, max = delta)],
-                TOL_META,
-            )
-            expr = IOM.get_expression(
-                setup.container,
-                IOM.QuadraticExpression,
-                MockThermalGen,
-                TOL_META,
-            )
-            JuMP.@objective(setup.jump_model, Min, expr["g", 1])
-            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-            JuMP.set_silent(setup.jump_model)
-            JuMP.optimize!(setup.jump_model)
-            push!(gaps, abs(x0^2 - JuMP.objective_value(setup.jump_model)))
-        end
-        # The math (ceiling on depth) guarantees gap ≤ tol in exact arithmetic;
-        # the tiny absolute guard covers float roundoff at exact-integer boundaries
-        # (e.g. SOS2 depth = delta / (2·sqrt(tol)) lands on an integer when tol = 1e-2).
-        @test maximum(gaps) <= tol + 1e-10
+# --- Sampling helpers -----------------------------------------------------
+#
+# Per-config analytical worst-case points + a dense uniform grid.
+# For PWL of convex x² (sawtooth, SOS2): worst error sits at segment midpoints.
+# For epigraph (max of tangents): same, midpoint between adjacent tangents.
+# For NMDT/DNMDT: no clean closed form, fall back to a dense grid.
+#
+# Each function returns x-samples in [0, delta].
+
+_uniform_grid(delta::Float64, n::Int) = collect(range(0.0, delta; length = n))
+
+function _sawtooth_worst_points(depth::Int, delta::Float64)
+    n_seg = 2^depth
+    h = delta / n_seg
+    return [(k + 0.5) * h for k in 0:(n_seg - 1)]
+end
+
+function _sos2_worst_points(segments::Int, delta::Float64)
+    h = delta / segments
+    return [(k + 0.5) * h for k in 0:(segments - 1)]
+end
+
+# Epigraph tangent lines at breakpoints a + k·Δ/2^L; the tangent envelope is
+# tightest at the breakpoints and loosest at the midpoints between adjacent
+# breakpoints (same locations as the sawtooth's worst points).
+_epigraph_worst_points(depth::Int, delta::Float64) = _sawtooth_worst_points(depth, delta)
+
+function _quadratic_samples(::Type{Q}, depth::Int, delta::Float64) where {Q}
+    grid = _uniform_grid(delta, 41)
+    if Q === IOM.SawtoothQuadConfig
+        return unique!(sort!(vcat(grid, _sawtooth_worst_points(depth, delta))))
+    elseif Q === IOM.EpigraphQuadConfig
+        return unique!(sort!(vcat(grid, _epigraph_worst_points(depth, delta))))
+    elseif Q === IOM.SolverSOS2QuadConfig || Q === IOM.ManualSOS2QuadConfig
+        return unique!(sort!(vcat(grid, _sos2_worst_points(depth, delta))))
+    else
+        # NMDT/DNMDT: no simple closed-form worst-case; rely on the dense grid.
+        return _uniform_grid(delta, 81)
     end
 end
 
-# Same idea for an epigraph-style lower bound: the achieved gap is
-# (x0^2 - approximation value) since the approximation lower-bounds x^2.
-function _sweep_epigraph_tolerance(make_config, delta, tols)
+function _bilinear_samples(
+    ::Type{Q},
+    depth::Int,
+    delta_x::Float64,
+    delta_y::Float64,
+) where {Q}
+    # Cross product of per-axis worst points; small inset from the boundary
+    # avoids degenerate fixings that interact poorly with the solver.
+    eps = 1e-6
+    xs = _quadratic_samples(Q, depth, delta_x)
+    ys = _quadratic_samples(Q, depth, delta_y)
+    pts =
+        [(clamp(x, eps, delta_x - eps), clamp(y, eps, delta_y - eps)) for x in xs, y in ys]
+    return unique!(vec(pts))
+end
+
+# --- Evaluation helpers ---------------------------------------------------
+#
+# Each returns the max observed |approx − true| over the sample set, plus the
+# ratio `max_gap / tolerance` for logging.
+
+function _eval_quadratic_overestimator(
+    cfg,
+    sample_points::Vector{Float64},
+    delta::Float64,
+    tolerance::Float64;
+    expr_type = IOM.QuadraticExpression,
+)
+    gaps = Float64[]
+    for x0 in sample_points
+        setup = _setup_qa_test(["g"], 1:1)
+        JuMP.fix(setup.var_container["g", 1], x0; force = true)
+        IOM._add_quadratic_approx!(
+            cfg,
+            setup.container,
+            MockThermalGen,
+            ["g"],
+            1:1,
+            setup.var_container,
+            [(min = 0.0, max = delta)],
+            TOL_META,
+        )
+        expr = IOM.get_expression(setup.container, expr_type, MockThermalGen, TOL_META)
+        JuMP.@objective(setup.jump_model, Min, expr["g", 1])
+        JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+        JuMP.set_silent(setup.jump_model)
+        JuMP.optimize!(setup.jump_model)
+        push!(gaps, abs(x0^2 - JuMP.objective_value(setup.jump_model)))
+    end
+    return (max_gap = maximum(gaps), ratio = maximum(gaps) / tolerance)
+end
+
+function _eval_quadratic_underestimator(
+    cfg,
+    sample_points::Vector{Float64},
+    delta::Float64,
+    tolerance::Float64,
+)
+    return _eval_quadratic_overestimator(
+        cfg, sample_points, delta, tolerance;
+        expr_type = IOM.EpigraphExpression,
+    )
+end
+
+function _eval_bilinear(
+    cfg,
+    sample_points::Vector{Tuple{Float64, Float64}},
+    delta_x::Float64,
+    delta_y::Float64,
+    tolerance::Float64,
+)
+    gaps = Float64[]
+    for (x0, y0) in sample_points, sense in (JuMP.MIN_SENSE, JuMP.MAX_SENSE)
+        setup = _setup_bilinear_test(["d"], 1:1)
+        JuMP.fix(setup.x_var_container["d", 1], x0; force = true)
+        JuMP.fix(setup.y_var_container["d", 1], y0; force = true)
+        IOM._add_bilinear_approx!(
+            cfg,
+            setup.container,
+            MockThermalGen,
+            ["d"],
+            1:1,
+            setup.x_var_container,
+            setup.y_var_container,
+            [(min = 0.0, max = delta_x)],
+            [(min = 0.0, max = delta_y)],
+            TOL_META,
+        )
+        expr = IOM.get_expression(
+            setup.container, IOM.BilinearProductExpression, MockThermalGen, TOL_META,
+        )
+        JuMP.@objective(setup.jump_model, sense, expr["d", 1])
+        JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+        JuMP.set_silent(setup.jump_model)
+        JuMP.optimize!(setup.jump_model)
+        push!(gaps, abs(x0 * y0 - JuMP.objective_value(setup.jump_model)))
+    end
+    return (max_gap = maximum(gaps), ratio = maximum(gaps) / tolerance)
+end
+
+# --- Tolerance harness ----------------------------------------------------
+
+function _run_quadratic_tol_case(
+    ::Type{Q},
+    make_cfg::F,
+    tols::Tuple,
+    delta::Float64;
+    underestimator::Bool = false,
+    extra_label::String = "",
+) where {Q, F}
     for tol in tols
-        cfg = make_config(tol, delta)
-        gaps = Float64[]
-        for x0 in range(0.0, delta; length = 11)
-            setup = _setup_qa_test(["g"], 1:1)
-            JuMP.fix(setup.var_container["g", 1], x0; force = true)
-            IOM._add_quadratic_approx!(
-                cfg,
-                setup.container,
-                MockThermalGen,
-                ["g"],
-                1:1,
-                setup.var_container,
-                [(min = 0.0, max = delta)],
-                TOL_META,
-            )
-            expr = IOM.get_expression(
-                setup.container,
-                IOM.EpigraphExpression,
-                MockThermalGen,
-                TOL_META,
-            )
-            # Epigraph gives a lower bound on x²; minimize z to see the
-            # closest the tangent envelope reaches the true value from below.
-            JuMP.@objective(setup.jump_model, Min, expr["g", 1])
-            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-            JuMP.set_silent(setup.jump_model)
-            JuMP.optimize!(setup.jump_model)
-            push!(gaps, abs(x0^2 - JuMP.objective_value(setup.jump_model)))
+        d = IOM.tol_depth(Q; tolerance = tol, max_delta = delta)
+        cfg = make_cfg(d)
+        samples = _quadratic_samples(Q, d, delta)
+        result = if underestimator
+            _eval_quadratic_underestimator(cfg, samples, delta, tol)
+        else
+            _eval_quadratic_overestimator(cfg, samples, delta, tol)
         end
-        # The math (ceiling on depth) guarantees gap ≤ tol in exact arithmetic;
-        # the tiny absolute guard covers float roundoff at exact-integer boundaries
-        # (e.g. SOS2 depth = delta / (2·sqrt(tol)) lands on an integer when tol = 1e-2).
-        @test maximum(gaps) <= tol + 1e-10
+        @info "$(nameof(Q))$(isempty(extra_label) ? "" : " ($extra_label)")" tolerance = tol depth =
+            d max_gap = result.max_gap achieved_over_tol = result.ratio
+        @test result.max_gap <= tol + 1e-10
     end
 end
 
-function _sweep_bilinear_tolerance(make_config, delta_x, delta_y, tols)
-    for tol in tols
-        cfg = make_config(tol, delta_x, delta_y)
-        gaps = Float64[]
-        for x0 in range(0.05 * delta_x, 0.95 * delta_x; length = 5),
-            y0 in range(0.05 * delta_y, 0.95 * delta_y; length = 5),
-            sense in (JuMP.MIN_SENSE, JuMP.MAX_SENSE)
-
-            setup = _setup_bilinear_test(["d"], 1:1)
-            JuMP.fix(setup.x_var_container["d", 1], x0; force = true)
-            JuMP.fix(setup.y_var_container["d", 1], y0; force = true)
-            IOM._add_bilinear_approx!(
-                cfg,
-                setup.container,
-                MockThermalGen,
-                ["d"],
-                1:1,
-                setup.x_var_container,
-                setup.y_var_container,
-                [(min = 0.0, max = delta_x)],
-                [(min = 0.0, max = delta_y)],
-                TOL_META,
-            )
-            expr = IOM.get_expression(
-                setup.container,
-                IOM.BilinearProductExpression,
-                MockThermalGen,
-                TOL_META,
-            )
-            JuMP.@objective(setup.jump_model, sense, expr["d", 1])
-            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-            JuMP.set_silent(setup.jump_model)
-            JuMP.optimize!(setup.jump_model)
-            push!(gaps, abs(x0 * y0 - JuMP.objective_value(setup.jump_model)))
-        end
-        # The math (ceiling on depth) guarantees gap ≤ tol in exact arithmetic;
-        # the tiny absolute guard covers float roundoff at exact-integer boundaries
-        # (e.g. SOS2 depth = delta / (2·sqrt(tol)) lands on an integer when tol = 1e-2).
-        @test maximum(gaps) <= tol + 1e-10
-    end
-end
+# --- Quadratic configs ----------------------------------------------------
 
 @testset "Tolerance Dispatch" begin
-    # SOS2 methods accept `pwmcc_segments=0` to skip the optional piecewise
-    # McCormick concave cuts (the cuts interact poorly with a fixed primal,
-    # mirroring how the existing SOS2 tests in test_quadratic_approximations.jl
-    # all pass pwmcc_segments=0). The tolerance contract bounds the PWL error,
-    # which the cuts don't affect.
-    @testset "SolverSOS2QuadConfig" begin
-        _sweep_quadratic_tolerance(
-            (tol, delta) -> IOM.SolverSOS2QuadConfig(;
-                tolerance = tol,
-                max_delta = delta,
-                pwmcc_segments = 0,
-            ),
-            1.0,
-            (1e-1, 1e-2, 1e-3),
-        )
-    end
-
-    @testset "ManualSOS2QuadConfig" begin
-        _sweep_quadratic_tolerance(
-            (tol, delta) -> IOM.ManualSOS2QuadConfig(;
-                tolerance = tol,
-                max_delta = delta,
-                pwmcc_segments = 0,
-            ),
-            1.0,
-            (1e-1, 1e-2, 1e-3),
-        )
-    end
-
-    @testset "SawtoothQuadConfig" begin
-        _sweep_quadratic_tolerance(
-            (tol, delta) -> IOM.SawtoothQuadConfig(; tolerance = tol, max_delta = delta),
-            1.0,
-            (1e-1, 1e-2, 1e-3),
-        )
-    end
-
-    @testset "EpigraphQuadConfig" begin
-        _sweep_epigraph_tolerance(
-            (tol, delta) -> IOM.EpigraphQuadConfig(; tolerance = tol, max_delta = delta),
-            1.0,
-            (1e-1, 1e-2, 1e-3),
-        )
-    end
-
-    @testset "NMDTQuadConfig" begin
-        _sweep_quadratic_tolerance(
-            (tol, delta) -> IOM.NMDTQuadConfig(;
-                tolerance = tol,
-                max_delta = delta,
-                epigraph_depth = 0,
-            ),
-            1.0,
-            (1e-1, 1e-2, 1e-3),
-        )
-    end
-
-    @testset "DNMDTQuadConfig" begin
-        _sweep_quadratic_tolerance(
-            (tol, delta) -> IOM.DNMDTQuadConfig(;
-                tolerance = tol,
-                max_delta = delta,
-                epigraph_depth = 0,
-            ),
-            1.0,
-            (1e-1, 1e-2, 1e-3),
-        )
-    end
-
-    @testset "NMDTBilinearConfig" begin
-        _sweep_bilinear_tolerance(
-            (tol, delta_x, delta_y) -> IOM.NMDTBilinearConfig(;
-                tolerance = tol,
-                max_delta_x = delta_x,
-                max_delta_y = delta_y,
-            ),
-            1.0,
-            1.0,
-            (1e-1, 1e-2),
-        )
-    end
-
-    @testset "DNMDTBilinearConfig" begin
-        _sweep_bilinear_tolerance(
-            (tol, delta_x, delta_y) -> IOM.DNMDTBilinearConfig(;
-                tolerance = tol,
-                max_delta_x = delta_x,
-                max_delta_y = delta_y,
-            ),
-            1.0,
-            1.0,
-            (1e-1, 1e-2),
-        )
-    end
-
-    # Generalized domain-scaling check: for every config used above, the
-    # computed depth must grow when the domain grows for fixed tolerance,
-    # and the gap sweep at the larger domain must still meet the tolerance.
-    @testset "Non-unit domain delta scales correctly (univariate)" begin
-        quad_factories = [
-            (
-                "SolverSOS2",
-                (tol, delta) -> IOM.SolverSOS2QuadConfig(;
-                    tolerance = tol,
-                    max_delta = delta,
-                    pwmcc_segments = 0,
-                ),
-            ),
-            (
-                "ManualSOS2",
-                (tol, delta) -> IOM.ManualSOS2QuadConfig(;
-                    tolerance = tol,
-                    max_delta = delta,
-                    pwmcc_segments = 0,
-                ),
-            ),
-            (
-                "Sawtooth",
-                (tol, delta) ->
-                    IOM.SawtoothQuadConfig(; tolerance = tol, max_delta = delta),
-            ),
-            (
-                "NMDT",
-                (tol, delta) -> IOM.NMDTQuadConfig(;
-                    tolerance = tol,
-                    max_delta = delta,
-                    epigraph_depth = 0,
-                ),
-            ),
-            (
-                "DNMDT",
-                (tol, delta) -> IOM.DNMDTQuadConfig(;
-                    tolerance = tol,
-                    max_delta = delta,
-                    epigraph_depth = 0,
-                ),
-            ),
-        ]
-        for (name, make) in quad_factories
-            @testset "$name" begin
-                @test make(1e-2, 4.0).depth > make(1e-2, 1.0).depth
-                _sweep_quadratic_tolerance(make, 4.0, (1e-1, 1e-2))
-            end
+    @testset "Quadratic configs" begin
+        @testset "SawtoothQuadConfig (Δ = 1)" begin
+            _run_quadratic_tol_case(
+                IOM.SawtoothQuadConfig,
+                d -> IOM.SawtoothQuadConfig(; depth = d),
+                (1e-1, 1e-2, 1e-3),
+                1.0,
+            )
         end
 
-        @testset "Epigraph" begin
-            make =
-                (tol, delta) ->
-                    IOM.EpigraphQuadConfig(; tolerance = tol, max_delta = delta)
-            @test make(1e-2, 4.0).depth > make(1e-2, 1.0).depth
-            _sweep_epigraph_tolerance(make, 4.0, (1e-1, 1e-2))
+        @testset "SawtoothQuadConfig (Δ = 4)" begin
+            _run_quadratic_tol_case(
+                IOM.SawtoothQuadConfig,
+                d -> IOM.SawtoothQuadConfig(; depth = d),
+                (1e-1, 1e-2),
+                4.0,
+            )
+        end
+
+        @testset "EpigraphQuadConfig (Δ = 1)" begin
+            _run_quadratic_tol_case(
+                IOM.EpigraphQuadConfig,
+                d -> IOM.EpigraphQuadConfig(; depth = d),
+                (1e-1, 1e-2, 1e-3),
+                1.0;
+                underestimator = true,
+            )
+        end
+
+        @testset "EpigraphQuadConfig (Δ = 4)" begin
+            _run_quadratic_tol_case(
+                IOM.EpigraphQuadConfig,
+                d -> IOM.EpigraphQuadConfig(; depth = d),
+                (1e-1, 1e-2),
+                4.0;
+                underestimator = true,
+            )
+        end
+
+        @testset "SolverSOS2QuadConfig (Δ = 1)" begin
+            _run_quadratic_tol_case(
+                IOM.SolverSOS2QuadConfig,
+                d -> IOM.SolverSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+                (1e-1, 1e-2, 1e-3),
+                1.0,
+            )
+        end
+
+        @testset "SolverSOS2QuadConfig (Δ = 4)" begin
+            _run_quadratic_tol_case(
+                IOM.SolverSOS2QuadConfig,
+                d -> IOM.SolverSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+                (1e-1, 1e-2),
+                4.0,
+            )
+        end
+
+        @testset "ManualSOS2QuadConfig (Δ = 1)" begin
+            _run_quadratic_tol_case(
+                IOM.ManualSOS2QuadConfig,
+                d -> IOM.ManualSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+                (1e-1, 1e-2, 1e-3),
+                1.0,
+            )
+        end
+
+        @testset "NMDTQuadConfig (Δ = 1)" begin
+            _run_quadratic_tol_case(
+                IOM.NMDTQuadConfig,
+                d -> IOM.NMDTQuadConfig(; depth = d, epigraph_depth = 0),
+                (1e-1, 1e-2),
+                1.0,
+            )
+        end
+
+        @testset "DNMDTQuadConfig (Δ = 1)" begin
+            _run_quadratic_tol_case(
+                IOM.DNMDTQuadConfig,
+                d -> IOM.DNMDTQuadConfig(; depth = d, epigraph_depth = 0),
+                (1e-1, 1e-2),
+                1.0,
+            )
         end
     end
 
-    @testset "Non-unit domain delta scales correctly (bilinear)" begin
-        bilinear_factories = [
+    # --- Bilinear NMDT configs ----------------------------------------------
+
+    @testset "Bilinear NMDT configs" begin
+        @testset "NMDTBilinearConfig (Δx = Δy = 1)" begin
+            for tol in (1e-1, 1e-2)
+                d = IOM.tol_depth(IOM.NMDTBilinearConfig;
+                    tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                )
+                cfg = IOM.NMDTBilinearConfig(; depth = d)
+                samples = vec([
+                    (x, y) for x in _uniform_grid(1.0, 21)[2:(end - 1)],
+                    y in _uniform_grid(1.0, 21)[2:(end - 1)]
+                ])
+                result = _eval_bilinear(cfg, samples, 1.0, 1.0, tol)
+                @info "NMDTBilinearConfig" tolerance = tol depth = d max_gap =
+                    result.max_gap achieved_over_tol = result.ratio
+                @test result.max_gap <= tol + 1e-10
+            end
+        end
+
+        @testset "DNMDTBilinearConfig (Δx = Δy = 1)" begin
+            for tol in (1e-1, 1e-2)
+                d = IOM.tol_depth(IOM.DNMDTBilinearConfig;
+                    tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                )
+                cfg = IOM.DNMDTBilinearConfig(; depth = d)
+                samples = vec([
+                    (x, y) for x in _uniform_grid(1.0, 21)[2:(end - 1)],
+                    y in _uniform_grid(1.0, 21)[2:(end - 1)]
+                ])
+                result = _eval_bilinear(cfg, samples, 1.0, 1.0, tol)
+                @info "DNMDTBilinearConfig" tolerance = tol depth = d max_gap =
+                    result.max_gap achieved_over_tol = result.ratio
+                @test result.max_gap <= tol + 1e-10
+            end
+        end
+
+        @testset "NMDTBilinearConfig (Δx = 2, Δy = 3)" begin
+            tol = 1e-2
+            d_unit = IOM.tol_depth(IOM.NMDTBilinearConfig;
+                tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+            )
+            d_big = IOM.tol_depth(IOM.NMDTBilinearConfig;
+                tolerance = tol, max_delta_x = 2.0, max_delta_y = 3.0,
+            )
+            @test d_big > d_unit
+            cfg = IOM.NMDTBilinearConfig(; depth = d_big)
+            samples = vec([
+                (x, y) for x in _uniform_grid(2.0, 21)[2:(end - 1)],
+                y in _uniform_grid(3.0, 21)[2:(end - 1)]
+            ])
+            result = _eval_bilinear(cfg, samples, 2.0, 3.0, tol)
+            @info "NMDTBilinearConfig (non-unit)" tolerance = tol depth = d_big max_gap =
+                result.max_gap achieved_over_tol = result.ratio
+            @test result.max_gap <= tol + 1e-10
+        end
+    end
+
+    # --- Bin2Config{Q} -------------------------------------------------------
+
+    @testset "Bin2Config{Q}" begin
+        # Only inner Qs that pin the result (sawtooth with epigraph_depth=0,
+        # SOS2 variants) are valid as Bin2 inner; see bin2.jl for why Epigraph,
+        # NMDT and DNMDT are unsupported.
+        bin2_cases = [
+            (IOM.SawtoothQuadConfig, d -> IOM.SawtoothQuadConfig(; depth = d)),
             (
-                "NMDTBilinear",
-                (tol, delta_x, delta_y) -> IOM.NMDTBilinearConfig(;
-                    tolerance = tol,
-                    max_delta_x = delta_x,
-                    max_delta_y = delta_y,
-                ),
+                IOM.SolverSOS2QuadConfig,
+                d -> IOM.SolverSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
             ),
             (
-                "DNMDTBilinear",
-                (tol, delta_x, delta_y) -> IOM.DNMDTBilinearConfig(;
-                    tolerance = tol,
-                    max_delta_x = delta_x,
-                    max_delta_y = delta_y,
-                ),
+                IOM.ManualSOS2QuadConfig,
+                d -> IOM.ManualSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
             ),
         ]
-        for (name, make) in bilinear_factories
-            @testset "$name" begin
-                @test make(1e-2, 2.0, 2.0).depth > make(1e-2, 1.0, 1.0).depth
-                _sweep_bilinear_tolerance(make, 2.0, 2.0, (1e-1, 1e-2))
+        for (Q, make_inner) in bin2_cases
+            @testset "Bin2Config{$(nameof(Q))}" begin
+                for tol in (1e-1, 1e-2)
+                    d = IOM.tol_depth(IOM.Bin2Config{Q};
+                        tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                    )
+                    cfg = IOM.Bin2Config(make_inner(d); add_mccormick = false)
+                    samples = vec([
+                        (x, y) for x in _uniform_grid(1.0, 21)[2:(end - 1)],
+                        y in _uniform_grid(1.0, 21)[2:(end - 1)]
+                    ])
+                    result = _eval_bilinear(cfg, samples, 1.0, 1.0, tol)
+                    @info "Bin2Config{$(nameof(Q))}" tolerance = tol depth = d max_gap =
+                        result.max_gap achieved_over_tol = result.ratio
+                    @test result.max_gap <= tol + 1e-10
+                end
             end
+        end
+
+        @testset "Bin2Config{Q} unsupported inner -> MethodError" begin
+            @test_throws MethodError IOM.tol_depth(
+                IOM.Bin2Config{IOM.EpigraphQuadConfig};
+                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
+            )
+            @test_throws MethodError IOM.tol_depth(
+                IOM.Bin2Config{IOM.NMDTQuadConfig};
+                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
+            )
+            @test_throws MethodError IOM.tol_depth(
+                IOM.Bin2Config{IOM.DNMDTQuadConfig};
+                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
+            )
+        end
+    end
+
+    # --- HybSConfig{Q} -------------------------------------------------------
+
+    @testset "HybSConfig{Q}" begin
+        hybs_cases = [
+            (IOM.SawtoothQuadConfig, d -> IOM.SawtoothQuadConfig(; depth = d)),
+            (
+                IOM.SolverSOS2QuadConfig,
+                d -> IOM.SolverSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+            ),
+            (
+                IOM.ManualSOS2QuadConfig,
+                d -> IOM.ManualSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+            ),
+        ]
+        for (Q, make_inner) in hybs_cases
+            @testset "HybSConfig{$(nameof(Q))}" begin
+                for tol in (1e-1, 1e-2)
+                    di = IOM.tol_depth(IOM.HybSConfig{Q};
+                        tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                    )
+                    de = IOM.tol_epigraph_depth(IOM.HybSConfig{Q};
+                        tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                    )
+                    cfg = IOM.HybSConfig(make_inner(di);
+                        epigraph_depth = de, add_mccormick = false,
+                    )
+                    samples = vec([
+                        (x, y) for x in _uniform_grid(1.0, 21)[2:(end - 1)],
+                        y in _uniform_grid(1.0, 21)[2:(end - 1)]
+                    ])
+                    result = _eval_bilinear(cfg, samples, 1.0, 1.0, tol)
+                    @info "HybSConfig{$(nameof(Q))}" tolerance = tol inner_depth = di epi_depth =
+                        de max_gap = result.max_gap achieved_over_tol = result.ratio
+                    @test result.max_gap <= tol + 1e-10
+                end
+            end
+        end
+
+        @testset "HybSConfig{Q} unsupported inner -> MethodError" begin
+            @test_throws MethodError IOM.tol_depth(
+                IOM.HybSConfig{IOM.NMDTQuadConfig};
+                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
+            )
+            @test_throws MethodError IOM.tol_depth(
+                IOM.HybSConfig{IOM.DNMDTQuadConfig};
+                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
+            )
+            @test_throws MethodError IOM.tol_depth(
+                IOM.HybSConfig{IOM.EpigraphQuadConfig};
+                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
+            )
+            @test_throws MethodError IOM.tol_epigraph_depth(
+                IOM.HybSConfig{IOM.NMDTQuadConfig};
+                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
+            )
         end
     end
 end

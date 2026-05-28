@@ -20,35 +20,53 @@ struct SawtoothTightenedConstraint <: ConstraintType end
 """
 Config for sawtooth MIP quadratic approximation.
 
-Construct with either `depth` directly or `(tolerance, max_delta)`; the latter
-inverts the closed-form bound `Δ²·2^{-2L-2}` to pick the smallest `depth` whose
-worst-case overestimation gap is within `tolerance`.
-
 # Fields
 - `depth::Int`: recursion depth L; uses L binary variables for 2^L + 1 breakpoints
-- `epigraph_depth::Int`: LP tightening depth via epigraph Q^{L1} lower bound; 0 to disable (default 0)
+- `epigraph_depth::Int`: depth of an additional epigraph Q^{L1} lower bound (0 disables, default 0)
+
+## Effect of `epigraph_depth` on the worst-case error
+
+`epigraph_depth = 0`: `z = sawtooth(x)` is pinned by the binary structure, so
+`|z − x²| ≤ Δ²·2^{-2L-2}` where Δ = max − min.
+
+`epigraph_depth = L_e > 0`: the formulation introduces a free variable
+`z ∈ [epigraph(x), sawtooth(x)]`, so `|z − x²|` is bounded by whichever side is
+wider:
+```
+|z − x²| ≤ max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-2})
+```
+- `L_e ≥ L`: sawtooth dominates, worst-case = `Δ²·2^{-2L-2}`.
+- `L_e < L`: epigraph dominates, worst-case = `Δ²·2^{-2L_e-2}`.
+
+See `tol_depth(::Type{SawtoothQuadConfig}; …)` to derive `depth` from a target
+tolerance.
 """
 struct SawtoothQuadConfig <: QuadraticApproxConfig
     depth::Int
     epigraph_depth::Int
 
-    function SawtoothQuadConfig(;
-        depth::Union{Int, Nothing} = nothing,
-        tolerance::Union{Float64, Nothing} = nothing,
-        max_delta::Union{Float64, Nothing} = nothing,
-        epigraph_depth::Int = 0,
-    )
-        if depth !== nothing
-            return new(depth, epigraph_depth)
-        elseif tolerance !== nothing && max_delta !== nothing
-            d = max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
-            return new(d, epigraph_depth)
-        else
-            error(
-                "SawtoothQuadConfig requires either `depth` or both `tolerance` and `max_delta`.",
-            )
-        end
-    end
+    SawtoothQuadConfig(; depth::Int, epigraph_depth::Int = 0) =
+        new(depth, epigraph_depth)
+end
+
+"""
+    tol_depth(::Type{SawtoothQuadConfig}; tolerance, max_delta)::Int
+
+Smallest sawtooth depth `L` whose worst-case overestimation gap on `[a, a+Δ]`
+falls within `tolerance`. Inverts the closed-form bound `Δ²·2^{-2L-2} ≤ τ`:
+```
+L = ⌈(log₂(Δ²/τ) − 2) / 2⌉
+```
+clamped to `L ≥ 1`. Only sizes the sawtooth side; `epigraph_depth` is an
+orthogonal tightening knob (see the `SawtoothQuadConfig` docstring for when it
+enters the error bound).
+"""
+function tol_depth(
+    ::Type{SawtoothQuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    return max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
 end
 
 """

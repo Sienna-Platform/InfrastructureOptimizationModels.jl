@@ -16,31 +16,37 @@ struct EpigraphTangentExpression <: ExpressionType end
 """
 Config for epigraph (Q^{L1}) LP-only lower-bound quadratic approximation.
 
-Construct with either `depth` directly or `(tolerance, max_delta)`; the latter
-inverts the closed-form bound `Δ²·2^{-2·depth-2}` to pick the smallest `depth`
-whose worst-case underestimation gap is within `tolerance`.
-
 # Fields
 - `depth::Int`: number of tangent-line breakpoints (2^depth + 1 tangent lines); pure LP, zero binary variables
+
+The worst-case underestimation gap is `Δ²·2^{-2L-2}`. Per-segment derivation:
+adjacent tangents at `a` and `a+h` (h = Δ/2^L) meet at the midpoint `a+h/2`
+with value `a² + ah`; true `x² = a² + ah + h²/4`, so the gap is `h²/4 =
+Δ²·2^{-2L-2}`. See `tol_depth(::Type{EpigraphQuadConfig}; …)` to derive
+`depth` from a target tolerance.
 """
 struct EpigraphQuadConfig <: QuadraticApproxConfig
     depth::Int
 
-    function EpigraphQuadConfig(;
-        depth::Union{Int, Nothing} = nothing,
-        tolerance::Union{Float64, Nothing} = nothing,
-        max_delta::Union{Float64, Nothing} = nothing,
-    )
-        if depth !== nothing
-            return new(depth)
-        elseif tolerance !== nothing && max_delta !== nothing
-            return new(max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2)))
-        else
-            error(
-                "EpigraphQuadConfig requires either `depth` or both `tolerance` and `max_delta`.",
-            )
-        end
-    end
+    EpigraphQuadConfig(; depth::Int) = new(depth)
+end
+
+"""
+    tol_depth(::Type{EpigraphQuadConfig}; tolerance, max_delta)::Int
+
+Smallest epigraph depth `L` whose worst-case underestimation gap on `[a, a+Δ]`
+falls within `tolerance`. Inverts the closed-form bound `Δ²·2^{-2L-2} ≤ τ`:
+```
+L = ⌈(log₂(Δ²/τ) − 2) / 2⌉
+```
+clamped to `L ≥ 1`.
+"""
+function tol_depth(
+    ::Type{EpigraphQuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    return max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
 end
 
 """

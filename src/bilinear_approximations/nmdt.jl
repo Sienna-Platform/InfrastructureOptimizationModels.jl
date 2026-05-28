@@ -8,67 +8,73 @@
 """
 Config for double-NMDT bilinear approximation (discretizes both x and y).
 
-Construct with either `depth` directly or `(tolerance, max_delta_x, max_delta_y)`;
-the latter inverts the bound `Δx·Δy·2^{-2L-2}` to pick the smallest `depth` whose
-worst-case relaxation gap is within `tolerance`.
-
 # Fields
 - `depth::Int`: number of binary discretization levels L for both x and y
+
+The worst-case relaxation gap is `Δx·Δy·2^{-2L-2}`. See
+`tol_depth(::Type{DNMDTBilinearConfig}; …)` to derive `depth` from a target
+tolerance.
 """
 struct DNMDTBilinearConfig <: BilinearApproxConfig
     depth::Int
 
-    function DNMDTBilinearConfig(;
-        depth::Union{Int, Nothing} = nothing,
-        tolerance::Union{Float64, Nothing} = nothing,
-        max_delta_x::Union{Float64, Nothing} = nothing,
-        max_delta_y::Union{Float64, Nothing} = nothing,
-    )
-        if depth !== nothing
-            return new(depth)
-        elseif tolerance !== nothing && max_delta_x !== nothing && max_delta_y !== nothing
-            return new(
-                max(1, ceil(Int, (log2(max_delta_x * max_delta_y / tolerance) - 2) / 2)),
-            )
-        else
-            error(
-                "DNMDTBilinearConfig requires either `depth` or all of `tolerance`, `max_delta_x`, `max_delta_y`.",
-            )
-        end
-    end
+    DNMDTBilinearConfig(; depth::Int) = new(depth)
+end
+
+"""
+    tol_depth(::Type{DNMDTBilinearConfig}; tolerance, max_delta_x, max_delta_y)::Int
+
+Smallest DNMDT bilinear depth `L` whose worst-case relaxation gap on
+`[ax, ax+Δx] × [ay, ay+Δy]` falls within `tolerance`. Inverts
+`Δx·Δy·2^{-2L-2} ≤ τ`:
+```
+L = ⌈(log₂(Δx·Δy/τ) − 2) / 2⌉
+```
+clamped to `L ≥ 1`.
+"""
+function tol_depth(
+    ::Type{DNMDTBilinearConfig};
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+)
+    return max(1, ceil(Int, (log2(max_delta_x * max_delta_y / tolerance) - 2) / 2))
 end
 
 """
 Config for single-NMDT bilinear approximation (discretizes x only).
 
-Construct with either `depth` directly or `(tolerance, max_delta_x, max_delta_y)`;
-the latter inverts the bound `Δx·Δy·2^{-L-2}` to pick the smallest `depth` whose
-worst-case relaxation gap is within `tolerance`.
-
 # Fields
 - `depth::Int`: number of binary discretization levels L for x
+
+The worst-case relaxation gap is `Δx·Δy·2^{-L-2}`. See
+`tol_depth(::Type{NMDTBilinearConfig}; …)` to derive `depth` from a target
+tolerance.
 """
 struct NMDTBilinearConfig <: BilinearApproxConfig
     depth::Int
 
-    function NMDTBilinearConfig(;
-        depth::Union{Int, Nothing} = nothing,
-        tolerance::Union{Float64, Nothing} = nothing,
-        max_delta_x::Union{Float64, Nothing} = nothing,
-        max_delta_y::Union{Float64, Nothing} = nothing,
-    )
-        if depth !== nothing
-            return new(depth)
-        elseif tolerance !== nothing && max_delta_x !== nothing && max_delta_y !== nothing
-            return new(
-                max(1, ceil(Int, log2(max_delta_x * max_delta_y / tolerance) - 2)),
-            )
-        else
-            error(
-                "NMDTBilinearConfig requires either `depth` or all of `tolerance`, `max_delta_x`, `max_delta_y`.",
-            )
-        end
-    end
+    NMDTBilinearConfig(; depth::Int) = new(depth)
+end
+
+"""
+    tol_depth(::Type{NMDTBilinearConfig}; tolerance, max_delta_x, max_delta_y)::Int
+
+Smallest NMDT bilinear depth `L` whose worst-case relaxation gap on
+`[ax, ax+Δx] × [ay, ay+Δy]` falls within `tolerance`. Inverts
+`Δx·Δy·2^{-L-2} ≤ τ`:
+```
+L = ⌈log₂(Δx·Δy/τ) − 2⌉
+```
+clamped to `L ≥ 1`.
+"""
+function tol_depth(
+    ::Type{NMDTBilinearConfig};
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+)
+    return max(1, ceil(Int, log2(max_delta_x * max_delta_y / tolerance) - 2))
 end
 
 # --- DNMDT bilinear approximation ---
