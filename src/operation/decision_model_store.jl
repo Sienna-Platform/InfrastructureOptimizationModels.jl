@@ -127,20 +127,23 @@ end
 
 # Sparse expressions (e.g., post-contingency flows keyed by
 # `(outage_id, branch_name, t)`) are pre-allocated as 2D dense storage with
-# the non-time tuple flattened into encoded `"a__b"` columns by
-# `get_column_names_from_axis_array(::SparseAxisArray)`. `to_matrix` returns
-# `(n_time, n_cols)`; transpose to match the `(cols, time)` layout the dense
-# storage expects.
+# the non-time tuple flattened into encoded `"a__b"` columns. Derive the
+# tuple ordering once and use it for both the matrix and the encoded
+# column labels — sorting the encoded strings independently can diverge
+# from sorting the raw tuples when components have mixed types (e.g.
+# `(String, Int)`, where `"a__10" < "a__2"` lexically but `("a",10) > ("a",2)`
+# as tuples), which would misalign labels with the underlying values.
 function write_output!(
     store::DecisionModelStore,
     name::Symbol,
     key::OptimizationContainerKey,
     index::DecisionModelIndexType,
     update_timestamp::Dates.DateTime,
-    array::SparseAxisArray{T},
-) where {T}
-    columns = get_column_names_from_axis_array(array)[1]
-    matrix = to_matrix(array)
+    array::SparseAxisArray{T, N, K},
+) where {T, N, K <: NTuple{N, Any}}
+    tuple_columns = sort!(unique!([k[1:(N - 1)] for k in keys(array.data)]))
+    matrix = _to_matrix(array, tuple_columns)
+    columns = encode_tuple_to_column.(tuple_columns)
     container = getfield(store, get_store_container_type(key))
     container[key][index] =
         DenseAxisArray(permutedims(matrix), columns, 1:size(matrix, 1))
