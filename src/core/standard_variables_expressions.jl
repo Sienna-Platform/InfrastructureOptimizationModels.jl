@@ -81,6 +81,7 @@ should_write_resulting_value(::Type{RawACE}) = true
 should_write_resulting_value(::Type{ActivePowerBalance}) = true
 should_write_resulting_value(::Type{ReactivePowerBalance}) = true
 should_write_resulting_value(::Type{DCCurrentBalance}) = true
+should_write_resulting_value(::Type{PostContingencyBranchFlow}) = true
 
 # CostExpressions container method (moved here from optimization_container.jl
 # because it requires the cost expression types to be defined first). Covers

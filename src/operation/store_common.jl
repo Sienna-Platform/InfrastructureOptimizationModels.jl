@@ -47,7 +47,7 @@ function write_outputs!(
     update_timestamp::Dates.DateTime;
     exports = nothing,
 )
-    if exports !== nothing
+    if !isnothing(exports)
         export_params = ExportParameters(
             exports,
             joinpath(exports.path, _sanitize_model_name(string(get_name(model)))),
@@ -76,7 +76,7 @@ function write_model_dual_outputs!(
 ) where {T <: AbstractOptimizationModel}
     container = get_optimization_container(model)
     model_name = get_name(model)
-    if export_params !== nothing
+    if !isnothing(export_params)
         exports_path = joinpath(export_params.exports_path, "duals")
         mkpath(exports_path)
     end
@@ -86,7 +86,7 @@ function write_model_dual_outputs!(
         data = jump_value.(constraint)
         write_output!(store, model_name, key, index, update_timestamp, data)
 
-        if export_params !== nothing &&
+        if !isnothing(export_params) &&
            should_export_dual(export_params.exports, update_timestamp, model_name, key)
             _export_container_output!(export_params, exports_path, key, index, data)
         end
@@ -103,7 +103,7 @@ function write_model_parameter_outputs!(
 ) where {T <: AbstractOptimizationModel}
     container = get_optimization_container(model)
     model_name = get_name(model)
-    if export_params !== nothing
+    if !isnothing(export_params)
         exports_path = joinpath(export_params.exports_path, "parameters")
         mkpath(exports_path)
     end
@@ -114,7 +114,7 @@ function write_model_parameter_outputs!(
         data = calculate_parameter_values(param_container)
         write_output!(store, model_name, key, index, update_timestamp, data)
 
-        if export_params !== nothing &&
+        if !isnothing(export_params) &&
            should_export_parameter(
             export_params.exports,
             update_timestamp,
@@ -136,7 +136,7 @@ function write_model_variable_outputs!(
 ) where {T <: AbstractOptimizationModel}
     container = get_optimization_container(model)
     model_name = get_name(model)
-    if export_params !== nothing
+    if !isnothing(export_params)
         exports_path = joinpath(export_params.exports_path, "variables")
         mkpath(exports_path)
     end
@@ -152,7 +152,7 @@ function write_model_variable_outputs!(
         data = jump_value.(variable)
         write_output!(store, model_name, key, index, update_timestamp, data)
 
-        if export_params !== nothing &&
+        if !isnothing(export_params) &&
            should_export_variable(
             export_params.exports,
             update_timestamp,
@@ -174,7 +174,7 @@ function write_model_aux_variable_outputs!(
 ) where {T <: AbstractOptimizationModel}
     container = get_optimization_container(model)
     model_name = get_name(model)
-    if export_params !== nothing
+    if !isnothing(export_params)
         exports_path = joinpath(export_params.exports_path, "aux_variables")
         mkpath(exports_path)
     end
@@ -184,7 +184,7 @@ function write_model_aux_variable_outputs!(
         data = jump_value.(variable)
         write_output!(store, model_name, key, index, update_timestamp, data)
 
-        if export_params !== nothing &&
+        if !isnothing(export_params) &&
            should_export_aux_variable(
             export_params.exports,
             update_timestamp,
@@ -206,7 +206,7 @@ function write_model_expression_outputs!(
 ) where {T <: AbstractOptimizationModel}
     container = get_optimization_container(model)
     model_name = get_name(model)
-    if export_params !== nothing
+    if !isnothing(export_params)
         exports_path = joinpath(export_params.exports_path, "expressions")
         mkpath(exports_path)
     end
@@ -222,7 +222,7 @@ function write_model_expression_outputs!(
         data = jump_value.(expression)
         write_output!(store, model_name, key, index, update_timestamp, data)
 
-        if export_params !== nothing &&
+        if !isnothing(export_params) &&
            should_export_expression(
             export_params.exports,
             update_timestamp,

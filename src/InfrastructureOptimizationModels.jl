@@ -16,7 +16,7 @@ import LinearAlgebra
 import JSON3
 import InfrastructureSystems
 import PowerNetworkMatrices
-import PowerNetworkMatrices: PTDF, VirtualPTDF, LODF, VirtualLODF
+import PowerNetworkMatrices: PTDF, VirtualPTDF, LODF, VirtualLODF, VirtualMODF
 import InfrastructureSystems: @assert_op, TableFormat, list_recorder_events, get_name
 import InfrastructureSystems:
     get_value_curve, get_power_units, get_function_data, get_proportional_term,
@@ -170,11 +170,13 @@ export InitialCondition
 
 # Network Relevant Exports
 export NetworkModel
-export get_PTDF_matrix, get_LODF_matrix, get_reduce_radial_branches
+export get_PTDF_matrix, get_MODF_matrix, get_reduce_radial_branches
+export get_outages
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, has_subnetworks, get_subsystem
 export set_subsystem!, add_dual!
 export requires_all_branch_models, supports_branch_filtering, ignores_branch_filtering
+export supports_outages
 export validate_network_model
 export BranchReductionOptimizationTracker
 export get_variable_dict, get_constraint_dict, get_constraint_map_by_type
@@ -531,6 +533,7 @@ export PTDF
 export VirtualPTDF
 export LODF
 export VirtualLODF
+export VirtualMODF
 export get_name
 export get_model_base_power
 export get_optimizer_stats
