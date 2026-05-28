@@ -30,6 +30,16 @@ struct SawtoothQuadConfig <: QuadraticApproxConfig
 end
 SawtoothQuadConfig(depth::Int) = SawtoothQuadConfig(depth, 0)
 
+# Sawtooth maximum overestimation error is Δ²·2^{-2L-2}.
+SawtoothQuadConfig(;
+    tolerance::Float64,
+    max_delta::Float64,
+    epigraph_depth::Int = 0,
+) = SawtoothQuadConfig(
+    max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2)),
+    epigraph_depth,
+)
+
 """
     _add_quadratic_approx!(config::SawtoothQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 

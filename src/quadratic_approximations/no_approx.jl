@@ -4,6 +4,11 @@
 "No-op config: returns exact x² as a QuadExpr (for NLP-capable solvers or testing)."
 struct NoQuadApproxConfig <: QuadraticApproxConfig end
 
+# No tolerance-form constructor: this is an exact (NLP) formulation, so
+# `NoQuadApproxConfig(; tolerance=…)` produces Julia's natural MethodError.
+# (A hand-rolled kw stub here would clobber the auto-generated `NoQuadApproxConfig()`
+# constructor — they share the same lowered positional signature.)
+
 """
     _add_quadratic_approx!(::NoQuadApproxConfig, container, C, names, time_steps, x_var, bounds, meta)
 

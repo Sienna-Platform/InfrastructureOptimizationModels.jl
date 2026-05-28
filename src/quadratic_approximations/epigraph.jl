@@ -23,6 +23,11 @@ struct EpigraphQuadConfig <: QuadraticApproxConfig
     depth::Int
 end
 
+# Epigraph maximum underestimation gap is Δ²·2^{-2·depth-2}.
+EpigraphQuadConfig(; tolerance::Float64, max_delta::Float64) = EpigraphQuadConfig(
+    max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2)),
+)
+
 """
     _add_quadratic_approx!(::EpigraphQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 

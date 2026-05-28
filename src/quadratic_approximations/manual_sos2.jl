@@ -23,6 +23,16 @@ struct ManualSOS2QuadConfig <: QuadraticApproxConfig
 end
 ManualSOS2QuadConfig(depth::Int) = ManualSOS2QuadConfig(depth, 4)
 
+# PWL interpolation error for x² with `depth` uniform segments is bounded by Δ²/(4·depth²).
+ManualSOS2QuadConfig(;
+    tolerance::Float64,
+    max_delta::Float64,
+    pwmcc_segments::Int = 4,
+) = ManualSOS2QuadConfig(
+    max(1, ceil(Int, max_delta / (2 * sqrt(tolerance)))),
+    pwmcc_segments,
+)
+
 """
     _add_quadratic_approx!(config::ManualSOS2QuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 

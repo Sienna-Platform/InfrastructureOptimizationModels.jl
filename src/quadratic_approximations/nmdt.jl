@@ -20,6 +20,16 @@ struct DNMDTQuadConfig <: QuadraticApproxConfig
 end
 DNMDTQuadConfig(depth::Int) = DNMDTQuadConfig(depth, 3 * depth)
 
+# D-NMDT relaxation gap is bounded by Δ²·2^{-2L-2}.
+function DNMDTQuadConfig(;
+    tolerance::Float64,
+    max_delta::Float64,
+    epigraph_depth::Union{Int, Nothing} = nothing,
+)
+    depth = max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
+    return DNMDTQuadConfig(depth, epigraph_depth === nothing ? 3 * depth : epigraph_depth)
+end
+
 """
 Config for single-NMDT quadratic approximation.
 
@@ -32,6 +42,16 @@ struct NMDTQuadConfig <: QuadraticApproxConfig
     epigraph_depth::Int
 end
 NMDTQuadConfig(depth::Int) = NMDTQuadConfig(depth, 3 * depth)
+
+# NMDT relaxation gap is bounded by Δ²·2^{-L-2}.
+function NMDTQuadConfig(;
+    tolerance::Float64,
+    max_delta::Float64,
+    epigraph_depth::Union{Int, Nothing} = nothing,
+)
+    depth = max(1, ceil(Int, log2(max_delta^2 / tolerance) - 2))
+    return NMDTQuadConfig(depth, epigraph_depth === nothing ? 3 * depth : epigraph_depth)
+end
 
 """
     _add_quadratic_approx!(config::DNMDTQuadConfig, container, C, names, time_steps, x_disc, bounds, meta)

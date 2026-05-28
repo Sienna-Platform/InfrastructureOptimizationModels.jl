@@ -15,6 +15,15 @@ struct DNMDTBilinearConfig <: BilinearApproxConfig
     depth::Int
 end
 
+# D-NMDT bilinear relaxation gap is bounded by Δx·Δy·2^{-2L-2}.
+DNMDTBilinearConfig(;
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+) = DNMDTBilinearConfig(
+    max(1, ceil(Int, (log2(max_delta_x * max_delta_y / tolerance) - 2) / 2)),
+)
+
 """
 Config for single-NMDT bilinear approximation (discretizes x only).
 
@@ -24,6 +33,15 @@ Config for single-NMDT bilinear approximation (discretizes x only).
 struct NMDTBilinearConfig <: BilinearApproxConfig
     depth::Int
 end
+
+# NMDT bilinear relaxation gap is bounded by Δx·Δy·2^{-L-2}.
+NMDTBilinearConfig(;
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+) = NMDTBilinearConfig(
+    max(1, ceil(Int, log2(max_delta_x * max_delta_y / tolerance) - 2)),
+)
 
 # --- DNMDT bilinear approximation ---
 

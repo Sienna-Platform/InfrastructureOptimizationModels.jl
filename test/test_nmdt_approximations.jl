@@ -69,35 +69,8 @@ const NMDT_BILINEAR_META = "NMDTBilinearTest"
         end
     end
 
-    @testset "Relaxation gap <= 2^(-2L-1)" begin
-        for L in [2, 3, 4]
-            gaps = Float64[]
-            for x0 in range(0.0, 1.0; length = 11)
-                for sense in [JuMP.MIN_SENSE, JuMP.MAX_SENSE]
-                    setup = _setup_qa_test(["gen1"], 1:1)
-                    JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
-
-                    IOM._add_quadratic_approx!(
-                        IOM.DNMDTQuadConfig(2 * L, 0),
-                        setup.container, MockThermalGen, ["gen1"], 1:1,
-                        setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
-                    )
-                    expr = IOM.get_expression(
-                        setup.container, IOM.QuadraticExpression,
-                        MockThermalGen, DNMDT_META,
-                    )
-
-                    JuMP.@objective(setup.jump_model, sense, expr["gen1", 1])
-                    JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-                    JuMP.set_silent(setup.jump_model)
-                    JuMP.optimize!(setup.jump_model)
-                    push!(gaps, abs(x0^2 - JuMP.objective_value(setup.jump_model)))
-                end
-            end
-            theoretical_bound = 2.0^(-L - 2)
-            @test maximum(gaps) <= theoretical_bound + 1e-6
-        end
-    end
+    # Closed-form D-NMDT gap bound is now exercised by the tolerance-dispatch
+    # tests in test_tolerance_dispatch.jl (requested tolerance is the same bound).
 end
 
 @testset "T-D-NMDT Tightening" begin
@@ -204,39 +177,8 @@ end
         end
     end
 
-    @testset "Relaxation gap <= 2^(-2L-1)" begin
-        for L in [2, 3]
-            gaps = Float64[]
-            for x0 in range(0.05, 0.95; length = 5)
-                for y0 in range(0.05, 0.95; length = 5)
-                    for sense in [JuMP.MIN_SENSE, JuMP.MAX_SENSE]
-                        setup = _setup_bilinear_test(["dev1"], 1:1)
-                        JuMP.fix(setup.x_var_container["dev1", 1], x0; force = true)
-                        JuMP.fix(setup.y_var_container["dev1", 1], y0; force = true)
-
-                        IOM._add_bilinear_approx!(
-                            IOM.DNMDTBilinearConfig(2 * L),
-                            setup.container, MockThermalGen, ["dev1"], 1:1,
-                            setup.x_var_container, setup.y_var_container,
-                            [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
-                        )
-                        expr = IOM.get_expression(
-                            setup.container, IOM.BilinearProductExpression,
-                            MockThermalGen, DNMDT_META,
-                        )
-
-                        JuMP.@objective(setup.jump_model, sense, expr["dev1", 1])
-                        JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-                        JuMP.set_silent(setup.jump_model)
-                        JuMP.optimize!(setup.jump_model)
-                        push!(gaps, abs(x0 * y0 - JuMP.objective_value(setup.jump_model)))
-                    end
-                end
-            end
-            theoretical_bound = 2.0^(-L - 2)
-            @test maximum(gaps) <= theoretical_bound + 1e-6
-        end
-    end
+    # Closed-form D-NMDT bilinear gap bound is now exercised by the
+    # tolerance-dispatch tests in test_tolerance_dispatch.jl.
 
     @testset "General bounds (non-unit intervals)" begin
         x_min, x_max = 0.2, 0.8
@@ -437,37 +379,8 @@ end
         end
     end
 
-    @testset "Error bound <= 2^(-L-2)" begin
-        # NMDT with L binary variables has relaxation gap bounded by 2^(-L-2),
-        # which is looser than D-NMDT's 2^(-2L-2) at the same L.
-        for L in [2, 3, 4]
-            gaps = Float64[]
-            for x0 in range(0.0, 1.0; length = 11)
-                for sense in [JuMP.MIN_SENSE, JuMP.MAX_SENSE]
-                    setup = _setup_qa_test(["gen1"], 1:1)
-                    JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
-
-                    IOM._add_quadratic_approx!(
-                        IOM.NMDTQuadConfig(L, 0),
-                        setup.container, MockThermalGen, ["gen1"], 1:1,
-                        setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
-                    )
-                    expr = IOM.get_expression(
-                        setup.container, IOM.QuadraticExpression,
-                        MockThermalGen, NMDT_META,
-                    )
-
-                    JuMP.@objective(setup.jump_model, sense, expr["gen1", 1])
-                    JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-                    JuMP.set_silent(setup.jump_model)
-                    JuMP.optimize!(setup.jump_model)
-                    push!(gaps, abs(x0^2 - JuMP.objective_value(setup.jump_model)))
-                end
-            end
-            theoretical_bound = 2.0^(-L - 2)
-            @test maximum(gaps) <= theoretical_bound + 1e-6
-        end
-    end
+    # Closed-form NMDT gap bound is now exercised by the tolerance-dispatch
+    # tests in test_tolerance_dispatch.jl.
 
     @testset "Tightening improves lower bound" begin
         for x0 in [0.15, 0.35, 0.65, 0.85]
@@ -616,42 +529,8 @@ end
         end
     end
 
-    @testset "Error bound <= 2^(-L-2)" begin
-        for L in [2, 3]
-            max_gap = 0.0
-            gaps = Float64[]
-            for x0 in range(0.05, 0.95; length = 5)
-                for y0 in range(0.05, 0.95; length = 5)
-                    for sense in [JuMP.MIN_SENSE, JuMP.MAX_SENSE]
-                        setup = _setup_bilinear_test(["dev1"], 1:1)
-                        JuMP.fix(setup.x_var_container["dev1", 1], x0; force = true)
-                        JuMP.fix(setup.y_var_container["dev1", 1], y0; force = true)
-
-                        IOM._add_bilinear_approx!(
-                            IOM.NMDTBilinearConfig(L),
-                            setup.container, MockThermalGen, ["dev1"], 1:1,
-                            setup.x_var_container, setup.y_var_container,
-                            [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)],
-                            NMDT_BILINEAR_META,
-                        )
-                        expr = IOM.get_expression(
-                            setup.container, IOM.BilinearProductExpression,
-                            MockThermalGen, NMDT_BILINEAR_META,
-                        )
-
-                        JuMP.@objective(setup.jump_model, sense, expr["dev1", 1])
-                        JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-                        JuMP.set_silent(setup.jump_model)
-                        JuMP.optimize!(setup.jump_model)
-                        push!(gaps, abs(x0 * y0 - JuMP.objective_value(setup.jump_model)))
-                    end
-                end
-            end
-            # NMDT bilinear bound: 2^(-L-2) (looser than D-NMDT's 2^(-2L-2))
-            theoretical_bound = 2.0^(-L - 2)
-            @test maximum(gaps) <= theoretical_bound + 1e-6
-        end
-    end
+    # Closed-form NMDT bilinear gap bound is now exercised by the
+    # tolerance-dispatch tests in test_tolerance_dispatch.jl.
 
     @testset "Fixed-variable correctness" begin
         setup = _setup_bilinear_test(["dev1"], 1:1)

@@ -25,6 +25,13 @@ end
 HybSConfig(quad_config::QuadraticApproxConfig, epigraph_depth::Int) =
     HybSConfig(quad_config, epigraph_depth, false)
 
+HybSConfig(; tolerance::Float64, kwargs...) =
+    error(
+        "Tolerance-based dispatch is not yet implemented for HybSConfig. " *
+        "Construct the inner quad_config with a tolerance and specify epigraph_depth explicitly: " *
+        "HybSConfig(quad_config, epigraph_depth).",
+    )
+
 # --- Unified HybS dispatch methods ---
 
 """
