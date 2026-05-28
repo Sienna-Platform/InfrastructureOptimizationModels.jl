@@ -1,4 +1,3 @@
-# NOTE: not included currently.
 function _get_minutes_per_period(container::OptimizationContainer)
     resolution = get_resolution(container)
     if resolution > Dates.Minute(1)

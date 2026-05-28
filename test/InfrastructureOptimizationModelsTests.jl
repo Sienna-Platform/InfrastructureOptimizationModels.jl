@@ -115,6 +115,7 @@ function run_tests()
                     # TODO service_model.jl
                     include(joinpath(TEST_DIR, "test_settings.jl"))
                     # standard_variables_expressions.jl: low complexity
+                    include(joinpath(TEST_DIR, "test_flow_sign.jl"))
                     # time_series_parameter_types.jl: low complexity
 
                     # --- objective_function/ subfolder ---
