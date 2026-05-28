@@ -44,9 +44,9 @@ Establishes the NetworkModel for a given AC network formulation type.
 # Notes
 - `modeled_branch_types` and `reduced_branch_tracker` are internal fields managed by the model.
 - `subsystem` can be set after construction via `set_subsystem!(model, id)`.
-- PTDF inputs are validated against the requested reduction flags and may raise
-  a ConflictingInputsError if they are inconsistent with `reduce_radial_branches`
-  or `reduce_degree_two_branches`.
+- PTDF and MODF inputs are validated against the requested reduction flags and
+  may raise a ConflictingInputsError if they are inconsistent with
+  `reduce_radial_branches` or `reduce_degree_two_branches`.
 
 # Examples (concrete types like PTDFPowerModel, CopperPlatePowerModel are defined in PowerSimulations)
 # ptdf = PNM.VirtualPTDF(system)
