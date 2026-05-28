@@ -1,7 +1,7 @@
 """
 Each Tuple corresponds to (con_name, internal_index, moi_index)
 """
-function get_all_constraint_index(model::OperationModel)
+function get_all_constraint_index(model::AbstractOptimizationModel)
     con_index = Vector{Tuple{ConstraintKey, Int, Int}}()
     container = get_optimization_container(model)
     for (key, value) in get_constraints(container)
@@ -16,12 +16,12 @@ end
 """
 Each Tuple corresponds to (con_name, internal_index, moi_index)
 """
-function get_all_variable_index(model::OperationModel)
+function get_all_variable_index(model::AbstractOptimizationModel)
     var_keys = get_all_variable_keys(model)
     return [(encode_key(v[1]), v[2], v[3]) for v in var_keys]
 end
 
-function get_all_variable_keys(model::OperationModel)
+function get_all_variable_keys(model::AbstractOptimizationModel)
     var_index = Vector{Tuple{VariableKey, Int, Int}}()
     container = get_optimization_container(model)
     for (key, value) in get_variables(container)
@@ -33,7 +33,7 @@ function get_all_variable_keys(model::OperationModel)
     return var_index
 end
 
-function get_constraint_index(model::OperationModel, index::Int)
+function get_constraint_index(model::AbstractOptimizationModel, index::Int)
     container = get_optimization_container(model)
     constraints = get_constraints(container)
     for i in get_all_constraint_index(model)
@@ -45,7 +45,7 @@ function get_constraint_index(model::OperationModel, index::Int)
     return
 end
 
-function get_variable_index(model::OperationModel, index::Int)
+function get_variable_index(model::AbstractOptimizationModel, index::Int)
     container = get_optimization_container(model)
     variables = get_variables(container)
     for i in get_all_variable_keys(model)
@@ -57,7 +57,7 @@ function get_variable_index(model::OperationModel, index::Int)
     return
 end
 
-function get_detailed_constraint_numerical_bounds(model::OperationModel)
+function get_detailed_constraint_numerical_bounds(model::AbstractOptimizationModel)
     if !is_built(model)
         error("Model not built, can't calculate constraint numerical bounds")
     end
@@ -85,7 +85,7 @@ function get_detailed_constraint_numerical_bounds(model::OperationModel)
     return constraint_bounds
 end
 
-function get_detailed_variable_numerical_bounds(model::OperationModel)
+function get_detailed_variable_numerical_bounds(model::AbstractOptimizationModel)
     if !is_built(model)
         error("Model not built, can't calculate variable numerical bounds")
     end

@@ -112,6 +112,10 @@ function get_bustype end
 function has_service end
 function set_units_base_system! end
 
+# Operation-model lifecycle extension points — downstream (e.g. POM) supplies methods
+# dispatched on concrete problem types.
+function validate_time_series! end
+
 import TimerOutputs
 
 # Base Imports
@@ -377,7 +381,7 @@ export get_incompatible_devices
 
 # Bulk export: symbols POM needs that weren't previously exported
 # Core types
-export OptimizationContainer, OperationModel
+export OptimizationContainer, AbstractOptimizationModel
 export ArgumentConstructStage, ModelConstructStage
 export EmulationModelStore, DeviceModelForBranches
 export SOSStatusVariable
@@ -502,10 +506,7 @@ export RunStatus
 export SimulationBuildStatus
 
 # Problem Types
-export DecisionProblem
-export EmulationProblem
-export DefaultDecisionProblem
-export DefaultEmulationProblem
+export AbstractOptimizationProblem
 
 # Settings and Data Types
 export Settings
@@ -651,7 +652,7 @@ include("bilinear_approximations/nmdt.jl")
 # (which defines VariableValueParameter and FixValueParameter)
 include("common_models/add_param_container.jl")
 
-include("operation/operation_model_interface.jl")
+include("operation/optimization_model_interface.jl")
 include("operation/decision_model_store.jl")
 include("operation/emulation_model_store.jl")
 include("operation/store_common.jl")

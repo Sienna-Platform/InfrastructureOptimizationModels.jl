@@ -72,7 +72,7 @@ src/
     decision_model_store.jl   # DecisionModel output store
     emulation_model.jl        # EmulationModel (rolling horizon)
     emulation_model_store.jl  # EmulationModel output store
-    operation_model_interface.jl        # Shared model interface methods
+    optimization_model_interface.jl        # Shared model interface methods
     operation_model_serialization.jl    # Serialization/deserialization
     problem_template.jl       # ProblemTemplate (model specification)
     problem_outputs.jl        # Output post-processing

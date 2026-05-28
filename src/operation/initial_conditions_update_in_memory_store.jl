@@ -8,7 +8,7 @@ Update initial conditions for a specific key from the model store.
 Dispatches to the per-IC-type `update_initial_conditions!(ics, store, resolution)` method.
 """
 function update_initial_conditions!(
-    model::OperationModel,
+    model::AbstractOptimizationModel,
     key::InitialConditionKey{T, U},
     source,
 ) where {T <: InitialConditionType, U <: IS.InfrastructureSystemsComponent}
