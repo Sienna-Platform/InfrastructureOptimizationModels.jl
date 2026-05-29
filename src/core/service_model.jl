@@ -1,5 +1,9 @@
 function _check_service_formulation(::Type{D}) where {D}
-    if !isconcretetype(D)
+    # Reject genuinely abstract supertypes (e.g. `Reserve`). A parametric component
+    # family that left a trailing type parameter free — such as
+    # `ReserveDemandCurve{ReserveUp}` once PSY parameterized it on a unit-system type —
+    # is *not* concrete but *is* a valid dispatch/selection key, so it must be allowed.
+    if isabstracttype(D)
         throw(
             ArgumentError(
                 "The service model must contain only concrete types, $(D) is an Abstract Type",
