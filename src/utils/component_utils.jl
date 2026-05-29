@@ -114,12 +114,20 @@ function get_piecewise_pointcurve_per_system_unit(
         system_base_power, device_base_power, -1,
     )
     points = cost_component.points
-    points_normalized = Vector{NamedTuple{(:x, :y)}}(undef, length(points))
+    points_normalized = similar(points)
     for (ix, point) in enumerate(points)
         points_normalized[ix] = (x = point.x * x_ratio, y = point.y)
     end
     return IS.PiecewiseLinearData(points_normalized)
 end
+
+# System-base inputs are already normalized — return as-is, no allocation.
+get_piecewise_pointcurve_per_system_unit(
+    cost_component::IS.PiecewiseLinearData,
+    ::IS.SystemBaseUnit,
+    ::Float64,
+    ::Float64,
+) = cost_component
 
 """
 PiecewiseStepData normalized to system base. x-coords rescale as power
@@ -142,6 +150,14 @@ function get_piecewise_curve_per_system_unit(
     )
 end
 
+# System-base inputs are already normalized — return as-is, no allocation.
+get_piecewise_curve_per_system_unit(
+    cost_component::IS.PiecewiseStepData,
+    ::IS.SystemBaseUnit,
+    ::Float64,
+    ::Float64,
+) = cost_component
+
 function get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
@@ -159,6 +175,15 @@ function get_piecewise_curve_per_system_unit(
     )
     return x_coords .* x_ratio, y_coords .* y_ratio
 end
+
+# System-base inputs are already normalized — return as-is, no allocation.
+get_piecewise_curve_per_system_unit(
+    x_coords::AbstractVector,
+    y_coords::AbstractVector,
+    ::IS.SystemBaseUnit,
+    ::Float64,
+    ::Float64,
+) = (x_coords, y_coords)
 
 is_time_variant(x) = IS.is_time_series_backed(x)
 
