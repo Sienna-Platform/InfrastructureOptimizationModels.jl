@@ -22,7 +22,7 @@ Config for epigraph (Q^{L1}) LP-only lower-bound quadratic approximation.
 The worst-case underestimation gap is `Δ²·2^{-2L-2}`. Per-segment derivation:
 adjacent tangents at `a` and `a+h` (h = Δ/2^L) meet at the midpoint `a+h/2`
 with value `a² + ah`; true `x² = a² + ah + h²/4`, so the gap is `h²/4 =
-Δ²·2^{-2L-2}`. See `tol_depth(::Type{EpigraphQuadConfig}; …)` to derive
+Δ²·2^{-2L-2}`. See `tolerance_depth(::Type{EpigraphQuadConfig}; …)` to derive
 `depth` from a target tolerance.
 """
 struct EpigraphQuadConfig <: QuadraticApproxConfig
@@ -32,7 +32,7 @@ struct EpigraphQuadConfig <: QuadraticApproxConfig
 end
 
 """
-    tol_depth(::Type{EpigraphQuadConfig}; tolerance, max_delta)::Int
+    tolerance_depth(::Type{EpigraphQuadConfig}; tolerance, max_delta)::Int
 
 Smallest epigraph depth `L` whose worst-case underestimation gap on `[a, a+Δ]`
 falls within `tolerance`. Inverts the closed-form bound `Δ²·2^{-2L-2} ≤ τ`:
@@ -41,12 +41,12 @@ L = ⌈(log₂(Δ²/τ) − 2) / 2⌉
 ```
 clamped to `L ≥ 1`.
 """
-function tol_depth(
+function tolerance_depth(
     ::Type{EpigraphQuadConfig};
     tolerance::Float64,
     max_delta::Float64,
 )
-    return max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
+    return _ceil_positive((log2(max_delta^2 / tolerance) - 2) / 2)
 end
 
 """

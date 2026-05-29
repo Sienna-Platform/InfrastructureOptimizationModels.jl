@@ -388,45 +388,47 @@ end
     # Closed-form NMDT gap bound is now exercised by the tolerance-dispatch
     # tests in test_tolerance_dispatch.jl.
 
-    @testset "Tightening improves lower bound" begin
+    # Helper for the tightening tests: solve MIN over the NMDT expression at fixed
+    # x0 and return the MIP-optimal value (the lower envelope of result_expr).
+    function _nmdt_min(config, x0)
+        setup = _setup_qa_test(["gen1"], 1:1)
+        JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
+        IOM._add_quadratic_approx!(
+            config,
+            setup.container, MockThermalGen, ["gen1"], 1:1,
+            setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
+        )
+        expr = IOM.get_expression(
+            setup.container, IOM.QuadraticExpression,
+            MockThermalGen, NMDT_META,
+        )
+        JuMP.@objective(setup.jump_model, Min, expr["gen1", 1])
+        JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+        JuMP.set_silent(setup.jump_model)
+        JuMP.optimize!(setup.jump_model)
+        @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+        return JuMP.objective_value(setup.jump_model)
+    end
+
+    # When epigraph_depth = 0, result_expr is the bare NMDT approximation; MIN
+    # of result_expr is the NMDT value itself. When epigraph_depth = depth, the
+    # tolerance contract holds and result_expr ≥ epigraph(x), so MIN tightens
+    # toward x² without exceeding it.
+    @testset "NMDT without tightening (epigraph_depth = 0)" begin
         for x0 in [0.15, 0.35, 0.65, 0.85]
-            lb_nmdt = NaN
-            lb_tnmdt = NaN
-            for tighten in [false, true]
-                setup = _setup_qa_test(["gen1"], 1:1)
-                JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
-
-                IOM._add_quadratic_approx!(
-                    (
-                        if tighten
-                            IOM.NMDTQuadConfig(; depth = 2)
-                        else
-                            IOM.NMDTQuadConfig(; depth = 2, epigraph_depth = 0)
-                        end
-                    ),
-                    setup.container, MockThermalGen, ["gen1"], 1:1,
-                    setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
-                )
-                expr = IOM.get_expression(
-                    setup.container, IOM.QuadraticExpression,
-                    MockThermalGen, NMDT_META,
-                )
-
-                JuMP.@objective(setup.jump_model, Min, expr["gen1", 1])
-                JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-                JuMP.set_silent(setup.jump_model)
-                JuMP.optimize!(setup.jump_model)
-                @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
-
-                if !tighten
-                    lb_nmdt = JuMP.objective_value(setup.jump_model)
-                else
-                    lb_tnmdt = JuMP.objective_value(setup.jump_model)
-                end
-            end
-            @test lb_tnmdt >= lb_nmdt - 1e-6
+            lb_nmdt = _nmdt_min(IOM.NMDTQuadConfig(; depth = 2, epigraph_depth = 0), x0)
             @test lb_nmdt <= x0^2 + 1e-6
-            @test lb_tnmdt <= x0^2 + 1e-6
+        end
+    end
+
+    @testset "NMDT with tightening (epigraph_depth = depth)" begin
+        for x0 in [0.15, 0.35, 0.65, 0.85]
+            depth = 2
+            lb_nmdt = _nmdt_min(IOM.NMDTQuadConfig(; depth, epigraph_depth = 0), x0)
+            lb_tnmdt =
+                _nmdt_min(IOM.NMDTQuadConfig(; depth, epigraph_depth = depth), x0)
+            @test lb_tnmdt >= lb_nmdt - 1e-6   # tightening can only raise the MIN
+            @test lb_tnmdt <= x0^2 + 1e-6      # but still ≤ x² (overestimator side)
         end
     end
 end
@@ -435,6 +437,9 @@ end
     @testset "D-NMDT tighter than NMDT at same binary count" begin
         # Both use L binary variables for x²; D-NMDT has bound 2^(-2L-2)
         # while NMDT has the looser bound 2^(-L-2).
+        # epigraph_depth = 0 on both sides isolates the comparison to the bare
+        # NMDT/DNMDT approximation — tightening would muddy the comparison
+        # because epigraph(x) is the same for both configs.
         for L in [2, 3]
             gaps_nmdt = Float64[]
             gaps_dnmdt = Float64[]

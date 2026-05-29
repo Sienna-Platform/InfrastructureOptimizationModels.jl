@@ -26,7 +26,7 @@ Config for Bin2 bilinear approximation using z = ½((x+y)² − x² − y²).
 - `add_mccormick::Bool`: whether to add reformulated McCormick cuts through separable variables (default true)
 
 The Q type parameter lets tolerance helpers dispatch on the inner quad method;
-see `tol_depth(::Type{Bin2Config{Q}}; …)`.
+see `tolerance_depth(::Type{Bin2Config{Q}}; …)`.
 """
 struct Bin2Config{Q <: QuadraticApproxConfig} <: BilinearApproxConfig
     quad_config::Q
@@ -41,45 +41,64 @@ end
 
 # --- Tolerance helpers ---
 #
+# Notation: Δx, Δy are domain lengths (Δx = x_max − x_min); ε denotes errors.
+#
 # Bilinear identity:  xy = ½((x+y)² − x² − y²).
-# Approximation:      z  = ½(z_p − z_x − z_y),  with each z_• an inner-quad approx.
-# Error decomposition: z − xy = ½(Δ_p − Δ_x − Δ_y),  where
-#   ε_x = Δx²·ε_unit,  ε_y = Δy²·ε_unit,  ε_p = (Δx+Δy)²·ε_unit
-# all sharing the inner quad's per-unit error coefficient at the same depth L.
+# Approximation:      z  = ½(z_p − z_x − z_y), where z_• is the inner-quad
+# approximation of •² and (•)² for • ∈ {x, y, x+y}.
+#
+# Let ε_x = x² − z_x, ε_y = y² − z_y, ε_p = (x+y)² − z_p be the per-term
+# inner-quad errors. For one-sided-over inner quads (Sawtooth, SolverSOS2,
+# ManualSOS2), each ε_• ∈ [0, ε_•^max] where the bound scales as Δ²·c at
+# depth L (c is the inner quad's per-unit error coefficient):
+#   ε_x^max = Δx²·c,  ε_y^max = Δy²·c,  ε_p^max = (Δx+Δy)²·c.
+#
+# Substituting into z − xy yields  z − xy = ½(ε_x + ε_y − ε_p).
+# With each ε_• ∈ [0, ε_•^max], the range of z − xy is
+#   ½(0 + 0 − ε_p^max)  ≤  z − xy  ≤  ½(ε_x^max + ε_y^max − 0),
+# so |z − xy| ≤ max(½ε_p^max, ½(ε_x^max + ε_y^max)).
+#
+# Now (Δx+Δy)² = Δx² + 2ΔxΔy + Δy² ≥ Δx² + Δy² (since Δx, Δy ≥ 0), so
+# ε_p^max ≥ ε_x^max + ε_y^max, and the max collapses to ½ε_p^max.
+# To hit user-target τ, ask the inner quad for ε_p^max ≤ 2τ on Δx+Δy.
 
 """
-    tol_depth(::Type{Bin2Config{Q}}; tolerance, max_delta_x, max_delta_y)::Int
+    tolerance_depth(::Type{Bin2Config{Q}}; tolerance, max_delta_x, max_delta_y)::Int
 
-For one-sided-over inner quads (`Sawtooth`, `SolverSOS2`, `ManualSOS2`):
+Inner-quad depth such that Bin2's worst-case overestimation gap is ≤ `tolerance`.
+Derivation: see the comment block above. Forwards to
+`tolerance_depth(Q; tolerance = 2·τ, max_delta = Δx + Δy)`.
 
-each Δ ∈ [0, ε]. Worst case at a corner of the Δ-box gives
-`|z − xy| ≤ max(½ε_p, ½(ε_x + ε_y))`. Since `(Δx+Δy)² ≥ Δx² + Δy²` always,
-`½ε_p` dominates, so `|z − xy| ≤ ½ε_p`. To hit user-target `τ`, request the
-inner quad with `tolerance = 2τ` at `max_delta = Δx + Δy`.
+Defined for one-sided-over inner quads: `SawtoothQuadConfig`, `SolverSOS2QuadConfig`,
+`ManualSOS2QuadConfig`, `NMDTQuadConfig`, `DNMDTQuadConfig`. `EpigraphQuadConfig`
+is excluded — it is one-sided-under, so the sign of `ε_p` flips and the bound
+above no longer applies; an Epigraph inner quad can drive `z` arbitrarily far
+from `xy` under MIN/MAX objectives.
+
+**Caveat for NMDT/DNMDT inner Q**: these are only one-sided-over when their
+`epigraph_depth = 0`. With `epigraph_depth > 0`, the inner result becomes free
+in `[epigraph(x), nmdt(x)]`, which crosses `x²` and breaks the derivation. Pass
+NMDT/DNMDT inner Qs with `epigraph_depth = 0` only.
 """
-function tol_depth(
+function tolerance_depth(
     ::Type{Bin2Config{Q}};
     tolerance::Float64,
     max_delta_x::Float64,
     max_delta_y::Float64,
-) where {Q <: Union{SawtoothQuadConfig, SolverSOS2QuadConfig, ManualSOS2QuadConfig}}
-    return tol_depth(Q;
+) where {
+    Q <: Union{
+        SawtoothQuadConfig,
+        SolverSOS2QuadConfig,
+        ManualSOS2QuadConfig,
+        NMDTQuadConfig,
+        DNMDTQuadConfig,
+    },
+}
+    return tolerance_depth(Q;
         tolerance = 2 * tolerance,
         max_delta = max_delta_x + max_delta_y,
     )
 end
-
-# Other inner quads are not supported as Bin2 inner:
-#
-# - EpigraphQuadConfig: the inner result is a free variable z ∈ [epigraph(x), ub],
-#   not pinned. Bin2's affine combination ½(z_p − z_x − z_y) then has each z_•
-#   slack inside its interval; under min/max objectives the LP drives the result
-#   arbitrarily far from xy.
-# - NMDTQuadConfig / DNMDTQuadConfig: Bin2 hands `_add_quadratic_approx!` an
-#   AffExpr (x+y), but NMDT's `_normed_variable!` accepts only VariableRef.
-#
-# Both cases raise MethodError on `tol_depth` here (and at simulation time)
-# until the underlying limitation is lifted.
 
 # --- Unified bilinear approximation dispatch ---
 

@@ -12,7 +12,7 @@ const TEST_META = "TestVar"
             JuMP.set_upper_bound(x_var, 4.0)
 
             IOM._add_quadratic_approx!(
-                IOM.SolverSOS2QuadConfig(; depth = 4, pwmcc_segments = 0),
+                IOM.SolverSOS2QuadConfig(; depth = 4),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -48,7 +48,7 @@ const TEST_META = "TestVar"
             y = JuMP.@variable(setup.jump_model, base_name = "y")
 
             IOM._add_quadratic_approx!(
-                IOM.SolverSOS2QuadConfig(; depth = 4, pwmcc_segments = 0),
+                IOM.SolverSOS2QuadConfig(; depth = 4),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -87,7 +87,7 @@ const TEST_META = "TestVar"
                 JuMP.set_upper_bound(x_var, 6.0)
 
                 IOM._add_quadratic_approx!(
-                    IOM.SolverSOS2QuadConfig(; depth = num_segments, pwmcc_segments = 0),
+                    IOM.SolverSOS2QuadConfig(; depth = num_segments),
                     setup.container,
                     MockThermalGen,
                     ["dev1"],
@@ -127,7 +127,7 @@ const TEST_META = "TestVar"
             JuMP.set_upper_bound(x_var, 4.0)
 
             IOM._add_quadratic_approx!(
-                IOM.ManualSOS2QuadConfig(; depth = 4, pwmcc_segments = 0),
+                IOM.ManualSOS2QuadConfig(; depth = 4),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -162,7 +162,7 @@ const TEST_META = "TestVar"
             y = JuMP.@variable(setup.jump_model, base_name = "y")
 
             IOM._add_quadratic_approx!(
-                IOM.ManualSOS2QuadConfig(; depth = 4, pwmcc_segments = 0),
+                IOM.ManualSOS2QuadConfig(; depth = 4),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -314,7 +314,7 @@ const TEST_META = "TestVar"
 
                     if method == :sos2
                         IOM._add_quadratic_approx!(
-                            IOM.SolverSOS2QuadConfig(; depth = 2^depth, pwmcc_segments = 0),
+                            IOM.SolverSOS2QuadConfig(; depth = 2^depth),
                             setup.container,
                             MockThermalGen,
                             ["dev1"],

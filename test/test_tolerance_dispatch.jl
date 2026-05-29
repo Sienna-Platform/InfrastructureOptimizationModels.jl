@@ -2,12 +2,12 @@ const TOL_META = "TolDispatch"
 
 # --- Sampling helpers -----------------------------------------------------
 #
-# Per-config analytical worst-case points + a dense uniform grid.
+# Per-config analytical worst-case points layered on top of a dense uniform
+# grid. The uniform grid is the floor for every method so that even if a
+# closed-form "worst point" estimate is wrong, we still scan the domain.
 # For PWL of convex x² (sawtooth, SOS2): worst error sits at segment midpoints.
 # For epigraph (max of tangents): same, midpoint between adjacent tangents.
-# For NMDT/DNMDT: no clean closed form, fall back to a dense grid.
-#
-# Each function returns x-samples in [0, delta].
+# For NMDT/DNMDT: no clean closed form, the dense grid alone is the sample set.
 
 _uniform_grid(delta::Float64, n::Int) = collect(range(0.0, delta; length = n))
 
@@ -27,19 +27,23 @@ end
 # breakpoints (same locations as the sawtooth's worst points).
 _epigraph_worst_points(depth::Int, delta::Float64) = _sawtooth_worst_points(depth, delta)
 
-function _quadratic_samples(::Type{Q}, depth::Int, delta::Float64) where {Q}
-    grid = _uniform_grid(delta, 41)
-    if Q === IOM.SawtoothQuadConfig
-        return unique!(sort!(vcat(grid, _sawtooth_worst_points(depth, delta))))
-    elseif Q === IOM.EpigraphQuadConfig
-        return unique!(sort!(vcat(grid, _epigraph_worst_points(depth, delta))))
-    elseif Q === IOM.SolverSOS2QuadConfig || Q === IOM.ManualSOS2QuadConfig
-        return unique!(sort!(vcat(grid, _sos2_worst_points(depth, delta))))
-    else
-        # NMDT/DNMDT: no simple closed-form worst-case; rely on the dense grid.
-        return _uniform_grid(delta, 81)
-    end
-end
+_quadratic_samples(::Type{IOM.SawtoothQuadConfig}, depth::Int, delta::Float64) =
+    unique!(sort!(vcat(_uniform_grid(delta, 41), _sawtooth_worst_points(depth, delta))))
+
+_quadratic_samples(::Type{IOM.EpigraphQuadConfig}, depth::Int, delta::Float64) =
+    unique!(sort!(vcat(_uniform_grid(delta, 41), _epigraph_worst_points(depth, delta))))
+
+_quadratic_samples(
+    ::Type{<:Union{IOM.SolverSOS2QuadConfig, IOM.ManualSOS2QuadConfig}},
+    depth::Int,
+    delta::Float64,
+) = unique!(sort!(vcat(_uniform_grid(delta, 41), _sos2_worst_points(depth, delta))))
+
+_quadratic_samples(
+    ::Type{<:Union{IOM.NMDTQuadConfig, IOM.DNMDTQuadConfig}},
+    _::Int,
+    delta::Float64,
+) = _uniform_grid(delta, 81)
 
 function _bilinear_samples(
     ::Type{Q},
@@ -47,14 +51,14 @@ function _bilinear_samples(
     delta_x::Float64,
     delta_y::Float64,
 ) where {Q}
-    # Cross product of per-axis worst points; small inset from the boundary
-    # avoids degenerate fixings that interact poorly with the solver.
-    eps = 1e-6
+    # Per-axis samples plus the four boundary corners. Boundary fixings are
+    # representative of real production use, so any solver pathology at corners
+    # should surface here rather than be hidden by an inset.
     xs = _quadratic_samples(Q, depth, delta_x)
     ys = _quadratic_samples(Q, depth, delta_y)
-    pts =
-        [(clamp(x, eps, delta_x - eps), clamp(y, eps, delta_y - eps)) for x in xs, y in ys]
-    return unique!(vec(pts))
+    pts = [(x0, y0) for x0 in xs, y0 in ys]
+    corners = [(0.0, 0.0), (0.0, delta_y), (delta_x, 0.0), (delta_x, delta_y)]
+    return unique!(vcat(vec(pts), corners))
 end
 
 # --- Evaluation helpers ---------------------------------------------------
@@ -152,7 +156,7 @@ function _run_quadratic_tol_case(
     extra_label::String = "",
 ) where {Q, F}
     for tol in tols
-        d = IOM.tol_depth(Q; tolerance = tol, max_delta = delta)
+        d = IOM.tolerance_depth(Q; tolerance = tol, max_delta = delta)
         cfg = make_cfg(d)
         samples = _quadratic_samples(Q, d, delta)
         result = if underestimator
@@ -163,6 +167,7 @@ function _run_quadratic_tol_case(
         @info "$(nameof(Q))$(isempty(extra_label) ? "" : " ($extra_label)")" tolerance = tol depth =
             d max_gap = result.max_gap achieved_over_tol = result.ratio
         @test result.max_gap <= tol + 1e-10
+        @test result.ratio <= 1 + 1e-10
     end
 end
 
@@ -208,28 +213,30 @@ end
             )
         end
 
+        # PWMCC only affects LP relaxation; left at the constructor default
+        # since it doesn't influence the tolerance bound this test verifies.
         @testset "SolverSOS2QuadConfig (Δ = 1)" begin
             _run_quadratic_tol_case(
                 IOM.SolverSOS2QuadConfig,
-                d -> IOM.SolverSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+                d -> IOM.SolverSOS2QuadConfig(; depth = d),
                 (1e-1, 1e-2, 1e-3),
                 1.0,
             )
         end
 
-        @testset "SolverSOS2QuadConfig (Δ = 4)" begin
+        @testset "SolverSOS2QuadConfig (Δ = 7)" begin
             _run_quadratic_tol_case(
                 IOM.SolverSOS2QuadConfig,
-                d -> IOM.SolverSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+                d -> IOM.SolverSOS2QuadConfig(; depth = d),
                 (1e-1, 1e-2),
-                4.0,
+                7.0,
             )
         end
 
         @testset "ManualSOS2QuadConfig (Δ = 1)" begin
             _run_quadratic_tol_case(
                 IOM.ManualSOS2QuadConfig,
-                d -> IOM.ManualSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+                d -> IOM.ManualSOS2QuadConfig(; depth = d),
                 (1e-1, 1e-2, 1e-3),
                 1.0,
             )
@@ -258,109 +265,96 @@ end
 
     @testset "Bilinear NMDT configs" begin
         @testset "NMDTBilinearConfig (Δx = Δy = 1)" begin
+            delta_x = 1.0
+            delta_y = 1.0
             for tol in (1e-1, 1e-2)
-                d = IOM.tol_depth(IOM.NMDTBilinearConfig;
-                    tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                d = IOM.tolerance_depth(IOM.NMDTBilinearConfig;
+                    tolerance = tol, max_delta_x = delta_x, max_delta_y = delta_y,
                 )
                 cfg = IOM.NMDTBilinearConfig(; depth = d)
-                samples = vec([
-                    (x, y) for x in _uniform_grid(1.0, 21)[2:(end - 1)],
-                    y in _uniform_grid(1.0, 21)[2:(end - 1)]
-                ])
-                result = _eval_bilinear(cfg, samples, 1.0, 1.0, tol)
+                samples = _bilinear_samples(IOM.NMDTQuadConfig, d, delta_x, delta_y)
+                result = _eval_bilinear(cfg, samples, delta_x, delta_y, tol)
                 @info "NMDTBilinearConfig" tolerance = tol depth = d max_gap =
                     result.max_gap achieved_over_tol = result.ratio
                 @test result.max_gap <= tol + 1e-10
+                @test result.ratio <= 1 + 1e-10
             end
         end
 
         @testset "DNMDTBilinearConfig (Δx = Δy = 1)" begin
+            delta_x = 1.0
+            delta_y = 1.0
             for tol in (1e-1, 1e-2)
-                d = IOM.tol_depth(IOM.DNMDTBilinearConfig;
-                    tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                d = IOM.tolerance_depth(IOM.DNMDTBilinearConfig;
+                    tolerance = tol, max_delta_x = delta_x, max_delta_y = delta_y,
                 )
                 cfg = IOM.DNMDTBilinearConfig(; depth = d)
-                samples = vec([
-                    (x, y) for x in _uniform_grid(1.0, 21)[2:(end - 1)],
-                    y in _uniform_grid(1.0, 21)[2:(end - 1)]
-                ])
-                result = _eval_bilinear(cfg, samples, 1.0, 1.0, tol)
+                samples = _bilinear_samples(IOM.DNMDTQuadConfig, d, delta_x, delta_y)
+                result = _eval_bilinear(cfg, samples, delta_x, delta_y, tol)
                 @info "DNMDTBilinearConfig" tolerance = tol depth = d max_gap =
                     result.max_gap achieved_over_tol = result.ratio
                 @test result.max_gap <= tol + 1e-10
+                @test result.ratio <= 1 + 1e-10
             end
         end
 
         @testset "NMDTBilinearConfig (Δx = 2, Δy = 3)" begin
             tol = 1e-2
-            d_unit = IOM.tol_depth(IOM.NMDTBilinearConfig;
+            delta_x = 2.0
+            delta_y = 3.0
+            d_unit = IOM.tolerance_depth(IOM.NMDTBilinearConfig;
                 tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
             )
-            d_big = IOM.tol_depth(IOM.NMDTBilinearConfig;
-                tolerance = tol, max_delta_x = 2.0, max_delta_y = 3.0,
+            d_big = IOM.tolerance_depth(IOM.NMDTBilinearConfig;
+                tolerance = tol, max_delta_x = delta_x, max_delta_y = delta_y,
             )
             @test d_big > d_unit
             cfg = IOM.NMDTBilinearConfig(; depth = d_big)
-            samples = vec([
-                (x, y) for x in _uniform_grid(2.0, 21)[2:(end - 1)],
-                y in _uniform_grid(3.0, 21)[2:(end - 1)]
-            ])
-            result = _eval_bilinear(cfg, samples, 2.0, 3.0, tol)
+            samples = _bilinear_samples(IOM.NMDTQuadConfig, d_big, delta_x, delta_y)
+            result = _eval_bilinear(cfg, samples, delta_x, delta_y, tol)
             @info "NMDTBilinearConfig (non-unit)" tolerance = tol depth = d_big max_gap =
                 result.max_gap achieved_over_tol = result.ratio
             @test result.max_gap <= tol + 1e-10
+            @test result.ratio <= 1 + 1e-10
         end
     end
 
     # --- Bin2Config{Q} -------------------------------------------------------
 
     @testset "Bin2Config{Q}" begin
-        # Only inner Qs that pin the result (sawtooth with epigraph_depth=0,
-        # SOS2 variants) are valid as Bin2 inner; see bin2.jl for why Epigraph,
-        # NMDT and DNMDT are unsupported.
+        # NMDT/DNMDT inner Qs must have epigraph_depth = 0 (see bin2.jl docstring
+        # caveat — with epigraph tightening the inner result is no longer
+        # one-sided over and the derivation breaks).
         bin2_cases = [
             (IOM.SawtoothQuadConfig, d -> IOM.SawtoothQuadConfig(; depth = d)),
+            (IOM.SolverSOS2QuadConfig, d -> IOM.SolverSOS2QuadConfig(; depth = d)),
+            (IOM.ManualSOS2QuadConfig, d -> IOM.ManualSOS2QuadConfig(; depth = d)),
             (
-                IOM.SolverSOS2QuadConfig,
-                d -> IOM.SolverSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+                IOM.NMDTQuadConfig,
+                d -> IOM.NMDTQuadConfig(; depth = d, epigraph_depth = 0),
             ),
             (
-                IOM.ManualSOS2QuadConfig,
-                d -> IOM.ManualSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
+                IOM.DNMDTQuadConfig,
+                d -> IOM.DNMDTQuadConfig(; depth = d, epigraph_depth = 0),
             ),
         ]
         for (Q, make_inner) in bin2_cases
             @testset "Bin2Config{$(nameof(Q))}" begin
+                delta_x = 1.0
+                delta_y = 1.0
                 for tol in (1e-1, 1e-2)
-                    d = IOM.tol_depth(IOM.Bin2Config{Q};
-                        tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                    d = IOM.tolerance_depth(IOM.Bin2Config{Q};
+                        tolerance = tol, max_delta_x = delta_x, max_delta_y = delta_y,
                     )
                     cfg = IOM.Bin2Config(make_inner(d); add_mccormick = false)
-                    samples = vec([
-                        (x, y) for x in _uniform_grid(1.0, 21)[2:(end - 1)],
-                        y in _uniform_grid(1.0, 21)[2:(end - 1)]
-                    ])
-                    result = _eval_bilinear(cfg, samples, 1.0, 1.0, tol)
+                    samples = _bilinear_samples(Q, d, delta_x, delta_y)
+                    result = _eval_bilinear(cfg, samples, delta_x, delta_y, tol)
                     @info "Bin2Config{$(nameof(Q))}" tolerance = tol depth = d max_gap =
                         result.max_gap achieved_over_tol = result.ratio
                     @test result.max_gap <= tol + 1e-10
+                    @test result.ratio <= 1 + 1e-10
                 end
             end
-        end
-
-        @testset "Bin2Config{Q} unsupported inner -> MethodError" begin
-            @test_throws MethodError IOM.tol_depth(
-                IOM.Bin2Config{IOM.EpigraphQuadConfig};
-                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
-            )
-            @test_throws MethodError IOM.tol_depth(
-                IOM.Bin2Config{IOM.NMDTQuadConfig};
-                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
-            )
-            @test_throws MethodError IOM.tol_depth(
-                IOM.Bin2Config{IOM.DNMDTQuadConfig};
-                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
-            )
         end
     end
 
@@ -369,56 +363,31 @@ end
     @testset "HybSConfig{Q}" begin
         hybs_cases = [
             (IOM.SawtoothQuadConfig, d -> IOM.SawtoothQuadConfig(; depth = d)),
-            (
-                IOM.SolverSOS2QuadConfig,
-                d -> IOM.SolverSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
-            ),
-            (
-                IOM.ManualSOS2QuadConfig,
-                d -> IOM.ManualSOS2QuadConfig(; depth = d, pwmcc_segments = 0),
-            ),
+            (IOM.SolverSOS2QuadConfig, d -> IOM.SolverSOS2QuadConfig(; depth = d)),
+            (IOM.ManualSOS2QuadConfig, d -> IOM.ManualSOS2QuadConfig(; depth = d)),
         ]
         for (Q, make_inner) in hybs_cases
             @testset "HybSConfig{$(nameof(Q))}" begin
+                delta_x = 1.0
+                delta_y = 1.0
                 for tol in (1e-1, 1e-2)
-                    di = IOM.tol_depth(IOM.HybSConfig{Q};
-                        tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                    di = IOM.tolerance_depth(IOM.HybSConfig{Q};
+                        tolerance = tol, max_delta_x = delta_x, max_delta_y = delta_y,
                     )
-                    de = IOM.tol_epigraph_depth(IOM.HybSConfig{Q};
-                        tolerance = tol, max_delta_x = 1.0, max_delta_y = 1.0,
+                    de = IOM.tolerance_epigraph_depth(IOM.HybSConfig{Q};
+                        tolerance = tol, max_delta_x = delta_x, max_delta_y = delta_y,
                     )
                     cfg = IOM.HybSConfig(make_inner(di);
                         epigraph_depth = de, add_mccormick = false,
                     )
-                    samples = vec([
-                        (x, y) for x in _uniform_grid(1.0, 21)[2:(end - 1)],
-                        y in _uniform_grid(1.0, 21)[2:(end - 1)]
-                    ])
-                    result = _eval_bilinear(cfg, samples, 1.0, 1.0, tol)
+                    samples = _bilinear_samples(Q, di, delta_x, delta_y)
+                    result = _eval_bilinear(cfg, samples, delta_x, delta_y, tol)
                     @info "HybSConfig{$(nameof(Q))}" tolerance = tol inner_depth = di epi_depth =
                         de max_gap = result.max_gap achieved_over_tol = result.ratio
                     @test result.max_gap <= tol + 1e-10
+                    @test result.ratio <= 1 + 1e-10
                 end
             end
-        end
-
-        @testset "HybSConfig{Q} unsupported inner -> MethodError" begin
-            @test_throws MethodError IOM.tol_depth(
-                IOM.HybSConfig{IOM.NMDTQuadConfig};
-                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
-            )
-            @test_throws MethodError IOM.tol_depth(
-                IOM.HybSConfig{IOM.DNMDTQuadConfig};
-                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
-            )
-            @test_throws MethodError IOM.tol_depth(
-                IOM.HybSConfig{IOM.EpigraphQuadConfig};
-                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
-            )
-            @test_throws MethodError IOM.tol_epigraph_depth(
-                IOM.HybSConfig{IOM.NMDTQuadConfig};
-                tolerance = 1e-2, max_delta_x = 1.0, max_delta_y = 1.0,
-            )
         end
     end
 end

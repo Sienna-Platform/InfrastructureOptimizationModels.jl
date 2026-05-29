@@ -26,20 +26,27 @@ Config for sawtooth MIP quadratic approximation.
 
 ## Effect of `epigraph_depth` on the worst-case error
 
-`epigraph_depth = 0`: `z = sawtooth(x)` is pinned by the binary structure, so
-`|z − x²| ≤ Δ²·2^{-2L-2}` where Δ = max − min.
+`epigraph_depth = 0`: the formulation is purely deterministic — `result_expr =
+sawtooth(x)` is pinned by the binary structure, so `|z − x²| ≤ Δ²·2^{-2L-2}`
+where Δ = max − min.
 
-`epigraph_depth = L_e > 0`: the formulation introduces a free variable
-`z ∈ [epigraph(x), sawtooth(x)]`, so `|z − x²|` is bounded by whichever side is
-wider:
+`epigraph_depth = L_e > 0`: a free continuous variable `z` is introduced with
+`z ≤ sawtooth(x)` and `z ≥ epigraph(x)`, and `result_expr = z`. This is a
+*structural* change, not just LP-tightening: the MIP-feasible set of
+`result_expr` values grows from a single point to the interval
+`[epigraph(x), sawtooth(x)]`. The worst-case error over that interval is
 ```
 |z − x²| ≤ max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-2})
 ```
 - `L_e ≥ L`: sawtooth dominates, worst-case = `Δ²·2^{-2L-2}`.
 - `L_e < L`: epigraph dominates, worst-case = `Δ²·2^{-2L_e-2}`.
 
-See `tol_depth(::Type{SawtoothQuadConfig}; …)` to derive `depth` from a target
-tolerance.
+Contrast with `pwmcc_segments` on the SOS2 variants, which adds genuine LP cuts
+and never changes the MIP-feasible set.
+
+See `tolerance_depth(::Type{SawtoothQuadConfig}; …)` to derive `depth` from a
+target tolerance, and `tolerance_epigraph_depth(::Type{SawtoothQuadConfig}; …)`
+for the matching `epigraph_depth`.
 """
 struct SawtoothQuadConfig <: QuadraticApproxConfig
     depth::Int
@@ -50,23 +57,51 @@ struct SawtoothQuadConfig <: QuadraticApproxConfig
 end
 
 """
-    tol_depth(::Type{SawtoothQuadConfig}; tolerance, max_delta)::Int
+    tolerance_depth(::Type{SawtoothQuadConfig}; tolerance, max_delta)::Int
 
 Smallest sawtooth depth `L` whose worst-case overestimation gap on `[a, a+Δ]`
 falls within `tolerance`. Inverts the closed-form bound `Δ²·2^{-2L-2} ≤ τ`:
 ```
 L = ⌈(log₂(Δ²/τ) − 2) / 2⌉
 ```
-clamped to `L ≥ 1`. Only sizes the sawtooth side; `epigraph_depth` is an
-orthogonal tightening knob (see the `SawtoothQuadConfig` docstring for when it
-enters the error bound).
+clamped to `L ≥ 1`. Sizes only the sawtooth side of the formulation.
+
+**Contract on `epigraph_depth`**: the returned depth meets the tolerance iff
+the user picks `epigraph_depth = 0` (tightening disabled) or
+`epigraph_depth ≥ depth`. When `0 < epigraph_depth < depth`, the epigraph side
+of the sandwich has a larger error than the sawtooth side, and since
+`result_expr` is free in `[epigraph(x), sawtooth(x)]` in larger optimization
+contexts the realized error can exceed `tolerance`. Use
+`tolerance_epigraph_depth` below to size both knobs consistently.
 """
-function tol_depth(
+function tolerance_depth(
     ::Type{SawtoothQuadConfig};
     tolerance::Float64,
     max_delta::Float64,
 )
-    return max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
+    return _ceil_positive((log2(max_delta^2 / tolerance) - 2) / 2)
+end
+
+"""
+    tolerance_epigraph_depth(::Type{SawtoothQuadConfig}; tolerance, max_delta)::Int
+
+Smallest `epigraph_depth` consistent with `tolerance_depth(SawtoothQuadConfig; …)`
+under target tolerance `τ`. Returns the depth at which the epigraph (LP lower)
+side of the sandwich has worst-case error ≤ τ on `[a, a+Δ]`. Since the
+epigraph's per-unit error is `Δ²·2^{-2L_e-4}`, this is one less than the
+sawtooth depth for the same tolerance — but the simpler and equally correct
+contract is to set `epigraph_depth = tolerance_depth(SawtoothQuadConfig; …)`,
+which trivially satisfies `epigraph_depth ≥ depth`.
+
+Optional: callers that want to disable epigraph tightening can pass
+`epigraph_depth = 0` and the sawtooth-side bound still holds.
+"""
+function tolerance_epigraph_depth(
+    ::Type{SawtoothQuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    return tolerance_depth(EpigraphQuadConfig; tolerance, max_delta)
 end
 
 """

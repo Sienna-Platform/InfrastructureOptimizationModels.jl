@@ -21,7 +21,7 @@ The worst-case PWL overestimation gap is `Δ²/(4·depth²)`. `pwmcc_segments` i
 an LP-relaxation tightener (adds piecewise-McCormick cuts on the concave
 relaxation surface); it does **not** change the MIP-optimal worst-case error,
 only the LP relaxation given to branch-and-bound. See
-`tol_depth(::Type{ManualSOS2QuadConfig}; …)` to derive `depth` from a target
+`tolerance_depth(::Type{ManualSOS2QuadConfig}; …)` to derive `depth` from a target
 tolerance.
 """
 struct ManualSOS2QuadConfig <: QuadraticApproxConfig
@@ -33,7 +33,7 @@ struct ManualSOS2QuadConfig <: QuadraticApproxConfig
 end
 
 """
-    tol_depth(::Type{ManualSOS2QuadConfig}; tolerance, max_delta)::Int
+    tolerance_depth(::Type{ManualSOS2QuadConfig}; tolerance, max_delta)::Int
 
 Smallest SOS2 segment count `d` whose worst-case PWL gap on `[a, a+Δ]` falls
 within `tolerance`. Inverts `Δ²/(4·d²) ≤ τ`:
@@ -43,12 +43,12 @@ d = ⌈Δ / (2·√τ)⌉
 clamped to `d ≥ 1`. `pwmcc_segments` does not enter the error bound, so it is
 left to the constructor.
 """
-function tol_depth(
+function tolerance_depth(
     ::Type{ManualSOS2QuadConfig};
     tolerance::Float64,
     max_delta::Float64,
 )
-    return max(1, ceil(Int, max_delta / (2 * sqrt(tolerance))))
+    return _ceil_positive(max_delta / (2 * sqrt(tolerance)))
 end
 
 """

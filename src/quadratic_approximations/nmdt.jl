@@ -12,11 +12,22 @@ Config for double-NMDT quadratic approximation.
 
 # Fields
 - `depth::Int`: number of binary discretization levels L
-- `epigraph_depth::Int`: LP tightening depth via epigraph Q^{L1} lower bound; 0 to disable (default 3×depth)
+- `epigraph_depth::Int`: depth of an additional epigraph Q^{L1} lower bound;
+  0 disables (default 3×depth)
 
-The worst-case relaxation gap is `Δ²·2^{-2L-2}`. See
-`tol_depth(::Type{DNMDTQuadConfig}; …)` to derive `depth` from a target
-tolerance.
+The DNMDT side itself gives worst-case `|z − x²| ≤ Δ²·2^{-2L-2}` with
+`result_expr = nmdt(x)` pinned by binaries and McCormick auxiliaries.
+
+When `epigraph_depth = L_e > 0`, a one-sided lower bound `result_expr ≥
+epigraph(x)` is added (no new free variable, but the MIP-feasible set of
+`result_expr` values grows from a single point to the interval
+`[epigraph(x), nmdt(x)]`). The worst-case error over that interval is
+`max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
+SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
+
+See `tolerance_depth(::Type{DNMDTQuadConfig}; …)` to derive `depth` from a
+target tolerance, and `tolerance_epigraph_depth(::Type{DNMDTQuadConfig}; …)`
+for the matching `epigraph_depth`.
 """
 struct DNMDTQuadConfig <: QuadraticApproxConfig
     depth::Int
@@ -27,21 +38,41 @@ struct DNMDTQuadConfig <: QuadraticApproxConfig
 end
 
 """
-    tol_depth(::Type{DNMDTQuadConfig}; tolerance, max_delta)::Int
+    tolerance_depth(::Type{DNMDTQuadConfig}; tolerance, max_delta)::Int
 
-Smallest DNMDT depth `L` whose worst-case relaxation gap on `[a, a+Δ]` falls
-within `tolerance`. Inverts `Δ²·2^{-2L-2} ≤ τ`:
+Smallest DNMDT depth `L` whose worst-case overestimation gap on `[a, a+Δ]`
+falls within `tolerance`. Inverts `Δ²·2^{-2L-2} ≤ τ`:
 ```
 L = ⌈(log₂(Δ²/τ) − 2) / 2⌉
 ```
-clamped to `L ≥ 1`.
+clamped to `L ≥ 1`. Sizes only the DNMDT side.
+
+**Contract on `epigraph_depth`**: the returned depth meets the tolerance iff
+the user picks `epigraph_depth = 0` (tightening disabled) or
+`epigraph_depth ≥ depth`. When `0 < epigraph_depth < depth`, the epigraph side
+has a larger error than the DNMDT side and the realized error can exceed
+`tolerance`. Use `tolerance_epigraph_depth` to size both knobs consistently.
 """
-function tol_depth(
+function tolerance_depth(
     ::Type{DNMDTQuadConfig};
     tolerance::Float64,
     max_delta::Float64,
 )
-    return max(1, ceil(Int, (log2(max_delta^2 / tolerance) - 2) / 2))
+    return _ceil_positive((log2(max_delta^2 / tolerance) - 2) / 2)
+end
+
+"""
+    tolerance_epigraph_depth(::Type{DNMDTQuadConfig}; tolerance, max_delta)::Int
+
+Smallest `epigraph_depth` whose epigraph error on `[a, a+Δ]` is `≤ tolerance`.
+Pass alongside `tolerance_depth(DNMDTQuadConfig; …)` to honor the contract.
+"""
+function tolerance_epigraph_depth(
+    ::Type{DNMDTQuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    return tolerance_depth(EpigraphQuadConfig; tolerance, max_delta)
 end
 
 """
@@ -49,12 +80,22 @@ Config for single-NMDT quadratic approximation.
 
 # Fields
 - `depth::Int`: number of binary discretization levels L
-- `epigraph_depth::Int`: LP tightening depth via epigraph Q^{L1} lower bound; 0 to disable (default 3×depth)
+- `epigraph_depth::Int`: depth of an additional epigraph Q^{L1} lower bound;
+  0 disables (default 3×depth)
 
-The worst-case relaxation gap is `Δ²·2^{-L-2}` (note the single `L`, not
-`2L` — single NMDT discretizes only one factor). See
-`tol_depth(::Type{NMDTQuadConfig}; …)` to derive `depth` from a target
-tolerance.
+The NMDT side gives worst-case `|z − x²| ≤ Δ²·2^{-L-2}` (note the single `L`,
+not `2L` — single NMDT discretizes only one factor).
+
+When `epigraph_depth = L_e > 0`, a one-sided lower bound `result_expr ≥
+epigraph(x)` is added (no new free variable, but the MIP-feasible set of
+`result_expr` values grows from a single point to the interval
+`[epigraph(x), nmdt(x)]`). The worst-case error over that interval is
+`max(Δ²·2^{-L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
+SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
+
+See `tolerance_depth(::Type{NMDTQuadConfig}; …)` to derive `depth` from a
+target tolerance, and `tolerance_epigraph_depth(::Type{NMDTQuadConfig}; …)`
+for the matching `epigraph_depth`.
 """
 struct NMDTQuadConfig <: QuadraticApproxConfig
     depth::Int
@@ -65,21 +106,41 @@ struct NMDTQuadConfig <: QuadraticApproxConfig
 end
 
 """
-    tol_depth(::Type{NMDTQuadConfig}; tolerance, max_delta)::Int
+    tolerance_depth(::Type{NMDTQuadConfig}; tolerance, max_delta)::Int
 
-Smallest NMDT depth `L` whose worst-case relaxation gap on `[a, a+Δ]` falls
-within `tolerance`. Inverts `Δ²·2^{-L-2} ≤ τ`:
+Smallest NMDT depth `L` whose worst-case overestimation gap on `[a, a+Δ]`
+falls within `tolerance`. Inverts `Δ²·2^{-L-2} ≤ τ`:
 ```
 L = ⌈log₂(Δ²/τ) − 2⌉
 ```
-clamped to `L ≥ 1`.
+clamped to `L ≥ 1`. Sizes only the NMDT side.
+
+**Contract on `epigraph_depth`**: the returned depth meets the tolerance iff
+the user picks `epigraph_depth = 0` (tightening disabled) or
+`epigraph_depth ≥ depth`. When `0 < epigraph_depth < depth`, the epigraph side
+has a larger error than the NMDT side and the realized error can exceed
+`tolerance`. Use `tolerance_epigraph_depth` to size both knobs consistently.
 """
-function tol_depth(
+function tolerance_depth(
     ::Type{NMDTQuadConfig};
     tolerance::Float64,
     max_delta::Float64,
 )
-    return max(1, ceil(Int, log2(max_delta^2 / tolerance) - 2))
+    return _ceil_positive(log2(max_delta^2 / tolerance) - 2)
+end
+
+"""
+    tolerance_epigraph_depth(::Type{NMDTQuadConfig}; tolerance, max_delta)::Int
+
+Smallest `epigraph_depth` whose epigraph error on `[a, a+Δ]` is `≤ tolerance`.
+Pass alongside `tolerance_depth(NMDTQuadConfig; …)` to honor the contract.
+"""
+function tolerance_epigraph_depth(
+    ::Type{NMDTQuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    return tolerance_depth(EpigraphQuadConfig; tolerance, max_delta)
 end
 
 """
