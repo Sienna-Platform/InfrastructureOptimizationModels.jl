@@ -257,7 +257,7 @@ function _add_ts_incremental_pwl_cost!(
     component::C,
     ::Type{T},
     ::Type{U},
-    power_units::IS.UnitSystem,
+    power_units::IS.AbstractUnitSystem,
     device_base_power::Float64,
 ) where {
     D <: OfferDirection,
@@ -329,7 +329,7 @@ function _fill_pwl_data_from_arrays!(
     point_axis::UnitRange{Int64},
     name::String,
     time::Int,
-    power_units::IS.UnitSystem,
+    power_units::IS.AbstractUnitSystem,
     model_base_power::Float64,
     device_base_power::Float64,
 )

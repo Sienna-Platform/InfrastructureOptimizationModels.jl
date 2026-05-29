@@ -725,7 +725,7 @@ Test types defined in test_utils/test_types.jl.
             # SYSTEM_BASE → no normalization; dt = 1 hour → rate = cost_term * multiplier.
             IOM.add_proportional_cost_invariant!(
                 container, TestCostVariable, device, cost_term,
-                IS.UnitSystem.SYSTEM_BASE, multiplier, IOM.FuelCostExpression,
+                IS.SystemBaseUnit(), multiplier, IOM.FuelCostExpression,
             )
             expected = cost_term * multiplier
             for t in ts

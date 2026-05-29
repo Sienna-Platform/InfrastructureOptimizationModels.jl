@@ -74,164 +74,68 @@ end
 ##################################################
 
 """
-Obtain proportional (marginal or slope) cost data in system base per unit
-depending on the specified power units
+Proportional (slope) cost coefficient normalized to system base.
 """
-function get_proportional_cost_per_system_unit(
+get_proportional_cost_per_system_unit(
     cost_term::Float64,
-    unit_system::IS.UnitSystem,
+    unit_system::IS.AbstractUnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
+) = IS.convert_cost_coefficient(
+    cost_term, unit_system, IS.SU,
+    system_base_power, device_base_power,
 )
-    return _get_proportional_cost_per_system_unit(
-        cost_term,
-        Val{unit_system}(),
-        system_base_power,
-        device_base_power,
-    )
-end
-
-function _get_proportional_cost_per_system_unit(
-    cost_term::Float64,
-    ::Val{IS.UnitSystem.SYSTEM_BASE},
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    return cost_term
-end
-
-function _get_proportional_cost_per_system_unit(
-    cost_term::Float64,
-    ::Val{IS.UnitSystem.DEVICE_BASE},
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    return cost_term * (system_base_power / device_base_power)
-end
-
-function _get_proportional_cost_per_system_unit(
-    cost_term::Float64,
-    ::Val{IS.UnitSystem.NATURAL_UNITS},
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    return cost_term * system_base_power
-end
 
 """
-Obtain quadratic cost data in system base per unit
-depending on the specified power units
+Quadratic cost coefficient normalized to system base.
 """
-function get_quadratic_cost_per_system_unit(
+get_quadratic_cost_per_system_unit(
     cost_term::Float64,
-    unit_system::IS.UnitSystem,
+    unit_system::IS.AbstractUnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
+) = IS.convert_cost_coefficient(
+    cost_term, unit_system, IS.SU,
+    system_base_power, device_base_power, 2,
 )
-    return _get_quadratic_cost_per_system_unit(
-        cost_term,
-        Val{unit_system}(),
-        system_base_power,
-        device_base_power,
-    )
-end
-
-function _get_quadratic_cost_per_system_unit(
-    cost_term::Float64,
-    ::Val{IS.UnitSystem.SYSTEM_BASE}, # SystemBase Unit
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    return cost_term
-end
-
-function _get_quadratic_cost_per_system_unit(
-    cost_term::Float64,
-    ::Val{IS.UnitSystem.DEVICE_BASE}, # DeviceBase Unit
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    return cost_term * (system_base_power / device_base_power)^2
-end
-
-function _get_quadratic_cost_per_system_unit(
-    cost_term::Float64,
-    ::Val{IS.UnitSystem.NATURAL_UNITS}, # Natural Units
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    return cost_term * system_base_power^2
-end
 
 """
-Obtain the normalized PiecewiseLinear cost data in system base per unit
-depending on the specified power units.
-
-Note that the costs (y-axis) are always in \$/h so
-they do not require transformation
+PiecewiseLinearData normalized to system base. x-coords (power) rescale as
+power values; y-coords (\$/h) are invariant under power-base changes.
 """
 function get_piecewise_pointcurve_per_system_unit(
     cost_component::IS.PiecewiseLinearData,
-    unit_system::IS.UnitSystem,
+    unit_system::IS.AbstractUnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
 )
-    return _get_piecewise_pointcurve_per_system_unit(
-        cost_component,
-        Val{unit_system}(),
-        system_base_power,
-        device_base_power,
+    x_ratio = IS.convert_cost_coefficient(
+        1.0, unit_system, IS.SU,
+        system_base_power, device_base_power, -1,
     )
-end
-
-function _get_piecewise_pointcurve_per_system_unit(
-    cost_component::IS.PiecewiseLinearData,
-    ::Val{IS.UnitSystem.SYSTEM_BASE},
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    return cost_component
-end
-
-function _get_piecewise_pointcurve_per_system_unit(
-    cost_component::IS.PiecewiseLinearData,
-    ::Val{IS.UnitSystem.DEVICE_BASE},
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
     points = cost_component.points
-    points_normalized = Vector{NamedTuple{(:x, :y)}}(undef, length(points))
+    points_normalized = similar(points)
     for (ix, point) in enumerate(points)
-        points_normalized[ix] =
-            (x = point.x * (device_base_power / system_base_power), y = point.y)
+        points_normalized[ix] = (x = point.x * x_ratio, y = point.y)
     end
     return IS.PiecewiseLinearData(points_normalized)
 end
 
-function _get_piecewise_pointcurve_per_system_unit(
+# System-base inputs are already normalized — return as-is, no allocation.
+get_piecewise_pointcurve_per_system_unit(
     cost_component::IS.PiecewiseLinearData,
-    ::Val{IS.UnitSystem.NATURAL_UNITS},
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    points = cost_component.points
-    points_normalized = Vector{NamedTuple{(:x, :y)}}(undef, length(points))
-    for (ix, point) in enumerate(points)
-        points_normalized[ix] = (x = point.x / system_base_power, y = point.y)
-    end
-    return IS.PiecewiseLinearData(points_normalized)
-end
+    ::IS.SystemBaseUnit,
+    ::Float64,
+    ::Float64,
+) = cost_component
 
 """
-Obtain the normalized PiecewiseStepData in system base per unit depending on the specified
-power units.
-
-Note that the costs (y-axis) are in \$/MWh, \$/(sys pu h) or \$/(device pu h), so they also
-require transformation.
+PiecewiseStepData normalized to system base. x-coords rescale as power
+values; y-coords are \$ per unit of x and rescale by the inverse ratio.
 """
 function get_piecewise_curve_per_system_unit(
     cost_component::IS.PiecewiseStepData,
-    unit_system::IS.UnitSystem,
+    unit_system::IS.AbstractUnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
 )
@@ -246,56 +150,40 @@ function get_piecewise_curve_per_system_unit(
     )
 end
 
+# System-base inputs are already normalized — return as-is, no allocation.
+get_piecewise_curve_per_system_unit(
+    cost_component::IS.PiecewiseStepData,
+    ::IS.SystemBaseUnit,
+    ::Float64,
+    ::Float64,
+) = cost_component
+
 function get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    unit_system::IS.UnitSystem,
+    unit_system::IS.AbstractUnitSystem,
     system_base_power::Float64,
     device_base_power::Float64,
 )
-    return _get_piecewise_curve_per_system_unit(
-        x_coords,
-        y_coords,
-        Val{unit_system}(),
-        system_base_power,
-        device_base_power,
+    x_ratio = IS.convert_cost_coefficient(
+        1.0, unit_system, IS.SU,
+        system_base_power, device_base_power, -1,
     )
+    y_ratio = IS.convert_cost_coefficient(
+        1.0, unit_system, IS.SU,
+        system_base_power, device_base_power, 1,
+    )
+    return x_coords .* x_ratio, y_coords .* y_ratio
 end
 
-function _get_piecewise_curve_per_system_unit(
+# System-base inputs are already normalized — return as-is, no allocation.
+get_piecewise_curve_per_system_unit(
     x_coords::AbstractVector,
     y_coords::AbstractVector,
-    ::Val{IS.UnitSystem.SYSTEM_BASE},
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    return x_coords, y_coords
-end
-
-function _get_piecewise_curve_per_system_unit(
-    x_coords::AbstractVector,
-    y_coords::AbstractVector,
-    ::Val{IS.UnitSystem.DEVICE_BASE},
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    ratio = device_base_power / system_base_power
-    x_coords_normalized = x_coords .* ratio
-    y_coords_normalized = y_coords ./ ratio
-    return x_coords_normalized, y_coords_normalized
-end
-
-function _get_piecewise_curve_per_system_unit(
-    x_coords::AbstractVector,
-    y_coords::AbstractVector,
-    ::Val{IS.UnitSystem.NATURAL_UNITS},
-    system_base_power::Float64,
-    device_base_power::Float64,
-)
-    x_coords_normalized = x_coords ./ system_base_power
-    y_coords_normalized = y_coords .* system_base_power
-    return x_coords_normalized, y_coords_normalized
-end
+    ::IS.SystemBaseUnit,
+    ::Float64,
+    ::Float64,
+) = (x_coords, y_coords)
 
 is_time_variant(x) = IS.is_time_series_backed(x)
 
