@@ -103,7 +103,7 @@ update_numerical_bounds(::NumericalBounds, func, idx) = nothing
 update_coefficient_bounds(::ConstraintBounds, func, idx) = nothing
 update_rhs_bounds(::ConstraintBounds, func, idx) = nothing
 
-function get_constraint_numerical_bounds(model::OperationModel)
+function get_constraint_numerical_bounds(model::AbstractOptimizationModel)
     if !is_built(model)
         error("Model not built, can't calculate constraint numerical bounds")
     end
@@ -129,7 +129,7 @@ function get_constraint_numerical_bounds(model::OperationModel)
     return bounds
 end
 
-function get_variable_numerical_bounds(model::OperationModel)
+function get_variable_numerical_bounds(model::AbstractOptimizationModel)
     if !is_built(model)
         error("Model not built, can't calculate variable numerical bounds")
     end

@@ -1,3 +1,18 @@
+# DenseAxisArray duals broadcast over the backing array. Post-contingency
+# duals are SparseAxisArray (Dict-backed), where `.data .= …` is undefined, so
+# copy per key instead.
+function _copy_dual_values!(dual::DenseAxisArray, constraint::DenseAxisArray)
+    dual.data .= jump_value.(constraint).data
+    return
+end
+
+function _copy_dual_values!(dual::SparseAxisArray, constraint::SparseAxisArray)
+    for (k, cref) in constraint.data
+        dual.data[k] = jump_value(cref)
+    end
+    return
+end
+
 function process_duals(container::OptimizationContainer, lp_optimizer)
     var_container = get_variables(container)
     for (k, v) in var_container
@@ -68,7 +83,7 @@ function process_duals(container::OptimizationContainer, lp_optimizer)
     if JuMP.has_duals(jump_model)
         for (key, dual) in get_duals(container)
             constraint = get_constraint(container, key)
-            dual.data .= jump_value.(constraint).data
+            _copy_dual_values!(dual, constraint)
         end
     end
 

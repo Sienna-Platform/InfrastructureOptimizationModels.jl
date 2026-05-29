@@ -96,7 +96,7 @@ function OptimizationContainer(
         error("Default Time Series Type $T can't be abstract")
     end
 
-    if jump_model !== nothing && get_direct_mode_optimizer(settings)
+    if !isnothing(jump_model) && get_direct_mode_optimizer(settings)
         throw(
             IS.ConflictingInputsError(
                 "Externally provided JuMP models are not compatible with the direct model keyword argument. Use JuMP.direct_model before passing the custom model",
@@ -105,7 +105,7 @@ function OptimizationContainer(
     end
 
     return OptimizationContainer(
-        jump_model === nothing ? JuMP.Model() : jump_model,
+        isnothing(jump_model) ? JuMP.Model() : jump_model,
         1:1,
         settings,
         OrderedDict{VariableKey, JuMPArray}(),
@@ -249,7 +249,7 @@ end
 
 function finalize_jump_model!(container::OptimizationContainer, settings::Settings)
     @debug "Instantiating the JuMP model" _group = LOG_GROUP_OPTIMIZATION_CONTAINER
-    if built_for_recurrent_solves(container) && get_optimizer(settings) === nothing
+    if built_for_recurrent_solves(container) && isnothing(get_optimizer(settings))
         throw(
             IS.ConflictingInputsError(
                 "Optimizer can not be nothing when building for recurrent solves",
@@ -260,7 +260,7 @@ function finalize_jump_model!(container::OptimizationContainer, settings::Settin
     if get_direct_mode_optimizer(settings)
         optimizer = () -> MOI.instantiate(get_optimizer(settings))
         container.JuMPmodel = JuMP.direct_model(optimizer())
-    elseif get_optimizer(settings) === nothing
+    elseif isnothing(get_optimizer(settings))
         @debug "The optimization model has no optimizer attached" _group =
             LOG_GROUP_OPTIMIZATION_CONTAINER
     else
@@ -579,7 +579,7 @@ Replaces per-type get_variable, get_aux_variable, get_constraint, etc. by key.
     field = QuoteNode(field_for_type(T))
     return quote
         val = get(getfield(container, $field), key, nothing)
-        if val === nothing
+        if isnothing(val)
             throw(
                 IS.InvalidValue(
                     "$(encode_key(key)) is not stored. $(encode_key.(collect(keys(getfield(container, $field)))))",
@@ -992,7 +992,7 @@ end
 function read_parameters(container::OptimizationContainer)
     params_dict = Dict{ParameterKey, DenseAxisArray}()
     parameters = get_parameters(container)
-    (parameters === nothing || isempty(parameters)) && return params_dict
+    (isnothing(parameters) || isempty(parameters)) && return params_dict
     for (k, v) in parameters
         # TODO: all functions similar to calculate_parameter_values should be in one
         # place and be consistent in behavior.
@@ -1290,14 +1290,9 @@ function _calculate_dual_variable_value!(
     T <: ConstraintType,
     D <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
 }
-    constraint_duals = jump_value.(get_constraint(container, key))
+    constraint_container = get_constraint(container, key)
     dual_variable_container = get_duals(container)[key]
-
-    # Needs to loop since the container ordering might not match in the DenseAxisArray
-    for index in Iterators.product(axes(constraint_duals)...)
-        dual_variable_container[index...] = constraint_duals[index...]
-    end
-
+    _copy_dual_values!(dual_variable_container, constraint_container)
     return
 end
 

@@ -79,27 +79,53 @@ function assign_dual_variable!(
     if isempty(metas)
         device_names = IS.get_name.(devices)
         add_dual_container!(container, constraint_type, D, device_names, time_steps)
-    else
-        # Reuse the existing constraint container's row axis so the dual axis
-        # matches the constraint exactly. Network reductions (radial /
-        # degree-two) drop branches that pass the device-model filter, so the
-        # constraint axis is a strict subset of IS.get_name.(devices). Sizing
-        # the dual from the device list would leave the dual broadcast in
-        # process_duals incompatible with the constraint matrix.
-        for meta in metas
-            existing =
-                get_constraint(container, ConstraintKey(constraint_type, D, meta))
-            row_axis = axes(existing)[1]
-            add_dual_container!(
-                container,
-                constraint_type,
-                D,
-                row_axis,
-                time_steps;
-                meta = meta,
-            )
-        end
+        return
     end
+    for meta in metas
+        key = ConstraintKey(constraint_type, D, meta)
+        existing = get_constraint(container, key)
+        _assign_dual_from_existing!(container, key, existing, D, time_steps)
+    end
+    return
+end
+
+# Sparse constraints (e.g. post-contingency flow-rate constraints keyed by
+# (outage_id, name, t)) have no `axes`. Mirror the constraint's exact sparse keys
+# into a Float64 dual container so the dual matches the constraint storage one-to-one.
+function _assign_dual_from_existing!(
+    container::OptimizationContainer,
+    key::ConstraintKey,
+    existing::SparseAxisArray,
+    ::Type{D},
+    time_steps,
+) where {D}
+    dual_container =
+        SparseAxisArray(Dict(k => zero(Float64) for k in keys(existing.data)))
+    _assign_container!(container.duals, key, dual_container)
+    return
+end
+
+# Reuse the existing constraint container's row axis so the dual axis matches the
+# constraint exactly. Network reductions (radial / degree-two) drop branches that
+# pass the device-model filter, so the constraint axis is a strict subset of
+# IS.get_name.(devices). Sizing the dual from the device list would leave the dual
+# broadcast in process_duals incompatible with the constraint matrix.
+function _assign_dual_from_existing!(
+    container::OptimizationContainer,
+    key::ConstraintKey,
+    existing::DenseAxisArray,
+    ::Type{D},
+    time_steps,
+) where {D}
+    row_axis = axes(existing)[1]
+    add_dual_container!(
+        container,
+        get_entry_type(key),
+        D,
+        row_axis,
+        time_steps;
+        meta = key.meta,
+    )
     return
 end
 
