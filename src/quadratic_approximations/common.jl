@@ -18,7 +18,7 @@ with its own depth-to-error formula.
 
 Every config's worst-case error has the form `Δ²·c(L)`, where `c(L)` is the
 method's unit-domain error coefficient (Sawtooth: `2^{-2L-2}`, NMDT:
-`2^{-L-2}`, DNMDT: `2^{-2L-2}`, SOS2: `1/(4·L²)`, Epigraph: `2^{-2L-2}`,
+`2^{-L-2}`, DNMDT: `2^{-2L-2}`, SOS2: `1/(4·L²)`, Epigraph: `2^{-2L-4}`,
 …). The `Δ²` prefactor comes from unnormalization: each method normalizes
 `x = a + Δ·xh` with `xh ∈ [0, 1]`, approximates the only nonlinear term
 `Δ²·xh²` in `x² = a² + 2a·Δ·xh + Δ²·xh²`, and inherits the unit-domain

@@ -36,10 +36,10 @@ where Δ = max − min.
 `result_expr` values grows from a single point to the interval
 `[epigraph(x), sawtooth(x)]`. The worst-case error over that interval is
 ```
-|z − x²| ≤ max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-2})
+|z − x²| ≤ max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-4})
 ```
-- `L_e ≥ L`: sawtooth dominates, worst-case = `Δ²·2^{-2L-2}`.
-- `L_e < L`: epigraph dominates, worst-case = `Δ²·2^{-2L_e-2}`.
+- `L_e ≥ L − 1`: sawtooth dominates, worst-case = `Δ²·2^{-2L-2}`.
+- `L_e < L − 1`: epigraph dominates, worst-case = `Δ²·2^{-2L_e-4}`.
 
 Contrast with `pwmcc_segments` on the SOS2 variants, which adds genuine LP cuts
 and never changes the MIP-feasible set.
@@ -68,8 +68,9 @@ clamped to `L ≥ 1`. Sizes only the sawtooth side of the formulation.
 
 **Contract on `epigraph_depth`**: the returned depth meets the tolerance iff
 the user picks `epigraph_depth = 0` (tightening disabled) or
-`epigraph_depth ≥ depth`. When `0 < epigraph_depth < depth`, the epigraph side
-of the sandwich has a larger error than the sawtooth side, and since
+`epigraph_depth ≥ depth − 1`. When `0 < epigraph_depth < depth − 1`, the
+epigraph side of the sandwich has a larger error than the sawtooth side
+(epigraph `Δ²·2^{-2L_e-4}` vs sawtooth `Δ²·2^{-2L-2}`), and since
 `result_expr` is free in `[epigraph(x), sawtooth(x)]` in larger optimization
 contexts the realized error can exceed `tolerance`. Use
 `tolerance_epigraph_depth` below to size both knobs consistently.
@@ -88,9 +89,9 @@ end
 Smallest `epigraph_depth` consistent with `tolerance_depth(SawtoothQuadConfig; …)`
 under target tolerance `τ`. Returns the depth at which the epigraph (LP lower)
 side of the sandwich has worst-case error ≤ τ on `[a, a+Δ]`. Since the
-epigraph's per-unit error is `Δ²·2^{-2L_e-2}` — the same as sawtooth's per-unit
-error — the returned depth equals `tolerance_depth(SawtoothQuadConfig; …)` and
-trivially satisfies the contract `epigraph_depth ≥ depth`.
+epigraph's per-unit error is `Δ²·2^{-2L_e-4}` versus the sawtooth's
+`Δ²·2^{-2L-2}`, this is one less than the sawtooth depth for the same
+tolerance — which exactly meets the contract `epigraph_depth ≥ depth − 1`.
 
 Optional: callers that want to disable epigraph tightening can pass
 `epigraph_depth = 0` and the sawtooth-side bound still holds.

@@ -28,7 +28,7 @@ binary–continuous products are dropped and a lower bound `result_expr ≥
 epigraph(x)` is added in their place. The result remains two-sided around
 `x²`, but the lower envelope is now the global epigraph instead of the
 per-product McCormick LBs; worst case becomes
-`max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-2})`. Contrast with `pwmcc_segments` on the
+`max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
 SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
 
 See `tolerance_depth(::Type{DNMDTQuadConfig}; …)` to derive `depth` from a
@@ -55,7 +55,9 @@ clamped to `L ≥ 1`. Sizes only the DNMDT side.
 
 **Contract on `epigraph_depth`**: the returned depth meets the tolerance iff
 the user picks `epigraph_depth = 0` (tightening disabled) or
-`epigraph_depth ≥ depth`. When `0 < epigraph_depth < depth`, the epigraph side
+`epigraph_depth ≥ depth − 1`. The DNMDT side error is `Δ²·2^{-2L-2}` and
+the epigraph side error is `Δ²·2^{-2L_e-4}`; epigraph ≤ DNMDT iff
+`L_e ≥ L − 1`. When `0 < epigraph_depth < depth − 1`, the epigraph side
 has a larger error than the DNMDT side and the realized error can exceed
 `tolerance`. Use `tolerance_epigraph_depth` to size both knobs consistently.
 """
@@ -101,7 +103,7 @@ binary–continuous products are dropped and a lower bound `result_expr ≥
 epigraph(x)` is added in their place. The result remains two-sided around
 `x²`, but the lower envelope is now the global epigraph instead of the
 per-product McCormick LBs; worst case becomes
-`max(Δ²·2^{-L-2}, Δ²·2^{-2L_e-2})`. Contrast with `pwmcc_segments` on the
+`max(Δ²·2^{-L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
 SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
 
 See `tolerance_depth(::Type{NMDTQuadConfig}; …)` to derive `depth` from a
@@ -128,9 +130,12 @@ clamped to `L ≥ 1`. Sizes only the NMDT side.
 
 **Contract on `epigraph_depth`**: the returned depth meets the tolerance iff
 the user picks `epigraph_depth = 0` (tightening disabled) or
-`epigraph_depth ≥ depth`. When `0 < epigraph_depth < depth`, the epigraph side
-has a larger error than the NMDT side and the realized error can exceed
-`tolerance`. Use `tolerance_epigraph_depth` to size both knobs consistently.
+`epigraph_depth ≥ ⌈(depth − 2) / 2⌉`. The NMDT side error is `Δ²·2^{-L-2}`
+and the epigraph side error is `Δ²·2^{-2L_e-4}`; epigraph ≤ NMDT iff
+`2L_e + 4 ≥ L + 2`, i.e. `L_e ≥ (L − 2)/2`. When the user picks a smaller
+`epigraph_depth`, the epigraph side has a larger error than the NMDT side
+and the realized error can exceed `tolerance`. Use
+`tolerance_epigraph_depth` to size both knobs consistently.
 """
 function tolerance_depth(
     ::Type{NMDTQuadConfig};

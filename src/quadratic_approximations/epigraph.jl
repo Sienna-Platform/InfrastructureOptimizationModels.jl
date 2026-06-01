@@ -17,18 +17,17 @@ struct EpigraphTangentExpression <: ExpressionType end
 Config for epigraph (Q^{L1}) LP-only lower-bound quadratic approximation.
 
 # Fields
-- `depth::Int`: number of tangent-line breakpoints (2^depth + 1 tangent lines); pure LP, zero binary variables
+- `depth::Int`: sawtooth recursion depth `L`; pure LP, zero binary variables
 
-The worst-case underestimation gap is `Δ²·2^{-2L-2}`. The implementation
-adds tangent cuts at every sawtooth level `j = 1..L` (per the Q^{L1}
-relaxation construction in Beach, Burlacu, Hager, Hildebrand 2024), but
-because the level-j cut still uses sawtooth aux variables whose LP
-relaxation is loose, the effective LP envelope at the midpoint of each
-top-level segment matches the naive adjacent-tangent gap
-`h²/4 = Δ²·2^{-2L-2}` (verified empirically — see
-`test/test_tolerance_dispatch.jl`). See
-`tolerance_depth(::Type{EpigraphQuadConfig}; …)` to derive `depth` from a
-target tolerance.
+The worst-case underestimation gap is `Δ²·2^{-2L-4}` — the
+sawtooth-epigraph relaxation bound from Beach, Burlacu, Hager,
+Hildebrand 2024 (Definition 6, Proposition 2). The construction adds
+tangent cuts `z ≥ fʲ(x, g) − 2^{-2j-2}` for `j = 0, 1, …, L` plus the
+two boundary tangents to x² at x = x_min and x = x_max. The `j = 0`
+cut is the tangent to x² at the segment midpoint; without it, the gap
+degrades to `Δ²·2^{-2L-2}`. See
+`tolerance_depth(::Type{EpigraphQuadConfig}; …)` to derive `depth` from
+a target tolerance.
 """
 struct EpigraphQuadConfig <: QuadraticApproxConfig
     depth::Int
@@ -40,9 +39,9 @@ end
     tolerance_depth(::Type{EpigraphQuadConfig}; tolerance, max_delta)::Int
 
 Smallest epigraph depth `L` whose worst-case underestimation gap on `[a, a+Δ]`
-falls within `tolerance`. Inverts the closed-form bound `Δ²·2^{-2L-2} ≤ τ`:
+falls within `tolerance`. Inverts the closed-form bound `Δ²·2^{-2L-4} ≤ τ`:
 ```
-L = ⌈(log₂(Δ²/τ) − 2) / 2⌉
+L = ⌈(log₂(Δ²/τ) − 4) / 2⌉
 ```
 clamped to `L ≥ 1`.
 """
@@ -51,22 +50,26 @@ function tolerance_depth(
     tolerance::Float64,
     max_delta::Float64,
 )
-    return _ceil_positive((log2(max_delta^2 / tolerance) - 2) / 2)
+    return _ceil_positive((log2(max_delta^2 / tolerance) - 4) / 2)
 end
 
 """
     _add_quadratic_approx!(::EpigraphQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 
-Create a variable z that lower-bounds x² using tangent-line cuts (Q^{L1} relaxation).
+Create a variable z that lower-bounds x² using the sawtooth-epigraph
+Q^{L1} relaxation (Beach, Burlacu, Hager, Hildebrand 2024, Definition 6).
 
-For each (name, t), creates a variable z and adds 2^depth + 1 tangent-line
-constraints of the form `z ≥ 2·aₖ·x − aₖ²` at uniformly spaced breakpoints
-aₖ = x_min + k·Δ/2^depth for k = 0,…,2^depth. Pure LP — zero binary variables.
+For each (name, t), creates a variable z, the sawtooth aux variables
+g_0, …, g_L with `g_j ≤ 2·g_{j-1}` and `g_j ≤ 2·(1 − g_{j-1})`, the
+linking constraint `g_0 = (x − x_min)/Δ`, and `L + 1` sawtooth-encoded
+tangent cuts `z ≥ fʲ(x, g) − 2^{-2j-2}` for `j = 0, …, L`, plus the two
+boundary tangents to x² at x = x_min and x = x_max. Pure LP — zero
+binary variables.
 
 Stores affine expressions that lower-bound x² in an `EpigraphExpression` expression container.
 
 The maximum underestimation gap between the tangent envelope and x² is
-Δ²·2^{−2·depth−2} where Δ = x_max − x_min.
+Δ²·2^{−2·depth−4} where Δ = x_max − x_min.
 
 # Arguments
 - `config::EpigraphQuadConfig`: configuration with `depth` field controlling the number of tangent-line breakpoints (2^depth + 1 tangent lines)
@@ -139,7 +142,7 @@ function _add_quadratic_approx!(
         EpigraphTangentConstraint,
         C,
         names,
-        1:(config.depth + 2),
+        1:(config.depth + 3),
         time_steps;
         sparse = true,
         meta,
@@ -198,23 +201,37 @@ function _add_quadratic_approx!(
                 upper_bound = z_ub,
             )
 
+        # Sawtooth-epigraph cuts j = 0,...,L (paper Def 6 eq. 15):
+        #   z ≥ fʲ(x, g) − 2^{-2j-2}
+        # where fʲ(x, g) = x − Σ_{k=1}^{j} 2^{-2k}·g_k (empty sum at j = 0).
+        # The j = 0 cut is the tangent to x² at the segment midpoint and is
+        # required for the paper's worst-case bound `Δ²·2^{-2L-4}`.
         fL = fL_expr[name, t] = JuMP.AffExpr(0.0)
-        for j in 1:(config.depth)
-            add_proportional_to_jump_expression!(
-                fL,
-                g_var[name, j, t],
-                delta * delta * 2.0^(-2j),
-            )
+        for j in 0:(config.depth)
+            if j > 0
+                add_proportional_to_jump_expression!(
+                    fL,
+                    g_var[name, j, t],
+                    delta * delta * 2.0^(-2j),
+                )
+            end
             tangent_cons[(name, j + 1, t)] = JuMP.@constraint(
                 jump_model,
                 z >=
                 b.min * (2 * delta * g0 + b.min) - fL + delta^2 * (g0 - 2.0^(-2j - 2))
             )
         end
-        tangent_cons[name, 1, t] = JuMP.@constraint(jump_model, z >= 0)
-        tangent_cons[name, config.depth + 1, t] = JuMP.@constraint(
+        # Boundary tangents at x = b.min and x = b.max:
+        # tangent to x² at a is z ≥ 2·a·x − a²; substituting x = b.min + Δ·g_0
+        # gives the formulas below.
+        b_max = b.min + delta
+        tangent_cons[name, config.depth + 2, t] = JuMP.@constraint(
             jump_model,
-            z >= 2.0 * b.min - 1.0 + 2.0 * delta * g0
+            z >= b.min^2 + 2.0 * b.min * delta * g0
+        )
+        tangent_cons[name, config.depth + 3, t] = JuMP.@constraint(
+            jump_model,
+            z >= 2.0 * b_max * b.min - b_max^2 + 2.0 * b_max * delta * g0
         )
 
         result_expr[name, t] = JuMP.AffExpr(0.0, z => 1.0)
