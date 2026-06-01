@@ -19,11 +19,16 @@ Config for epigraph (Q^{L1}) LP-only lower-bound quadratic approximation.
 # Fields
 - `depth::Int`: number of tangent-line breakpoints (2^depth + 1 tangent lines); pure LP, zero binary variables
 
-The worst-case underestimation gap is `Δ²·2^{-2L-2}`. Per-segment derivation:
-adjacent tangents at `a` and `a+h` (h = Δ/2^L) meet at the midpoint `a+h/2`
-with value `a² + ah`; true `x² = a² + ah + h²/4`, so the gap is `h²/4 =
-Δ²·2^{-2L-2}`. See `tolerance_depth(::Type{EpigraphQuadConfig}; …)` to derive
-`depth` from a target tolerance.
+The worst-case underestimation gap is `Δ²·2^{-2L-2}`. The implementation
+adds tangent cuts at every sawtooth level `j = 1..L` (per the Q^{L1}
+relaxation construction in Beach, Burlacu, Hager, Hildebrand 2024), but
+because the level-j cut still uses sawtooth aux variables whose LP
+relaxation is loose, the effective LP envelope at the midpoint of each
+top-level segment matches the naive adjacent-tangent gap
+`h²/4 = Δ²·2^{-2L-2}` (verified empirically — see
+`test/test_tolerance_dispatch.jl`). See
+`tolerance_depth(::Type{EpigraphQuadConfig}; …)` to derive `depth` from a
+target tolerance.
 """
 struct EpigraphQuadConfig <: QuadraticApproxConfig
     depth::Int

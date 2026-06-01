@@ -88,10 +88,9 @@ end
 Smallest `epigraph_depth` consistent with `tolerance_depth(SawtoothQuadConfig; …)`
 under target tolerance `τ`. Returns the depth at which the epigraph (LP lower)
 side of the sandwich has worst-case error ≤ τ on `[a, a+Δ]`. Since the
-epigraph's per-unit error is `Δ²·2^{-2L_e-4}`, this is one less than the
-sawtooth depth for the same tolerance — but the simpler and equally correct
-contract is to set `epigraph_depth = tolerance_depth(SawtoothQuadConfig; …)`,
-which trivially satisfies `epigraph_depth ≥ depth`.
+epigraph's per-unit error is `Δ²·2^{-2L_e-2}` — the same as sawtooth's per-unit
+error — the returned depth equals `tolerance_depth(SawtoothQuadConfig; …)` and
+trivially satisfies the contract `epigraph_depth ≥ depth`.
 
 Optional: callers that want to disable epigraph tightening can pass
 `epigraph_depth = 0` and the sawtooth-side bound still holds.

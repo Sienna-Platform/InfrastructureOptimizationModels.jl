@@ -28,7 +28,7 @@ binary–continuous products are dropped and a lower bound `result_expr ≥
 epigraph(x)` is added in their place. The result remains two-sided around
 `x²`, but the lower envelope is now the global epigraph instead of the
 per-product McCormick LBs; worst case becomes
-`max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
+`max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-2})`. Contrast with `pwmcc_segments` on the
 SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
 
 See `tolerance_depth(::Type{DNMDTQuadConfig}; …)` to derive `depth` from a
@@ -101,7 +101,7 @@ binary–continuous products are dropped and a lower bound `result_expr ≥
 epigraph(x)` is added in their place. The result remains two-sided around
 `x²`, but the lower envelope is now the global epigraph instead of the
 per-product McCormick LBs; worst case becomes
-`max(Δ²·2^{-L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
+`max(Δ²·2^{-L-2}, Δ²·2^{-2L_e-2})`. Contrast with `pwmcc_segments` on the
 SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
 
 See `tolerance_depth(::Type{NMDTQuadConfig}; …)` to derive `depth` from a
