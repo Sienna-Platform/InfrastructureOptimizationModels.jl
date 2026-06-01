@@ -15,13 +15,19 @@ Config for double-NMDT quadratic approximation.
 - `epigraph_depth::Int`: depth of an additional epigraph Q^{L1} lower bound;
   0 disables (default 3×depth)
 
-The DNMDT side itself gives worst-case `|z − x²| ≤ Δ²·2^{-2L-2}` with
-`result_expr = nmdt(x)` pinned by binaries and McCormick auxiliaries.
+The DNMDT side gives worst-case `|result_expr − x²| ≤ Δ²·2^{-2L-2}` (two-sided
+magnitude bound). The binary discretization `x = x_grid + δ` is exact in MIP
+(binary×binary and binary×continuous McCormick are tight at integer β), but
+the residual `δ²` term is approximated by a McCormick envelope on (δ, δ) over
+`[0, 2^{-L}]²` — and continuous×continuous McCormick has slack at interior δ
+even at integer β. So `result_expr` floats in an interval around `x²` whose
+half-width is at most `Δ²·2^{-2L-2}` (max gap at `δ = 2^{-L-1}`).
 
-When `epigraph_depth = L_e > 0`, a one-sided lower bound `result_expr ≥
-epigraph(x)` is added (no new free variable, but the MIP-feasible set of
-`result_expr` values grows from a single point to the interval
-`[epigraph(x), nmdt(x)]`). The worst-case error over that interval is
+When `epigraph_depth = L_e > 0`, the McCormick lower bounds on the
+binary–continuous products are dropped and a lower bound `result_expr ≥
+epigraph(x)` is added in their place. The result remains two-sided around
+`x²`, but the lower envelope is now the global epigraph instead of the
+per-product McCormick LBs; worst case becomes
 `max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
 SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
 
@@ -83,13 +89,18 @@ Config for single-NMDT quadratic approximation.
 - `epigraph_depth::Int`: depth of an additional epigraph Q^{L1} lower bound;
   0 disables (default 3×depth)
 
-The NMDT side gives worst-case `|z − x²| ≤ Δ²·2^{-L-2}` (note the single `L`,
-not `2L` — single NMDT discretizes only one factor).
+The NMDT side gives worst-case `|result_expr − x²| ≤ Δ²·2^{-L-2}` two-sided
+magnitude bound (note the single `L`, not `2L` — single NMDT discretizes only
+one factor). The binary discretization `x = x_grid + δ` is exact in MIP, but
+the cross term `δ·xh` (where `xh` is the full normalized x) is approximated by
+McCormick on (δ, xh) — both continuous — and that has slack at interior values
+even at integer β. So `result_expr` floats in a two-sided interval around `x²`.
 
-When `epigraph_depth = L_e > 0`, a one-sided lower bound `result_expr ≥
-epigraph(x)` is added (no new free variable, but the MIP-feasible set of
-`result_expr` values grows from a single point to the interval
-`[epigraph(x), nmdt(x)]`). The worst-case error over that interval is
+When `epigraph_depth = L_e > 0`, the McCormick lower bounds on the
+binary–continuous products are dropped and a lower bound `result_expr ≥
+epigraph(x)` is added in their place. The result remains two-sided around
+`x²`, but the lower envelope is now the global epigraph instead of the
+per-product McCormick LBs; worst case becomes
 `max(Δ²·2^{-L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
 SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
 

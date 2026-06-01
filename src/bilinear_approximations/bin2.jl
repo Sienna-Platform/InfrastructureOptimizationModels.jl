@@ -45,40 +45,57 @@ end
 #
 # Bilinear identity:  xy = ½((x+y)² − x² − y²).
 # Approximation:      z  = ½(z_p − z_x − z_y), where z_• is the inner-quad
-# approximation of •² and (•)² for • ∈ {x, y, x+y}.
+# approximation of •² for • ∈ {x, y, x+y}.
 #
-# Let ε_x = x² − z_x, ε_y = y² − z_y, ε_p = (x+y)² − z_p be the per-term
-# inner-quad errors. For one-sided-over inner quads (Sawtooth, SolverSOS2,
-# ManualSOS2), each ε_• ∈ [0, ε_•^max] where the bound scales as Δ²·c at
-# depth L (c is the inner quad's per-unit error coefficient):
-#   ε_x^max = Δx²·c,  ε_y^max = Δy²·c,  ε_p^max = (Δx+Δy)²·c.
+# Let ε_x = z_x − x², ε_y = z_y − y², ε_p = z_p − (x+y)² be the per-term
+# inner-quad errors. The inner quad's worst-case error magnitude scales as
+# Δ²·c at depth L (c is the per-unit error coefficient — see
+# `tolerance_depth(::Type{<:QuadraticApproxConfig})` for why Δ² appears), so
+#   |ε_x| ≤ ε_x^max = Δx²·c,
+#   |ε_y| ≤ ε_y^max = Δy²·c,
+#   |ε_p| ≤ ε_p^max = (Δx+Δy)²·c.
 #
-# Substituting into z − xy yields  z − xy = ½(ε_x + ε_y − ε_p).
-# With each ε_• ∈ [0, ε_•^max], the range of z − xy is
-#   ½(0 + 0 − ε_p^max)  ≤  z − xy  ≤  ½(ε_x^max + ε_y^max − 0),
-# so |z − xy| ≤ max(½ε_p^max, ½(ε_x^max + ε_y^max)).
+# Substitute z_x = x² + ε_x, z_y = y² + ε_y, z_p = (x+y)² + ε_p into
+# z = ½(z_p − z_x − z_y):
+#   z = ½((x+y)² + ε_p − x² − ε_x − y² − ε_y)
+#     = ½(2xy + ε_p − ε_x − ε_y)
+#     = xy + ½(ε_p − ε_x − ε_y).
+# So |z − xy| = ½|ε_p − ε_x − ε_y|. The worst-case depends on which side each
+# ε can take:
 #
-# Now (Δx+Δy)² = Δx² + 2ΔxΔy + Δy² ≥ Δx² + Δy² (since Δx, Δy ≥ 0), so
-# ε_p^max ≥ ε_x^max + ε_y^max, and the max collapses to ½ε_p^max.
-# To hit user-target τ, ask the inner quad for ε_p^max ≤ 2τ on Δx+Δy.
+# **One-sided-over inner quads** (Sawtooth, SolverSOS2, ManualSOS2): each
+# ε_• ∈ [0, ε_•^max], so ε_p − ε_x − ε_y ∈ [−(ε_x^max + ε_y^max), ε_p^max].
+# Therefore |z − xy| ≤ max(½ε_p^max, ½(ε_x^max + ε_y^max)). Since
+# (Δx+Δy)² ≥ Δx² + Δy², ε_p^max ≥ ε_x^max + ε_y^max and the max collapses
+# to ½ε_p^max. To hit τ, ask the inner Q for ε_p^max ≤ 2τ on Δx+Δy.
+#
+# **Two-sided inner quads** (NMDT, DNMDT — the McCormick on the δ·δ or δ·xh
+# residual product has slack even at integer β in MIP, so the inner result
+# straddles x²): each ε_• ∈ [−ε_•^max, ε_•^max], and the triangle inequality
+# gives |z − xy| ≤ ½(ε_p^max + ε_x^max + ε_y^max) = c·(Δx² + Δy² + Δx·Δy)
+# (the last equality uses ε_p^max = (Δx+Δy)²·c and expands the square).
+# To hit τ, ask the inner Q for c ≤ τ/(Δx² + Δy² + Δx·Δy), which is
+# equivalent to forwarding tolerance = (Δx+Δy)²·τ/(Δx² + Δy² + Δx·Δy) at
+# max_delta = Δx+Δy.
 
 """
     tolerance_depth(::Type{Bin2Config{Q}}; tolerance, max_delta_x, max_delta_y)::Int
 
-Inner-quad depth such that Bin2's worst-case overestimation gap is ≤ `tolerance`.
-Derivation: see the comment block above. Forwards to
+Inner-quad depth such that Bin2's worst-case gap `|z − xy|` is ≤ `tolerance`.
+Derivation: see the comment block above.
+
+For **one-sided-over** inner quads (`SawtoothQuadConfig`, `SolverSOS2QuadConfig`,
+`ManualSOS2QuadConfig`), forwards to
 `tolerance_depth(Q; tolerance = 2·τ, max_delta = Δx + Δy)`.
 
-Defined for one-sided-over inner quads: `SawtoothQuadConfig`, `SolverSOS2QuadConfig`,
-`ManualSOS2QuadConfig`, `NMDTQuadConfig`, `DNMDTQuadConfig`. `EpigraphQuadConfig`
-is excluded — it is one-sided-under, so the sign of `ε_p` flips and the bound
-above no longer applies; an Epigraph inner quad can drive `z` arbitrarily far
-from `xy` under MIN/MAX objectives.
+For **two-sided** inner quads (`NMDTQuadConfig`, `DNMDTQuadConfig`), forwards
+to `tolerance_depth(Q; tolerance = (Δx+Δy)²·τ/(Δx² + Δy² + Δx·Δy),
+max_delta = Δx + Δy)`. For balanced `Δx = Δy = Δ` this is simply
+`tolerance_depth(Q; tolerance = (4/3)·τ, max_delta = 2Δ)`.
 
-**Caveat for NMDT/DNMDT inner Q**: these are only one-sided-over when their
-`epigraph_depth = 0`. With `epigraph_depth > 0`, the inner result becomes free
-in `[epigraph(x), nmdt(x)]`, which crosses `x²` and breaks the derivation. Pass
-NMDT/DNMDT inner Qs with `epigraph_depth = 0` only.
+`EpigraphQuadConfig` is excluded — it is one-sided-under, so its auxiliary
+`z_x` has no upper bound in the LP relaxation and can drive `z` arbitrarily
+far from `xy`.
 """
 function tolerance_depth(
     ::Type{Bin2Config{Q}};
@@ -86,17 +103,25 @@ function tolerance_depth(
     max_delta_x::Float64,
     max_delta_y::Float64,
 ) where {
-    Q <: Union{
-        SawtoothQuadConfig,
-        SolverSOS2QuadConfig,
-        ManualSOS2QuadConfig,
-        NMDTQuadConfig,
-        DNMDTQuadConfig,
-    },
+    Q <: Union{SawtoothQuadConfig, SolverSOS2QuadConfig, ManualSOS2QuadConfig},
 }
     return tolerance_depth(Q;
         tolerance = 2 * tolerance,
         max_delta = max_delta_x + max_delta_y,
+    )
+end
+
+function tolerance_depth(
+    ::Type{Bin2Config{Q}};
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+) where {Q <: Union{NMDTQuadConfig, DNMDTQuadConfig}}
+    sum_sq = max_delta_x^2 + max_delta_y^2 + max_delta_x * max_delta_y
+    max_delta = max_delta_x + max_delta_y
+    return tolerance_depth(Q;
+        tolerance = max_delta^2 * tolerance / sum_sq,
+        max_delta = max_delta,
     )
 end
 

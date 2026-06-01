@@ -20,15 +20,28 @@ Adds two inequalities that sandwich `z ≈ x·y`:
 - `epigraph_depth::Int`: depth for the epigraph approximation of cross-terms (x±y)²
 - `add_mccormick::Bool`: whether to add standard McCormick envelope cuts on the product variable (default false)
 
-`Q` must be a one-sided-over quadratic approximation (so `z_x ≥ x²` and
-`z_y ≥ y²` hold). The reason is asymmetry: `z_x` and `z_y` appear with sign `−`
-in the lower bound and sign `+` in the upper bound, so if `z_x` could
-*under*-estimate `x²` then the `−z_x` term in the lower can drive `lower > xy`
-and the sandwich is invalid. This rules out `EpigraphQuadConfig` (one-sided
-under) and the two-sided `NMDTQuadConfig` / `DNMDTQuadConfig` for the tolerance
-helpers below; only `SawtoothQuadConfig`, `SolverSOS2QuadConfig`, and
-`ManualSOS2QuadConfig` are supported. See `tolerance_depth(::Type{HybSConfig{Q}};
-…)` and `tolerance_epigraph_depth(::Type{HybSConfig{Q}}; …)`.
+`Q` must be a **strictly one-sided-over** quadratic approximation (so
+`z_x ≥ x²` and `z_y ≥ y²` hold at every MIP-feasible point). With a two-sided
+or one-sided-under inner Q the sandwich can become infeasible. Sketch: let
+`ε_Q ≥ 0` bound `|z_• − •²|` and `ε_E ≥ 0` bound `(•)² − z_p•`. With z_x, z_y
+two-sided (each can be ≤ x² by up to ε_Q) and z_p1, z_p2 at their lowest:
+
+```
+Lower − Upper = ½(z_p1 + z_p2) − z_x − z_y
+              = ½((x+y)² − ε_E + (x−y)² − ε_E) − (x² − ε_Q) − (y² − ε_Q)
+              = x² + y² − ε_E − x² − y² + 2ε_Q
+              = 2ε_Q − ε_E
+```
+
+So `Lower > Upper` whenever `2ε_Q > ε_E` — model infeasible. This rules out
+`EpigraphQuadConfig` (one-sided under, so `z_x` has no MIP-feasible upper
+bound) and `NMDTQuadConfig` / `DNMDTQuadConfig` (two-sided in both regimes:
+at `epigraph_depth = 0` the McCormick on the δ·δ or δ·xh residual product
+has slack even at integer β, and at `epigraph_depth > 0` the result floats
+in `[epigraph(x), nmdt(x)]`). Only `SawtoothQuadConfig`, `SolverSOS2QuadConfig`,
+and `ManualSOS2QuadConfig` are supported. See
+`tolerance_depth(::Type{HybSConfig{Q}}; …)` and
+`tolerance_epigraph_depth(::Type{HybSConfig{Q}}; …)`.
 """
 struct HybSConfig{Q <: QuadraticApproxConfig} <: BilinearApproxConfig
     quad_config::Q
@@ -45,27 +58,27 @@ end
 
 # --- Tolerance helpers ---
 #
-# Notation: Δx, Δy are domain lengths; ε denotes errors. Let
-#   ε_q = max(x² − z_x, y² − z_y, 0)     inner-quad one-sided-over error
-#   ε_e = max((x+y)² − z_p1, (x−y)² − z_p2, 0)   epigraph one-sided-under error
-# both ≥ 0 by construction.
+# Notation: Δx, Δy are domain lengths; all ε's are ≥ 0. Let
+#   ε_x = z_x − x²,  ε_y = z_y − y²       inner-quad over-errors
+#   ε_p1 = (x+y)² − z_p1,  ε_p2 = (x−y)² − z_p2   epigraph under-errors
+# and let ε_Q, ε_E be the worst-case bounds:
+#   ε_x, ε_y ≤ ε_Q   (inner Q at depth L on its domain)
+#   ε_p1, ε_p2 ≤ ε_E (epigraph at depth L_e on its domain)
 #
-# Where do the lower/upper expressions come from? Plug z_p1 = (x+y)² − ε_p1,
-# z_x = x² + ε_x, z_y = y² + ε_y into the lower-bound inequality:
-#   z ≥ ½(z_p1 − z_x − z_y)
+# Substitute z_x = x² + ε_x, z_y = y² + ε_y, z_p1 = (x+y)² − ε_p1 into the
+# Bin2 lower-bound expression:
+#   ½(z_p1 − z_x − z_y)
 #     = ½((x+y)² − ε_p1 − x² − ε_x − y² − ε_y)
 #     = ½(2xy − ε_p1 − ε_x − ε_y)
 #     = xy − ½(ε_p1 + ε_x + ε_y)
-# So lower − xy ∈ [−ε_q − ½ε_e, 0]. Similarly substituting into
-# z ≤ ½(z_x + z_y − z_p2) gives upper − xy ∈ [0, ε_q + ½ε_e]. Combining,
-#   |z − xy| ≤ ε_q + ½ε_e.
+# Since ε_p1 ≤ ε_E and ε_x, ε_y ≤ ε_Q, the gap is at most ½ε_E + ε_Q below xy.
+# Similarly the Bin3 upper-bound expression ½(z_x + z_y − z_p2) simplifies to
+# xy + ½(ε_p2 + ε_x + ε_y), at most ½ε_E + ε_Q above xy. Combining,
+#   |z − xy| ≤ ½ε_E + ε_Q.
 #
-# The total error is ε_q + ½ε_e. To meet τ, the helpers below allocate
-#   ε_q ≤ τ/2  →  inner Q at tolerance τ/2 over max_delta = max(Δx, Δy)
-#   ε_e ≤ τ    →  epigraph at tolerance τ   over max_delta = Δx + Δy
-# so the sum is ≤ τ/2 + ½·τ = τ. The 50/50 split between the two error
-# sources is an arbitrary design choice — any other allocation (e.g. 30/70)
-# that keeps the sum ≤ τ would also be valid; 50/50 is chosen for simplicity.
+# To meet user tolerance τ, the helpers below allocate ε_E ≤ τ and ε_Q ≤ τ/2,
+# giving ½τ + τ/2 = τ. This allocation is arbitrary — any pair satisfying
+# ½ε_E + ε_Q ≤ τ would work; the chosen split is just one valid point.
 #
 # Restricted to one-sided-over Q (see struct docstring for the asymmetry
 # argument). Other Q raise MethodError.
@@ -75,11 +88,13 @@ end
 
 Inner-quad depth for HybS at target tolerance `τ`. Returns the smallest depth
 whose inner-quad error on `[ax, ax+Δx]` (and `[ay, ay+Δy]`) is `≤ τ/2`, which
-satisfies the `ε_q ≤ τ/2` half of the HybS budget.
+satisfies the `ε_Q ≤ τ/2` half of the HybS budget.
 
-Only defined for `Q ∈ {SawtoothQuadConfig, SolverSOS2QuadConfig,
-ManualSOS2QuadConfig}` — the one-sided-over inner quads for which the HybS
-sandwich is valid. Other Q raise `MethodError`.
+Defined only for strictly one-sided-over inner quads:
+`SawtoothQuadConfig`, `SolverSOS2QuadConfig`, `ManualSOS2QuadConfig`. Other Q
+raise `MethodError`. See the `HybSConfig` docstring for why two-sided or
+one-sided-under inner Qs (`EpigraphQuadConfig`, `NMDTQuadConfig`,
+`DNMDTQuadConfig`) make the sandwich infeasible.
 
 See also `tolerance_epigraph_depth(::Type{HybSConfig{Q}}; …)` for the second knob.
 """
@@ -100,10 +115,11 @@ end
 
 Epigraph depth for HybS at target tolerance `τ`. Returns the smallest depth
 whose epigraph error on the cross-term range `Δx + Δy` is `≤ τ`, which
-satisfies the `½ε_e ≤ τ/2` half of the HybS budget.
+satisfies the `½ε_E ≤ τ/2` half of the HybS budget.
 
-Only defined for `Q ∈ {SawtoothQuadConfig, SolverSOS2QuadConfig,
-ManualSOS2QuadConfig}`. Other Q raise `MethodError`.
+Defined only for strictly one-sided-over inner quads:
+`SawtoothQuadConfig`, `SolverSOS2QuadConfig`, `ManualSOS2QuadConfig`. Other Q
+raise `MethodError`.
 """
 function tolerance_epigraph_depth(
     ::Type{HybSConfig{Q}};

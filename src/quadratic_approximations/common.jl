@@ -10,6 +10,22 @@ struct QuadraticExpression <: ExpressionType end
 abstract type QuadraticApproxConfig end
 
 """
+    tolerance_depth(::Type{<:QuadraticApproxConfig}; tolerance, max_delta)::Int
+
+Smallest depth `L` whose worst-case approximation error on a domain of length
+`max_delta = Δ` is ≤ `tolerance`. Each concrete config implements this method
+with its own depth-to-error formula.
+
+Every config's worst-case error has the form `Δ²·c(L)`, where `c(L)` is the
+method's unit-domain error coefficient (Sawtooth: `2^{-2L-2}`, NMDT:
+`2^{-L-2}`, DNMDT: `2^{-2L-2}`, SOS2: `1/(4·L²)`, …). The `Δ²` prefactor comes
+from unnormalization: each method normalizes `x = a + Δ·xh` with `xh ∈ [0, 1]`,
+approximates the only nonlinear term `Δ²·xh²` in `x² = a² + 2a·Δ·xh + Δ²·xh²`,
+and inherits the unit-domain error scaled by `Δ²`.
+"""
+function tolerance_depth end
+
+"""
     _ceil_positive(x::Float64)::Int
 
 Smallest integer ≥ x, clamped to ≥ 1. Used by every `tolerance_depth` helper
