@@ -2,19 +2,12 @@
 # duals are SparseAxisArray (Dict-backed), where `.data .= …` is undefined, so
 # copy per key instead.
 function _copy_dual_values!(dual::DenseAxisArray, constraint::DenseAxisArray)
-    # The dual and constraint containers can carry the same axis labels in a
-    # different order (e.g. the network nodal-balance dual is sized from
-    # `get_name.(devices)` while the constraint axis follows the PowerModels bus
-    # map). A positional `.data .= .data` copy would then misalign each label's
-    # value, so only take the fast broadcast path when the axes match exactly and
-    # otherwise copy by label.
-    if axes(dual) == axes(constraint)
-        dual.data .= jump_value.(constraint).data
-    else
-        for idx in Iterators.product(axes(dual)...)
-            dual[idx...] = jump_value(constraint[idx...])
-        end
-    end
+    # The dual container is built by reusing the constraint's axes (see
+    # `assign_dual_variable!` / `_assign_dual_from_existing!`), so a positional
+    # copy is correct only when the axes match. Mismatched axes would write each
+    # value onto the wrong label, so fail loudly instead.
+    IS.@assert_op axes(dual) == axes(constraint)
+    dual.data .= jump_value.(constraint).data
     return
 end
 

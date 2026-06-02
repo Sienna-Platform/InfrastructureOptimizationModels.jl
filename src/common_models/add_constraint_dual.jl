@@ -155,12 +155,15 @@ function assign_dual_variable!(
 } where {D <: IS.InfrastructureSystemsComponent}
     @assert !isempty(devices)
     time_steps = get_time_steps(container)
-    add_dual_container!(
-        container,
-        constraint_type,
-        D,
-        IS.get_name.(devices),
-        time_steps,
-    )
+    # Reuse the existing constraint container's axis so the dual axis matches the
+    # constraint exactly. The PowerModels translation builds the nodal-balance
+    # constraint in bus-map order, which differs from `IS.get_name.(devices)`
+    # (component order). Sizing the dual from the device list would leave each
+    # bus's dual written onto the wrong bus when `_copy_dual_values!` copies
+    # positionally in `process_duals` -- invisible while nodal prices are flat,
+    # wrong once congestion makes them differ.
+    key = ConstraintKey(constraint_type, D)
+    existing = get_constraint(container, key)
+    _assign_dual_from_existing!(container, key, existing, D, time_steps)
     return
 end
