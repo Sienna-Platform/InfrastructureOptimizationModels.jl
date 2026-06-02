@@ -57,6 +57,35 @@ maybe_throw_if_abstract(::Type{<:ConstraintType}, ::Type{U}) where {U} = nothing
 
 const CONTAINER_KEY_EMPTY_META = ""
 
+# A component's optimization-key identity excludes unit-system type parameters. PSY6
+# parameterizes cost-bearing components on a unit system (e.g.
+# `ReserveDemandCurve{ReserveUp, NaturalUnit}`); the trailing unit-system parameter is a
+# data-representation detail of the cost curve, not part of a variable/constraint's identity.
+# Stripping it here — the single point through which every container key is built — makes a key
+# constructed from a component instance (`typeof(service)`, which carries the unit) match one
+# constructed from the user-declared model type (`ReserveDemandCurve{ReserveUp}`, which does
+# not), so storage and every lookup agree no matter which form the caller passes. For the
+# common case of a type with no trailing unit-system parameter this returns `U` unchanged, and
+# being `@generated` it resolves to a compile-time constant (no runtime cost, type stable).
+@generated function canonical_component_type(
+    ::Type{U},
+) where {U <: InfrastructureSystemsType}
+    base = U isa UnionAll ? Base.unwrap_unionall(U) : U
+    base isa DataType || return :($U)
+    params = collect(base.parameters)
+    n = length(params)
+    while n > 0 && (
+        params[n] isa TypeVar ||
+        (params[n] isa Type && params[n] <: IS.AbstractUnitSystem)
+    )
+        n -= 1
+    end
+    n == length(params) && return :($U)
+    kept = params[1:n]
+    stripped = isempty(kept) ? base.name.wrapper : base.name.wrapper{kept...}
+    return :($stripped)
+end
+
 # see https://discourse.julialang.org/t/parametric-constructor-where-type-being-constructed-is-parameter/129866/3
 function (M::Type{S} where {S <: OptimizationContainerKey})(
     ::Type{T},
@@ -64,8 +93,9 @@ function (M::Type{S} where {S <: OptimizationContainerKey})(
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType}
     check_meta_chars(meta)
-    maybe_throw_if_abstract(T, U)
-    return M{T, U}(meta)
+    K = canonical_component_type(U)
+    maybe_throw_if_abstract(T, K)
+    return M{T, K}(meta)
 end
 
 function (M::Type{S} where {S <: OptimizationContainerKey})(
@@ -73,8 +103,9 @@ function (M::Type{S} where {S <: OptimizationContainerKey})(
     ::Type{U},
     meta::String,
 ) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType}
-    maybe_throw_if_abstract(T, U)
-    return M{T, U}(meta)
+    K = canonical_component_type(U)
+    maybe_throw_if_abstract(T, K)
+    return M{T, K}(meta)
 end
 
 function make_key(
@@ -87,38 +118,10 @@ function make_key(
     T <: OptimizationKeyType,
     U <: InfrastructureSystemsType,
 }
-    return S{T, U}(meta)
+    return S{T, canonical_component_type(U)}(meta)
 end
 
 ### Encoding keys ###
-
-# IS `strip_module_name` reads `T.parameters`, which only exists on `DataType`. PSY6
-# parameterized some component families on a unit-system type (e.g.
-# `ReserveDemandCurve{ReserveUp}` is now `ReserveDemandCurve{ReserveUp, U} where U`),
-# making the partially-applied type a `UnionAll` with no `.parameters` -> FieldError.
-# Handle that here by keeping the bound parameters (dropping the free `TypeVar`s) so the
-# encoded key stays unique per direction (ReserveUp vs ReserveDown).
-#
-# CAVEAT: this is a local workaround. The proper fix is upstream in IS
-# `strip_module_name(::Type{T})`, which should handle `T isa UnionAll` the same way it
-# already handles `T isa Union`. We can't make that change from here because IS is pulled
-# in as a pinned git-branch dependency, not an editable in-repo checkout. Once IS gains
-# UnionAll support, this helper can be dropped in favor of calling `strip_module_name(U)`
-# directly again.
-function _strip_module_name_for_key(U::Type)
-    U isa UnionAll || return strip_module_name(U)
-    base = Base.unwrap_unionall(U)
-    parts = String[]
-    for p in base.parameters
-        p isa TypeVar && continue
-        push!(parts, p isa Type ? string(nameof(p)) : string(p))
-    end
-    return if isempty(parts)
-        string(nameof(U))
-    else
-        string(nameof(U)) * "{" * join(parts, ", ") * "}"
-    end
-end
 
 @generated function encode_symbol(
     ::Type{T},
@@ -127,10 +130,7 @@ end
 ) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType}
     meta_str = :meta
     U_str =
-        replace(
-            replace(_strip_module_name_for_key(U), "{" => COMPONENT_NAME_DELIMITER),
-            "}" => "",
-        )
+        replace(replace(strip_module_name(U), "{" => COMPONENT_NAME_DELIMITER), "}" => "")
     T_str = strip_module_name(T)
 
     :(Symbol(
