@@ -27,12 +27,41 @@ error scaled by `Δ²`.
 function tolerance_depth end
 
 """
+    _check_tolerance_args(tolerance::Float64, deltas::Float64...)
+
+Validate the common arguments of every `tolerance_depth` helper. Throws an
+informative `ArgumentError` if `tolerance` or any domain length in `deltas` is
+not strictly positive, so callers get a clear message instead of a low-level
+`DomainError`/`InexactError` surfacing from `sqrt`/`log2`/`ceil`.
+"""
+function _check_tolerance_args(tolerance::Float64, deltas::Float64...)
+    tolerance > 0 ||
+        throw(ArgumentError("tolerance must be strictly positive, got $(tolerance)"))
+    for d in deltas
+        d > 0 || throw(
+            ArgumentError("domain length (max_delta) must be strictly positive, got $(d)"),
+        )
+    end
+    return nothing
+end
+
+"""
     _ceil_positive(x::Float64)::Int
 
 Smallest integer ≥ x, clamped to ≥ 1. Used by every `tolerance_depth` helper
 to convert a real-valued depth bound (e.g. `log₂(Δ²/τ)/2`) into a usable depth.
+Guards against non-finite `x` (which would otherwise throw an opaque
+`InexactError` from `ceil(Int, Inf)`).
 """
-_ceil_positive(x::Float64)::Int = max(1, ceil(Int, x))
+function _ceil_positive(x::Float64)::Int
+    isfinite(x) || throw(
+        ArgumentError(
+            "tolerance_depth produced a non-finite depth ($(x)); " *
+            "check that tolerance and max_delta are positive and finite",
+        ),
+    )
+    return max(1, ceil(Int, x))
+end
 
 """
     _normed_variable!(container, C, names, time_steps, x_var, bounds, meta)

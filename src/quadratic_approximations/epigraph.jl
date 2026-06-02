@@ -50,6 +50,7 @@ function tolerance_depth(
     tolerance::Float64,
     max_delta::Float64,
 )
+    _check_tolerance_args(tolerance, max_delta)
     return _ceil_positive((log2(max_delta^2 / tolerance) - 4) / 2)
 end
 
@@ -72,7 +73,7 @@ The maximum underestimation gap between the tangent envelope and x² is
 Δ²·2^{−2·depth−4} where Δ = x_max − x_min.
 
 # Arguments
-- `config::EpigraphQuadConfig`: configuration with `depth` field controlling the number of tangent-line breakpoints (2^depth + 1 tangent lines)
+- `config::EpigraphQuadConfig`: configuration with `depth` field `L` controlling the sawtooth-epigraph relaxation — `L + 1` sawtooth-encoded tangent cuts (`j = 0, …, L`) plus two boundary tangents, for `L + 3` tangent constraints total
 - `container::OptimizationContainer`: the optimization container
 - `::Type{C}`: component type
 - `names::Vector{String}`: component names

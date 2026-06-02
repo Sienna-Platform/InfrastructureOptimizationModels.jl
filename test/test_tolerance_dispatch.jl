@@ -92,6 +92,8 @@ function _eval_quadratic_overestimator(
         JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
         JuMP.set_silent(setup.jump_model)
         JuMP.optimize!(setup.jump_model)
+        status = JuMP.termination_status(setup.jump_model)
+        @assert status == JuMP.OPTIMAL "quadratic solve at x=$(x0) returned $(status)"
         push!(gaps, abs(x0^2 - JuMP.objective_value(setup.jump_model)))
     end
     return (max_gap = maximum(gaps), ratio = maximum(gaps) / tolerance)
@@ -140,6 +142,8 @@ function _eval_bilinear(
         JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
         JuMP.set_silent(setup.jump_model)
         JuMP.optimize!(setup.jump_model)
+        status = JuMP.termination_status(setup.jump_model)
+        @assert status == JuMP.OPTIMAL "bilinear solve at (x, y)=($(x0), $(y0)), sense=$(sense) returned $(status)"
         push!(gaps, abs(x0 * y0 - JuMP.objective_value(setup.jump_model)))
     end
     return (max_gap = maximum(gaps), ratio = maximum(gaps) / tolerance)

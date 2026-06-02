@@ -80,6 +80,7 @@ function tolerance_depth(
     tolerance::Float64,
     max_delta::Float64,
 )
+    _check_tolerance_args(tolerance, max_delta)
     return _ceil_positive((log2(max_delta^2 / tolerance) - 2) / 2)
 end
 
