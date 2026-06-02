@@ -23,11 +23,11 @@ jobs:
       - name: Run Performance Test Main
         run: |
           julia --project=main/test -e 'using Pkg; Pkg.develop(PackageSpec(path=joinpath(pwd(), "main"))); Pkg.instantiate()'
-          julia -t 4 --project=main/test main/test/performance/bilinear_delta_benchmark.jl | tee main_output.txt
+          julia -t 4 --project=main/test main/test/performance/bilinear_delta_local.jl | tee main_output.txt
       - name: Run performance Test Branch
         run: |
           julia --project=branch/test -e 'using Pkg; Pkg.develop(PackageSpec(path=joinpath(pwd(), "branch"))); Pkg.instantiate()'
-          julia -t 4 --project=branch/test branch/test/performance/bilinear_delta_benchmark.jl | tee branch_output.txt
+          julia -t 4 --project=branch/test branch/test/performance/bilinear_delta_local.jl | tee branch_output.txt
       - name: Read main results
         id: main_results
         run: |

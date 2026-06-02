@@ -1,73 +1,33 @@
 """
-Benchmark script for the bilinear delta model described in `bilinear_delta_model.tex`.
+Shared logic for the bilinear delta benchmark (see `bilinear_delta_model.tex`).
 
 Builds a lossy network OPF with delta (incremental) PWL costs and bilinear V·I power
-balance constraints. Compares bilinear approximation methods from
-InfrastructureOptimizationModels against an exact NLP reference (Ipopt).
+balance constraints, and compares bilinear approximation methods from
+InfrastructureOptimizationModels against an exact NLP reference.
 
 The lossy generator model is P = V·I − a·I² − b·I − c.
 
-Usage:
-    julia --project=test test/performance/bilinear_delta_benchmark.jl [options]
+This file is solver-agnostic: it defines the model, metrics, formatting, and the
+per-case runner, but does NOT pick an optimizer or define an entry point. The
+optimizer is passed into `run_single_case`. It is `include`d by the entry-point
+scripts:
 
-Options:
-    -N, --nodes INT          number of nodes (default 10, must be even)
-    -K, --cost INT           number of PWL cost segments per generator (default 3)
-    -S, --seed INT           random seed for network generation (default 0)
-    -R, --refinements INT... refinement levels (default 4 6 8)
-    -B, --build-only         don't solve, only build the model
-
-On Kestrel (SLURM), MIP solves run in parallel across separate Julia processes
-(up to KESTREL_MAX_WORKERS concurrent). Each worker writes JSON results that the
-coordinator aggregates into the summary table.
+  - `bilinear_delta_local.jl`   — sequential runner (local + CI/CD)
+  - `bilinear_delta_kestrel.jl` — parallel runner + worker (Kestrel/SLURM)
 """
 
 using InfrastructureOptimizationModels
-using ArgParse
 using JuMP
 using Dates
 using Random
 using Printf
-using JSON3
-
-ENVIRONMENT = if get(ENV, "CI", "") == "true" || haskey(ENV, "GITHUB_ACTIONS")
-    :github
-elseif get(ENV, "HOSTNAME", "") == "kl1" || haskey(ENV, "SLURM_NODEID")
-    :kestrel
-else
-    :local
-end
-
-# We use Pkg.add here because precompilation will fail on CI/CD if Xpress is
-# in the manifest.
-LP_OPT = if ENVIRONMENT == :github
-    @eval using HiGHS
-    HiGHS.Optimizer
-elseif ENVIRONMENT == :kestrel
-    @eval import Pkg
-    Pkg.add("Xpress")
-    @eval using Xpress
-    Xpress.Optimizer
-else
-    @eval import Pkg
-    Pkg.add("Xpress")
-    Pkg.add("Xpress_jll")
-    @eval import Xpress_jll
-    ENV["XPRESS_JL_LIBRARY"] = Xpress_jll.libxprs
-    @eval using Xpress
-    Xpress.Optimizer
-end
-
-using Ipopt
-using UnoSolver
 
 const IOM = InfrastructureOptimizationModels
 const IS = IOM.IS
 
 const MIP_TIME_LIMIT_SEC = 600.0
-const KESTREL_XPRESS_THREADS = 20
-const KESTREL_MAX_WORKERS = 5
 const SLURM_JOB_ID = get(ENV, "SLURM_JOB_ID", "")
+const LOG_BANNER_WIDTH = 80
 
 include("../mocks/mock_system.jl")
 include("../mocks/mock_components.jl")
@@ -226,6 +186,14 @@ end
 
 # ─── Dispatched gen bilinear construction ─────────────────────────────────────
 
+"""Per-generator V and I bound vectors, shared by all `build_gen_bilinear` methods."""
+function gen_bounds(net::MockNetworkProblem)
+    ng = length(net.gen_nodes)
+    V_bounds = fill((min = V_MIN, max = V_MAX), ng)
+    I_bounds = fill((min = I_GEN_MIN, max = I_GEN_MAX), ng)
+    return V_bounds, I_bounds
+end
+
 """
 Separable methods: precompute V² and I², call wrapper's precomputed overload.
 I² is reused in the loss constraint.
@@ -234,9 +202,7 @@ function build_gen_bilinear(
     container, net::MockNetworkProblem, V_container, I_container, time_steps,
     bilinear_config::Union{IOM.Bin2Config, IOM.HybSConfig}, quad_config,
 )
-    ng = length(net.gen_nodes)
-    V_bounds = fill((min = V_MIN, max = V_MAX), ng)
-    I_bounds = fill((min = I_GEN_MIN, max = I_GEN_MAX), ng)
+    V_bounds, I_bounds = gen_bounds(net)
     V_sq = IOM._add_quadratic_approx!(
         quad_config,
         container,
@@ -282,9 +248,7 @@ function build_gen_bilinear(
     container, net::MockNetworkProblem, V_container, I_container, time_steps,
     bilinear_config::IOM.DNMDTBilinearConfig, quad_config::IOM.DNMDTQuadConfig,
 )
-    ng = length(net.gen_nodes)
-    V_bounds = fill((min = V_MIN, max = V_MAX), ng)
-    I_bounds = fill((min = I_GEN_MIN, max = I_GEN_MAX), ng)
+    V_bounds, I_bounds = gen_bounds(net)
     V_disc = IOM._discretize!(
         container, MockNetworkNode, net.gen_nodes, time_steps,
         V_container, V_bounds, quad_config.depth, "gen_V",
@@ -311,9 +275,7 @@ function build_gen_bilinear(
     container, net::MockNetworkProblem, V_container, I_container, time_steps,
     bilinear_config::IOM.NoBilinearApproxConfig, quad_config::IOM.NoQuadApproxConfig,
 )
-    ng = length(net.gen_nodes)
-    V_bounds = fill((min = V_MIN, max = V_MAX), ng)
-    I_bounds = fill((min = I_GEN_MIN, max = I_GEN_MAX), ng)
+    V_bounds, I_bounds = gen_bounds(net)
     z_gen = IOM._add_bilinear_approx!(
         bilinear_config,
         container,
@@ -566,7 +528,104 @@ function model_size(jump_model)
     return (; variables = nv, constraints = nc, binaries = nb)
 end
 
-# ─── Benchmark output helpers ─────────────────────────────────────────────────
+# ─── Result record ────────────────────────────────────────────────────────────
+
+"""
+    BenchmarkResult
+
+All metrics for one (method, refinement) case. Single source of truth for the
+result schema — serialization (`to_dict`/`from_dict`) and the summary table
+(`COLUMNS`) both derive from these fields, so adding a metric only touches here.
+"""
+Base.@kwdef struct BenchmarkResult
+    label::String
+    refinement::Int
+    is_exact::Bool = false
+    solved::Bool = false
+    status = nothing            # JuMP termination status, or String after a round-trip
+    obj::Float64 = NaN
+    nlp_obj::Float64 = NaN
+    gap::Float64 = NaN
+    mip_gap::Float64 = NaN
+    lower_bound::Float64 = NaN
+    mn_bi::Float64 = NaN
+    mx_bi::Float64 = NaN
+    mn_q::Float64 = NaN
+    mx_q::Float64 = NaN
+    variables::Int = 0
+    constraints::Int = 0
+    binaries::Int = 0
+    build_t::Float64 = 0.0
+    solve_t::Float64 = 0.0
+end
+
+"""Serialize to a JSON-writable Dict (status → String, NaN/Inf → nothing)."""
+function to_dict(r::BenchmarkResult)
+    d = Dict{String, Any}()
+    for f in fieldnames(BenchmarkResult)
+        v = getfield(r, f)
+        if f === :status
+            v = string(v)
+        elseif v isa AbstractFloat && !isfinite(v)
+            v = nothing
+        end
+        d[String(f)] = v
+    end
+    return d
+end
+
+"""Reconstruct a `BenchmarkResult` from a Dict (nothing → NaN, per field type)."""
+function from_dict(d::AbstractDict)
+    kw = Dict{Symbol, Any}()
+    for f in fieldnames(BenchmarkResult)
+        T = fieldtype(BenchmarkResult, f)
+        v = d[String(f)]
+        if T === Float64
+            v = v === nothing ? NaN : Float64(v)
+        elseif T === Int
+            v = Int(v)
+        end
+        kw[f] = v
+    end
+    return BenchmarkResult(; kw...)
+end
+
+# ─── Result formatting ────────────────────────────────────────────────────────
+
+"""One column of the summary table: header, field width, alignment, and a cell renderer."""
+struct Col
+    header::String
+    width::Int
+    align::Symbol           # :left or :right
+    render::Function        # (r::BenchmarkResult) -> String
+end
+
+_fmt(fstr, x) = Printf.format(Printf.Format(fstr), x)
+_pad(s, w, align) = align === :left ? rpad(s, w) : lpad(s, w)
+
+const COLUMNS = Col[
+    Col("Method", 12, :left, r -> r.label),
+    Col("R", 4, :right, r -> r.is_exact ? "-" : string(r.refinement)),
+    Col("Vars", 6, :right, r -> string(r.variables)),
+    Col("Constrs", 7, :right, r -> string(r.constraints)),
+    Col("Bins", 6, :right, r -> string(r.binaries)),
+    Col("Objective", 12, :right, r -> r.solved ? _fmt("%.6f", r.obj) : string(r.status)),
+    Col("Gap(%)", 8, :right, r -> (r.solved && !isnan(r.gap)) ? _fmt("%.4f", r.gap) : "-"),
+    Col("MIPGap(%)", 9, :right,
+        r -> (r.solved && !r.is_exact && !isnan(r.mip_gap)) ? _fmt("%.4f", r.mip_gap) : "-"),
+    Col("LowerBnd", 12, :right,
+        r -> (r.solved && !r.is_exact && !isnan(r.lower_bound)) ?
+             _fmt("%.6f", r.lower_bound) : "-"),
+    Col("rmse δbi", 9, :right, r -> r.solved ? _fmt("%.2e", r.mn_bi) : "-"),
+    Col("max δbi", 9, :right, r -> r.solved ? _fmt("%.2e", r.mx_bi) : "-"),
+    Col("rmse δq", 9, :right, r -> r.solved ? _fmt("%.2e", r.mn_q) : "-"),
+    Col("max δq", 9, :right, r -> r.solved ? _fmt("%.2e", r.mx_q) : "-"),
+    Col("build_t", 8, :right, r -> _fmt("%.4f", r.build_t)),
+    Col("solve_t", 8, :right, r -> _fmt("%.4f", r.solve_t)),
+]
+
+# Table rule width: column widths plus the single spaces between them.
+const RULE_WIDTH = sum(c.width for c in COLUMNS) + (length(COLUMNS) - 1)
 
 function print_network_info(net::MockNetworkProblem)
     println(
@@ -580,22 +639,58 @@ function print_network_info(net::MockNetworkProblem)
     end
 end
 
+function print_table_header()
+    println("="^RULE_WIDTH)
+    println("Bilinear Approximation Benchmarks")
+    println("  Refinement = depth for all methods")
+    println("="^RULE_WIDTH)
+    println(join((_pad(c.header, c.width, c.align) for c in COLUMNS), " "))
+    println("-"^RULE_WIDTH)
+    flush(stdout)
+end
+
+function print_result_row(r::BenchmarkResult)
+    println(join((_pad(c.render(r), c.width, c.align) for c in COLUMNS), " "))
+    flush(stdout)
+end
+
+# ─── Logging helpers ──────────────────────────────────────────────────────────
+
+"""SLURM job id when running under SLURM, otherwise a timestamp — used in log filenames."""
+function log_tag()
+    return isempty(SLURM_JOB_ID) ? Dates.format(Dates.now(), "yyyy-mm-ddTHH-MM-SS") :
+           SLURM_JOB_ID
+end
+
 """Return the path for the solver log file, creating the logs directory if needed."""
 function solver_log_path()
     log_dir = joinpath(@__DIR__, "logs")
     mkpath(log_dir)
-    tag = if isempty(SLURM_JOB_ID)
-        Dates.format(Dates.now(), "yyyy-mm-ddTHH-MM-SS")
-    else
-        SLURM_JOB_ID
-    end
-    return joinpath(log_dir, "solver_$(tag).log")
+    return joinpath(log_dir, "solver_$(log_tag()).log")
+end
+
+"""
+Shared runner preamble: generate the network, print its info, open the solver log,
+and register cleanup. Returns `(net, logfile)`.
+"""
+function setup_run(; N::Int, K::Int, seed::Int)
+    net = generate_network(; N, K, seed)
+    print_network_info(net)
+    println()
+
+    log_path = solver_log_path()
+    println("Solver logs: $log_path")
+    println()
+
+    logfile = open(log_path, "a")
+    atexit(() -> (flush(stdout); isopen(logfile) && (flush(logfile); close(logfile))))
+    return net, logfile
 end
 
 # ─── Single case runner ───────────────────────────────────────────────────────
 
 """
-    run_single_case(; ...) -> NamedTuple
+    run_single_case(; ...) -> BenchmarkResult
 
 Build and solve a single (method, refinement) benchmark case. Returns all metrics
 needed for the summary table row. Uses `JuMP.optimize!` directly.
@@ -610,38 +705,32 @@ function run_single_case(;
     is_exact::Bool,
     nlp_obj::Float64 = NaN,
     logfile::IO = devnull,
-    build_only::Bool = false,
     time_limit::Float64 = NaN,
     threads::Int = 0,
 )
     build_t = @elapsed result =
         build_mip_model(optimizer, net, bilinear_config, quad_config, refinement)
 
-    if build_only
-        solve_t = 0.0
-        status = nothing
-    else
-        jump_model = result.jump_model
-        if !isnan(time_limit) && !is_exact
-            JuMP.set_time_limit_sec(jump_model, time_limit)
-        end
-        if threads > 0 && !is_exact
-            JuMP.set_attribute(jump_model, JuMP.MOI.NumberOfThreads(), threads)
-        end
-
-        println(logfile, "\n", "="^80)
-        println(logfile, "$label  R=$refinement  $(Dates.now())")
-        println(logfile, "="^80)
-        flush(logfile)
-        solve_t = @elapsed redirect_stdout(logfile) do
-            # We use this directly because we need to cut the model off after 
-            # a time limit. If we use the optimization container, it will
-            # attempt to re-solve.
-            JuMP.optimize!(jump_model)
-        end
-        flush(logfile)
-        status = JuMP.termination_status(jump_model)
+    jump_model = result.jump_model
+    if !isnan(time_limit) && !is_exact
+        JuMP.set_time_limit_sec(jump_model, time_limit)
     end
+    if threads > 0 && !is_exact
+        JuMP.set_attribute(jump_model, JuMP.MOI.NumberOfThreads(), threads)
+    end
+
+    println(logfile, "\n", "="^LOG_BANNER_WIDTH)
+    println(logfile, "$label  R=$refinement  $(Dates.now())")
+    println(logfile, "="^LOG_BANNER_WIDTH)
+    flush(logfile)
+    solve_t = @elapsed redirect_stdout(logfile) do
+        # We use this directly because we need to cut the model off after
+        # a time limit. If we use the optimization container, it will
+        # attempt to re-solve.
+        JuMP.optimize!(jump_model)
+    end
+    flush(logfile)
+    status = JuMP.termination_status(jump_model)
 
     sz = model_size(result.jump_model)
 
@@ -677,7 +766,7 @@ function run_single_case(;
         end
     end
 
-    return (;
+    return BenchmarkResult(;
         label,
         refinement,
         is_exact,
@@ -697,422 +786,7 @@ function run_single_case(;
     )
 end
 
-# ─── Result formatting ────────────────────────────────────────────────────────
-
-function print_table_header()
-    println("="^145)
-    println("Bilinear Approximation Benchmarks")
-    println("  Refinement = depth for all methods")
-    println("="^145)
-    @printf("%-12s %4s %6s %7s %6s %12s %8s %9s %12s %9s %9s %9s %9s %8s %8s\n",
-        "Method", "R", "Vars", "Constrs", "Bins", "Objective",
-        "Gap(%)", "MIPGap(%)", "LowerBnd",
-        "rmse δbi", "max δbi", "rmse δq", "max δq", "build_t", "solve_t")
-    println("-"^145)
-    flush(stdout)
-end
-
-function print_result_row(r)
-    if r.solved
-        gap_str = isnan(r.gap) ? "    -" : @sprintf("%8.4f", r.gap)
-        ref_str = r.is_exact ? "   -" : @sprintf("%4d", r.refinement)
-        mip_gap_str =
-            (r.is_exact || isnan(r.mip_gap)) ? "        -" : @sprintf("%9.4f", r.mip_gap)
-        lb_str = if (r.is_exact || isnan(r.lower_bound))
-            "           -"
-        else
-            @sprintf("%12.6f", r.lower_bound)
-        end
-        @printf(
-            "%-12s %2s %6d %7d %6d %12.6f %6s %9s %12s %9.2e %9.2e %9.2e %9.2e %8.4f %8.4f\n",
-            r.label, ref_str,
-            r.variables, r.constraints, r.binaries,
-            r.obj, gap_str, mip_gap_str, lb_str,
-            r.mn_bi, r.mx_bi, r.mn_q, r.mx_q, r.build_t, r.solve_t)
-    else
-        ref_str = r.is_exact ? "  -" : @sprintf("%4d", r.refinement)
-        @printf("%-12s %2s %6d %7d %6d %12s %6s %9s %12s %9s %9s %9s %9s %8.4f %8.4f\n",
-            r.label, ref_str,
-            r.variables, r.constraints, r.binaries,
-            string(r.status), "-", "-", "-", "-", "-", "-", "-", r.build_t, r.solve_t)
-    end
-    flush(stdout)
-end
-
-"""Serialize a result NamedTuple to a JSON-writable Dict (NaN/Inf → nothing)."""
-function result_to_dict(r)
-    nan_safe(x) = (x isa AbstractFloat && !isfinite(x)) ? nothing : x
-    return Dict{String, Any}(
-        "label" => r.label,
-        "refinement" => r.refinement,
-        "is_exact" => r.is_exact,
-        "solved" => r.solved,
-        "status" => string(r.status),
-        "obj" => nan_safe(r.obj),
-        "nlp_obj" => nan_safe(r.nlp_obj),
-        "gap" => nan_safe(r.gap),
-        "mip_gap" => nan_safe(r.mip_gap),
-        "lower_bound" => nan_safe(r.lower_bound),
-        "mn_bi" => nan_safe(r.mn_bi),
-        "mx_bi" => nan_safe(r.mx_bi),
-        "mn_q" => nan_safe(r.mn_q),
-        "mx_q" => nan_safe(r.mx_q),
-        "variables" => r.variables,
-        "constraints" => r.constraints,
-        "binaries" => r.binaries,
-        "build_t" => r.build_t,
-        "solve_t" => r.solve_t,
-    )
-end
-
-"""Deserialize a Dict from JSON back to a NamedTuple (nothing → NaN)."""
-function dict_to_result(d)
-    as_float(x) = x === nothing ? NaN : Float64(x)
-    return (;
-        label = d["label"],
-        refinement = Int(d["refinement"]),
-        is_exact = d["is_exact"],
-        solved = d["solved"],
-        status = d["status"],
-        obj = as_float(d["obj"]),
-        nlp_obj = as_float(d["nlp_obj"]),
-        gap = as_float(d["gap"]),
-        mip_gap = as_float(d["mip_gap"]),
-        lower_bound = as_float(d["lower_bound"]),
-        mn_bi = as_float(d["mn_bi"]),
-        mx_bi = as_float(d["mx_bi"]),
-        mn_q = as_float(d["mn_q"]),
-        mx_q = as_float(d["mx_q"]),
-        variables = Int(d["variables"]),
-        constraints = Int(d["constraints"]),
-        binaries = Int(d["binaries"]),
-        build_t = Float64(d["build_t"]),
-        solve_t = Float64(d["solve_t"]),
-    )
-end
-
-# ─── Sequential benchmark (all environments) ─────────────────────────────────
-
-"""
-    run_benchmark(; N, K, seed, refinements, build_only)
-
-Run the full benchmark sequentially. MIP solves get a 1-hour time limit.
-NLP references (Ipopt/Uno) have no time limit.
-"""
-function run_benchmark(;
-    N::Int = 10,
-    K::Int = 3,
-    seed::Int = 42,
-    refinements::Vector{Int} = [4, 6, 8],
-    build_only::Bool = false,
-)
-    net = generate_network(; N, K, seed)
-    print_network_info(net)
-    println()
-
-    log_path = solver_log_path()
-    println("Solver logs: $log_path")
-    println()
-
-    logfile = open(log_path, "a")
-    atexit(() -> (flush(stdout); isopen(logfile) && (flush(logfile); close(logfile))))
-
-    threads = ENVIRONMENT == :kestrel ? KESTREL_XPRESS_THREADS : 0
-
-    all_methods = [
-        ("NLP (Ipopt)", exact),
-        ("NLP (Uno)", exact),
-        bilinear_methods...,
-    ]
-
-    print_table_header()
-
-    nlp_obj = NaN
-
-    try
-        for (label, method) in all_methods
-            is_exact = method === exact
-            refs = is_exact ? [0] : refinements
-
-            for ref in refs
-                bilin_config, quad_config = method(ref)
-                opt = if is_exact && contains(label, "Ipopt")
-                    Ipopt.Optimizer
-                elseif is_exact && contains(label, "Uno")
-                    optimizer_with_attributes(
-                        UnoSolver.Optimizer,
-                        "preset" => "filtersqp",
-                    )
-                else
-                    LP_OPT
-                end
-
-                r = run_single_case(;
-                    optimizer = opt,
-                    net,
-                    bilinear_config = bilin_config,
-                    quad_config,
-                    refinement = ref,
-                    label,
-                    is_exact,
-                    nlp_obj,
-                    logfile,
-                    build_only,
-                    time_limit = MIP_TIME_LIMIT_SEC,
-                    threads,
-                )
-
-                if r.solved && is_exact
-                    nlp_obj = r.obj
-                end
-
-                print_result_row(r)
-            end
-            println()
-        end
-        println("="^120)
-    finally
-        isopen(logfile) && (flush(logfile); close(logfile))
-        flush(stdout)
-    end
-end
-
-# ─── Parallel benchmark (Kestrel only) ───────────────────────────────────────
-
-"""Return the results directory path, creating it if needed."""
-function results_dir()
-    dir = joinpath(@__DIR__, "results")
-    mkpath(dir)
-    return dir
-end
-
-"""
-    run_benchmark_parallel(; N, K, seed, refinements)
-
-Run the benchmark with parallel MIP solves on Kestrel. NLP references run
-sequentially first to establish nlp_obj, then MIP method×refinement
-combinations are farmed out to separate Julia worker processes (capped at
-KESTREL_MAX_WORKERS concurrent).
-"""
-function run_benchmark_parallel(;
-    N::Int = 10,
-    K::Int = 3,
-    seed::Int = 42,
-    refinements::Vector{Int} = [4, 6, 8],
-)
-    net = generate_network(; N, K, seed)
-    print_network_info(net)
-    println()
-
-    log_path = solver_log_path()
-    println("Solver logs: $log_path")
-    println()
-
-    logfile = open(log_path, "a")
-    atexit(() -> (flush(stdout); isopen(logfile) && (flush(logfile); close(logfile))))
-
-    mip_methods = bilinear_methods
-
-    print_table_header()
-
-    # ── Phase 1: NLP references (sequential, no time limit) ──
-    nlp_obj = NaN
-    nlp_results = []
-    for (label, opt_fn) in [
-        ("NLP (Ipopt)", Ipopt.Optimizer),
-        ("NLP (Uno)", () -> UnoSolver.Optimizer(; preset = "filtersqp")),
-    ]
-        r = run_single_case(;
-            optimizer = opt_fn,
-            net,
-            bilinear_config = IOM.NoBilinearApproxConfig(),
-            quad_config = IOM.NoQuadApproxConfig(),
-            refinement = 0,
-            label,
-            is_exact = true,
-            nlp_obj,
-            logfile,
-            build_only = false,
-            time_limit = NaN,
-            threads = 0,
-        )
-        if r.solved
-            nlp_obj = r.obj
-        end
-        print_result_row(r)
-        push!(nlp_results, r)
-        println()
-    end
-    flush(logfile)
-
-    # ── Phase 2: MIP methods in parallel via worker processes ──
-    res_dir = results_dir()
-
-    # Build the list of (method_index, refinement) jobs
-    jobs = Tuple{Int, Int}[]
-    for (mi, _) in enumerate(mip_methods)
-        for ref in refinements
-            push!(jobs, (mi, ref))
-        end
-    end
-
-    println(
-        "Launching $(length(jobs)) MIP workers (max $KESTREL_MAX_WORKERS concurrent)...",
-    )
-    flush(stdout)
-
-    script_path = @__FILE__
-    project_dir = joinpath(@__DIR__, "..", "..")
-    project_arg = joinpath(project_dir, "test")
-
-    # Use a semaphore to cap concurrency
-    sem = Base.Semaphore(KESTREL_MAX_WORKERS)
-    tasks = Task[]
-
-    for (mi, ref) in jobs
-        label = mip_methods[mi][1]
-        outfile =
-            joinpath(res_dir, "$(SLURM_JOB_ID)_$(replace(label, " " => "_"))_R$(ref).json")
-        cmd = Cmd(`julia --project=$project_arg $script_path
-            --worker
-            --method-index $mi
-            --refinement-single $ref
-            --nlp-obj $nlp_obj
-            --output-file $outfile
-            --nodes $N
-            --cost $K
-            --seed $seed`)
-
-        t = @task begin
-            Base.acquire(sem)
-            try
-                proc = Base.run(pipeline(cmd; stdout = logfile, stderr = stderr); wait = false)
-                wait(proc)
-                if !success(proc)
-                    @warn "Worker $label R=$ref exited with non-zero status"
-                end
-            catch e
-                @warn "Worker $label R=$ref failed" exception = (e, catch_backtrace())
-            finally
-                Base.release(sem)
-            end
-        end
-        schedule(t)
-        push!(tasks, t)
-    end
-
-    # Wait for all workers
-    for t in tasks
-        wait(t)
-    end
-
-    isopen(logfile) && (flush(logfile); close(logfile))
-
-    # ── Phase 3: Aggregate results ──
-    mip_results = []
-    for (mi, ref) in jobs
-        label = mip_methods[mi][1]
-        outfile =
-            joinpath(res_dir, "$(SLURM_JOB_ID)_$(replace(label, " " => "_"))_R$(ref).json")
-        if isfile(outfile)
-            d = open(outfile) do io
-                JSON3.read(io, Dict{String, Any})
-            end
-            push!(mip_results, dict_to_result(d))
-        else
-            @warn "Missing results for $label R=$ref"
-            push!(
-                mip_results,
-                (;
-                    label,
-                    refinement = ref,
-                    is_exact = false,
-                    solved = false,
-                    status = "WORKER_FAILED",
-                    obj = NaN, nlp_obj, gap = NaN,
-                    mip_gap = NaN, lower_bound = NaN,
-                    mn_bi = NaN, mx_bi = NaN, mn_q = NaN, mx_q = NaN,
-                    variables = 0, constraints = 0, binaries = 0,
-                    build_t = 0.0, solve_t = 0.0,
-                ),
-            )
-        end
-    end
-
-    # Print MIP results grouped by method
-    for (mi, (label, _)) in enumerate(mip_methods)
-        for r in mip_results
-            if r.label == label
-                print_result_row(r)
-            end
-        end
-        println()
-    end
-    println("="^120)
-    flush(stdout)
-end
-
-# ─── Worker entry point ──────────────────────────────────────────────────────
-
-"""
-Run a single MIP benchmark case as a worker process and write JSON results.
-Called when the script is invoked with --worker.
-"""
-function run_worker(parsed)
-    mi = parsed["method-index"]
-    ref = parsed["refinement-single"]
-    nlp_obj = parsed["nlp-obj"]
-    outfile = parsed["output-file"]
-    N = parsed["nodes"]
-    K = parsed["cost"]
-    seed = parsed["seed"]
-
-    net = generate_network(; N, K, seed)
-
-    mip_methods_list = bilinear_methods
-    label, method = mip_methods_list[mi]
-    bilin_config, quad_config = method(ref)
-
-    log_dir = joinpath(@__DIR__, "logs")
-    mkpath(log_dir)
-    tag = if isempty(SLURM_JOB_ID)
-        Dates.format(Dates.now(), "yyyy-mm-ddTHH-MM-SS")
-    else
-        SLURM_JOB_ID
-    end
-    safe_label = replace(label, " " => "_")
-    worker_log_path = joinpath(log_dir, "solver_$(tag)_$(safe_label)_R$(ref).log")
-    logfile = open(worker_log_path, "a")
-
-    try
-        r = run_single_case(;
-            optimizer = LP_OPT,
-            net,
-            bilinear_config = bilin_config,
-            quad_config,
-            refinement = ref,
-            label,
-            is_exact = false,
-            nlp_obj,
-            logfile,
-            build_only = false,
-            time_limit = MIP_TIME_LIMIT_SEC,
-            threads = KESTREL_XPRESS_THREADS,
-        )
-
-        mkpath(dirname(outfile))
-        open(outfile, "w") do io
-            JSON3.write(io, result_to_dict(r))
-        end
-
-        @info "Worker done: $label R=$ref status=$(r.status) obj=$(r.obj) log=$worker_log_path"
-    finally
-        flush(logfile)
-        close(logfile)
-    end
-end
-
-# ─── Entry point ──────────────────────────────────────────────────────────────
+# ─── Method configurations ────────────────────────────────────────────────────
 
 epi_C = 1.5
 
@@ -1148,86 +822,3 @@ bilinear_methods = (
     ("HybS+Saw", HybS_Saw),
     ("DNMDT", DNMDT_DNMDT),
 )
-
-function parse_commandline()
-    s = ArgParseSettings()
-    @add_arg_table! s begin
-        "--nodes", "-N"
-        arg_type = Int
-        default = 10
-        help = "number of nodes (must be even)"
-        "--cost", "-K"
-        arg_type = Int
-        default = 3
-        help = "number of PWL cost segments per generator"
-        "--seed", "-S"
-        arg_type = Int
-        default = 42
-        help = "random seed for network generation"
-        "--build-only", "-B"
-        action = :store_true
-        help = "don't solve, only build the model"
-        "--refinements", "-R"
-        arg_type = Int
-        nargs = '+'
-        default = [4, 6, 8]
-        help = "refinement levels (list of integers)"
-        "--worker"
-        action = :store_true
-        help = "run as a parallel worker process (Kestrel)"
-        "--method-index"
-        arg_type = Int
-        default = 0
-        help = "1-based index into bilinear_methods (worker mode)"
-        "--refinement-single"
-        arg_type = Int
-        default = 0
-        help = "single refinement level (worker mode)"
-        "--nlp-obj"
-        arg_type = Float64
-        default = NaN
-        help = "NLP reference objective for gap calculation (worker mode)"
-        "--output-file"
-        arg_type = String
-        default = ""
-        help = "path to write JSON results (worker mode)"
-    end
-    return parse_args(s)
-end
-
-if abspath(PROGRAM_FILE) == @__FILE__
-    try
-        parsed = parse_commandline()
-
-        if parsed["worker"]
-            run_worker(parsed)
-        else
-            N = parsed["nodes"]
-            K = parsed["cost"]
-            seed = parsed["seed"]
-            build_only = parsed["build-only"]
-            refinements = parsed["refinements"]
-
-            if ENVIRONMENT == :kestrel && !build_only
-                run_benchmark_parallel(; N, K, seed, refinements)
-            else
-                # Run small network so second run is faster.
-                redirect_stdout(devnull) do
-                    run_benchmark(;
-                        N = 2,
-                        K = 1,
-                        seed = 0,
-                        build_only = false,
-                        refinements = [1],
-                    )
-                end
-                run_benchmark(; N, K, seed, build_only, refinements)
-            end
-        end
-    catch e
-        @error "Benchmark failed" exception = (e, catch_backtrace())
-    finally
-        flush(stdout)
-        flush(stderr)
-    end
-end
