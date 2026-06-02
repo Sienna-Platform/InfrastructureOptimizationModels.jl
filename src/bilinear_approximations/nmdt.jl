@@ -10,9 +10,36 @@ Config for double-NMDT bilinear approximation (discretizes both x and y).
 
 # Fields
 - `depth::Int`: number of binary discretization levels L for both x and y
+
+The worst-case relaxation gap is `Δx·Δy·2^{-2L-2}`. See
+`tolerance_depth(::Type{DNMDTBilinearConfig}; …)` to derive `depth` from a target
+tolerance.
 """
 struct DNMDTBilinearConfig <: BilinearApproxConfig
     depth::Int
+
+    DNMDTBilinearConfig(; depth::Int) = new(depth)
+end
+
+"""
+    tolerance_depth(::Type{DNMDTBilinearConfig}; tolerance, max_delta_x, max_delta_y)::Int
+
+Smallest DNMDT bilinear depth `L` whose worst-case relaxation gap on
+`[ax, ax+Δx] × [ay, ay+Δy]` falls within `tolerance`. Inverts
+`Δx·Δy·2^{-2L-2} ≤ τ`:
+```
+L = ⌈(log₂(Δx·Δy/τ) − 2) / 2⌉
+```
+clamped to `L ≥ 1`.
+"""
+function tolerance_depth(
+    ::Type{DNMDTBilinearConfig};
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+)
+    _check_tolerance_args(tolerance, max_delta_x, max_delta_y)
+    return _ceil_positive((log2(max_delta_x * max_delta_y / tolerance) - 2) / 2)
 end
 
 """
@@ -20,9 +47,36 @@ Config for single-NMDT bilinear approximation (discretizes x only).
 
 # Fields
 - `depth::Int`: number of binary discretization levels L for x
+
+The worst-case relaxation gap is `Δx·Δy·2^{-L-2}`. See
+`tolerance_depth(::Type{NMDTBilinearConfig}; …)` to derive `depth` from a target
+tolerance.
 """
 struct NMDTBilinearConfig <: BilinearApproxConfig
     depth::Int
+
+    NMDTBilinearConfig(; depth::Int) = new(depth)
+end
+
+"""
+    tolerance_depth(::Type{NMDTBilinearConfig}; tolerance, max_delta_x, max_delta_y)::Int
+
+Smallest NMDT bilinear depth `L` whose worst-case relaxation gap on
+`[ax, ax+Δx] × [ay, ay+Δy]` falls within `tolerance`. Inverts
+`Δx·Δy·2^{-L-2} ≤ τ`:
+```
+L = ⌈log₂(Δx·Δy/τ) − 2⌉
+```
+clamped to `L ≥ 1`.
+"""
+function tolerance_depth(
+    ::Type{NMDTBilinearConfig};
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+)
+    _check_tolerance_args(tolerance, max_delta_x, max_delta_y)
+    return _ceil_positive(log2(max_delta_x * max_delta_y / tolerance) - 2)
 end
 
 # --- DNMDT bilinear approximation ---

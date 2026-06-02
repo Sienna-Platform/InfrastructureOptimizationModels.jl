@@ -22,13 +22,88 @@ Config for sawtooth MIP quadratic approximation.
 
 # Fields
 - `depth::Int`: recursion depth L; uses L binary variables for 2^L + 1 breakpoints
-- `epigraph_depth::Int`: LP tightening depth via epigraph Q^{L1} lower bound; 0 to disable (default 0)
+- `epigraph_depth::Int`: depth of an additional epigraph Q^{L1} lower bound (0 disables, default 0)
+
+## Effect of `epigraph_depth` on the worst-case error
+
+`epigraph_depth = 0`: the formulation is purely deterministic — `result_expr =
+sawtooth(x)` is pinned by the binary structure, so `|z − x²| ≤ Δ²·2^{-2L-2}`
+where Δ = max − min.
+
+`epigraph_depth = L_e > 0`: a free continuous variable `z` is introduced with
+`z ≤ sawtooth(x)` and `z ≥ epigraph(x)`, and `result_expr = z`. This is a
+*structural* change, not just LP-tightening: the MIP-feasible set of
+`result_expr` values grows from a single point to the interval
+`[epigraph(x), sawtooth(x)]`. The worst-case error over that interval is
+```
+|z − x²| ≤ max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-4})
+```
+- `L_e ≥ L − 1`: sawtooth dominates, worst-case = `Δ²·2^{-2L-2}`.
+- `L_e < L − 1`: epigraph dominates, worst-case = `Δ²·2^{-2L_e-4}`.
+
+Contrast with `pwmcc_segments` on the SOS2 variants, which adds genuine LP cuts
+and never changes the MIP-feasible set.
+
+See `tolerance_depth(::Type{SawtoothQuadConfig}; …)` to derive `depth` from a
+target tolerance, and `tolerance_epigraph_depth(::Type{SawtoothQuadConfig}; …)`
+for the matching `epigraph_depth`.
 """
 struct SawtoothQuadConfig <: QuadraticApproxConfig
     depth::Int
     epigraph_depth::Int
+
+    SawtoothQuadConfig(; depth::Int, epigraph_depth::Int = 0) =
+        new(depth, epigraph_depth)
 end
-SawtoothQuadConfig(depth::Int) = SawtoothQuadConfig(depth, 0)
+
+"""
+    tolerance_depth(::Type{SawtoothQuadConfig}; tolerance, max_delta)::Int
+
+Smallest sawtooth depth `L` whose worst-case overestimation gap on `[a, a+Δ]`
+falls within `tolerance`. Inverts the closed-form bound `Δ²·2^{-2L-2} ≤ τ`:
+```
+L = ⌈(log₂(Δ²/τ) − 2) / 2⌉
+```
+clamped to `L ≥ 1`. Sizes only the sawtooth side of the formulation.
+
+**Contract on `epigraph_depth`**: the returned depth meets the tolerance iff
+the user picks `epigraph_depth = 0` (tightening disabled) or
+`epigraph_depth ≥ depth − 1`. When `0 < epigraph_depth < depth − 1`, the
+epigraph side of the sandwich has a larger error than the sawtooth side
+(epigraph `Δ²·2^{-2L_e-4}` vs sawtooth `Δ²·2^{-2L-2}`), and since
+`result_expr` is free in `[epigraph(x), sawtooth(x)]` in larger optimization
+contexts the realized error can exceed `tolerance`. Use
+`tolerance_epigraph_depth` below to size both knobs consistently.
+"""
+function tolerance_depth(
+    ::Type{SawtoothQuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    _check_tolerance_args(tolerance, max_delta)
+    return _ceil_positive((log2(max_delta^2 / tolerance) - 2) / 2)
+end
+
+"""
+    tolerance_epigraph_depth(::Type{SawtoothQuadConfig}; tolerance, max_delta)::Int
+
+Smallest `epigraph_depth` consistent with `tolerance_depth(SawtoothQuadConfig; …)`
+under target tolerance `τ`. Returns the depth at which the epigraph (LP lower)
+side of the sandwich has worst-case error ≤ τ on `[a, a+Δ]`. Since the
+epigraph's per-unit error is `Δ²·2^{-2L_e-4}` versus the sawtooth's
+`Δ²·2^{-2L-2}`, this is one less than the sawtooth depth for the same
+tolerance — which exactly meets the contract `epigraph_depth ≥ depth − 1`.
+
+Optional: callers that want to disable epigraph tightening can pass
+`epigraph_depth = 0` and the sawtooth-side bound still holds.
+"""
+function tolerance_epigraph_depth(
+    ::Type{SawtoothQuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    return tolerance_depth(EpigraphQuadConfig; tolerance, max_delta)
+end
 
 """
     _add_quadratic_approx!(config::SawtoothQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
@@ -116,7 +191,7 @@ function _add_quadratic_approx!(
 
     if config.epigraph_depth > 0
         lp_expr = _add_quadratic_approx!(
-            EpigraphQuadConfig(config.epigraph_depth),
+            EpigraphQuadConfig(; depth = config.epigraph_depth),
             container, C, names, time_steps,
             x_var, bounds, meta * "_lb",
         )

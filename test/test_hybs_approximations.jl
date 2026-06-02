@@ -8,7 +8,7 @@ const HYBS_BILINEAR_META = "BilinearTest"
         JuMP.fix(x_var, 0.35; force = true)
 
         IOM._add_quadratic_approx!(
-            IOM.EpigraphQuadConfig(4),
+            IOM.EpigraphQuadConfig(; depth = 4),
             setup.container,
             MockThermalGen,
             ["dev1"],
@@ -41,7 +41,7 @@ const HYBS_BILINEAR_META = "BilinearTest"
         JuMP.fix(x_var, 1.3; force = true)
 
         IOM._add_quadratic_approx!(
-            IOM.EpigraphQuadConfig(4),
+            IOM.EpigraphQuadConfig(; depth = 4),
             setup.container,
             MockThermalGen,
             ["dev1"],
@@ -77,7 +77,7 @@ const HYBS_BILINEAR_META = "BilinearTest"
             JuMP.fix(x_var, 0.35; force = true)
 
             IOM._add_quadratic_approx!(
-                IOM.EpigraphQuadConfig(depth),
+                IOM.EpigraphQuadConfig(; depth = depth),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -119,7 +119,7 @@ end
                 JuMP.fix(setup.y_var_container["dev1", 1], y0; force = true)
 
                 IOM._add_bilinear_approx!(
-                    IOM.HybSConfig(IOM.SawtoothQuadConfig(2), 2),
+                    IOM.HybSConfig(IOM.SawtoothQuadConfig(; depth = 2); epigraph_depth = 2),
                     setup.container,
                     MockThermalGen,
                     ["dev1"],
@@ -160,7 +160,7 @@ end
         JuMP.fix(y_var, 3.0; force = true)
 
         IOM._add_bilinear_approx!(
-            IOM.HybSConfig(IOM.SawtoothQuadConfig(3), 3),
+            IOM.HybSConfig(IOM.SawtoothQuadConfig(; depth = 3); epigraph_depth = 3),
             setup.container,
             MockThermalGen,
             ["dev1"],
@@ -198,7 +198,7 @@ end
         w = JuMP.@variable(setup.jump_model, base_name = "w")
 
         IOM._add_bilinear_approx!(
-            IOM.HybSConfig(IOM.SawtoothQuadConfig(3), 3),
+            IOM.HybSConfig(IOM.SawtoothQuadConfig(; depth = 3); epigraph_depth = 3),
             setup.container,
             MockThermalGen,
             ["dev1"],
@@ -236,7 +236,10 @@ end
             JuMP.fix(setup.y_var_container["dev1", 1], 0.7; force = true)
 
             IOM._add_bilinear_approx!(
-                IOM.HybSConfig(IOM.SawtoothQuadConfig(depth), depth),
+                IOM.HybSConfig(
+                    IOM.SawtoothQuadConfig(; depth = depth);
+                    epigraph_depth = depth,
+                ),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -277,7 +280,7 @@ end
             JuMP.fix(setup.y_var_container["dev1", 1], 2.1; force = true)
 
             IOM._add_bilinear_approx!(
-                IOM.HybSConfig(IOM.SawtoothQuadConfig(3), 3),
+                IOM.HybSConfig(IOM.SawtoothQuadConfig(; depth = 3); epigraph_depth = 3),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -318,7 +321,7 @@ end
         JuMP.set_upper_bound(y_var, 4.0)
 
         IOM._add_bilinear_approx!(
-            IOM.HybSConfig(IOM.SawtoothQuadConfig(2), 2),
+            IOM.HybSConfig(IOM.SawtoothQuadConfig(; depth = 2); epigraph_depth = 2),
             setup.container,
             MockThermalGen,
             ["dev1"],
@@ -352,7 +355,10 @@ end
             # HybS
             setup_h = _setup_bilinear_test(["dev1"], 1:1)
             IOM._add_bilinear_approx!(
-                IOM.HybSConfig(IOM.SawtoothQuadConfig(depth), depth),
+                IOM.HybSConfig(
+                    IOM.SawtoothQuadConfig(; depth = depth);
+                    epigraph_depth = depth,
+                ),
                 setup_h.container,
                 MockThermalGen,
                 ["dev1"],
@@ -369,7 +375,7 @@ end
             # Bin2 (sawtooth)
             setup_b = _setup_bilinear_test(["dev1"], 1:1)
             IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SawtoothQuadConfig(depth)),
+                IOM.Bin2Config(IOM.SawtoothQuadConfig(; depth = depth)),
                 setup_b.container,
                 MockThermalGen,
                 ["dev1"],

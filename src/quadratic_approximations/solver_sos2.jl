@@ -20,13 +20,58 @@ Config for solver-native SOS2 quadratic approximation (MOI.SOS2 adjacency).
 
 # Fields
 - `depth::Int`: number of PWL segments (breakpoints = depth + 1)
-- `pwmcc_segments::Int`: number of piecewise McCormick cut partitions; 0 to disable (default 4)
+- `pwmcc_segments::Int`: number of piecewise McCormick cut partitions; 0 to disable (default 0)
+
+The worst-case PWL overestimation gap is `Δ²/(4·depth²)`. `pwmcc_segments` is
+an LP-relaxation tightener (adds piecewise-McCormick cuts on the concave
+relaxation surface); it does **not** change the MIP-optimal worst-case error,
+only the LP relaxation given to branch-and-bound.
+
+**Constraint:** `pwmcc_segments ≤ depth`. The PWMCC chord cuts treat `q` as if
+`q = x²`, but with SoS2 PWL `q` is the coarse-PWL-chord-of-x² which over-estimates
+x². When PWMCC sub-segments are finer than PWL segments, the PWMCC chord (on a
+fine sub-segment) is smaller than the PWL chord (on the wider segment), and the
+cut chops off MIP-feasible solutions — the model goes infeasible. The constructor
+enforces this. See `tolerance_depth(::Type{SolverSOS2QuadConfig}; …)` to derive
+`depth` from a target tolerance.
 """
 struct SolverSOS2QuadConfig <: QuadraticApproxConfig
     depth::Int
     pwmcc_segments::Int
+
+    function SolverSOS2QuadConfig(; depth::Int, pwmcc_segments::Int = 0)
+        if pwmcc_segments > depth
+            throw(
+                ArgumentError(
+                    "SolverSOS2QuadConfig requires pwmcc_segments ≤ depth " *
+                    "(got pwmcc_segments=$(pwmcc_segments), depth=$(depth)); " *
+                    "finer PWMCC sub-segments chop off MIP-feasible PWL solutions.",
+                ),
+            )
+        end
+        return new(depth, pwmcc_segments)
+    end
 end
-SolverSOS2QuadConfig(depth::Int) = SolverSOS2QuadConfig(depth, 4)
+
+"""
+    tolerance_depth(::Type{SolverSOS2QuadConfig}; tolerance, max_delta)::Int
+
+Smallest SOS2 segment count `d` whose worst-case PWL gap on `[a, a+Δ]` falls
+within `tolerance`. Inverts `Δ²/(4·d²) ≤ τ`:
+```
+d = ⌈Δ / (2·√τ)⌉
+```
+clamped to `d ≥ 1`. `pwmcc_segments` does not enter the error bound, so it is
+left to the constructor.
+"""
+function tolerance_depth(
+    ::Type{SolverSOS2QuadConfig};
+    tolerance::Float64,
+    max_delta::Float64,
+)
+    _check_tolerance_args(tolerance, max_delta)
+    return _ceil_positive(max_delta / (2 * sqrt(tolerance)))
+end
 
 """
     _add_quadratic_approx!(config::SolverSOS2QuadConfig, container, C, names, time_steps, x_var, bounds, meta)
