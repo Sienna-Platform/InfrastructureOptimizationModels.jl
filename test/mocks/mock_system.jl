@@ -30,7 +30,7 @@ InfrastructureOptimizationModels.get_base_power(sys::MockSystem) = sys.base_powe
 InfrastructureOptimizationModels.stores_time_series_in_memory(sys::MockSystem) =
     sys.stores_in_memory
 
-function IOM.get_available_components(::NetworkModel, ::Type{T}, sys::MockSystem) where {T}
+function IOM.get_available_components(::NetworkModel, ::Type{T}, sys::MockSystem) where {T <: IS.InfrastructureSystemsComponent}
     return get_components(T, sys)
 end
 
