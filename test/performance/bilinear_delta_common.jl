@@ -612,10 +612,17 @@ const COLUMNS = Col[
     Col("Objective", 12, :right, r -> r.solved ? _fmt("%.6f", r.obj) : string(r.status)),
     Col("Gap(%)", 8, :right, r -> (r.solved && !isnan(r.gap)) ? _fmt("%.4f", r.gap) : "-"),
     Col("MIPGap(%)", 9, :right,
-        r -> (r.solved && !r.is_exact && !isnan(r.mip_gap)) ? _fmt("%.4f", r.mip_gap) : "-"),
+        r -> if (r.solved && !r.is_exact && !isnan(r.mip_gap))
+            _fmt("%.4f", r.mip_gap)
+        else
+            "-"
+        end),
     Col("LowerBnd", 12, :right,
-        r -> (r.solved && !r.is_exact && !isnan(r.lower_bound)) ?
-             _fmt("%.6f", r.lower_bound) : "-"),
+        r -> if (r.solved && !r.is_exact && !isnan(r.lower_bound))
+            _fmt("%.6f", r.lower_bound)
+        else
+            "-"
+        end),
     Col("rmse δbi", 9, :right, r -> r.solved ? _fmt("%.2e", r.mn_bi) : "-"),
     Col("max δbi", 9, :right, r -> r.solved ? _fmt("%.2e", r.mx_bi) : "-"),
     Col("rmse δq", 9, :right, r -> r.solved ? _fmt("%.2e", r.mn_q) : "-"),
@@ -658,8 +665,11 @@ end
 
 """SLURM job id when running under SLURM, otherwise a timestamp — used in log filenames."""
 function log_tag()
-    return isempty(SLURM_JOB_ID) ? Dates.format(Dates.now(), "yyyy-mm-ddTHH-MM-SS") :
-           SLURM_JOB_ID
+    return if isempty(SLURM_JOB_ID)
+        Dates.format(Dates.now(), "yyyy-mm-ddTHH-MM-SS")
+    else
+        SLURM_JOB_ID
+    end
 end
 
 """Return the path for the solver log file, creating the logs directory if needed."""
