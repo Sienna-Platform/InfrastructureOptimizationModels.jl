@@ -55,9 +55,13 @@ jobs:
           body: |
             Performance Results
             Main
+            ```
             ${{ steps.main_results.outputs.body }}
+            ```
             This branch
+            ```
             ${{ steps.branch_results.outputs.body }}
+            ```
       - name: Update comment
         if: steps.fc.outputs.comment-id != ''
         uses: peter-evans/create-or-update-comment@v5
