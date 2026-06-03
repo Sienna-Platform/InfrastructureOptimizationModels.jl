@@ -6,6 +6,11 @@ method × refinement combinations are farmed out to separate Julia worker proces
 (up to KESTREL_MAX_WORKERS concurrent). Each worker writes JSON results that the
 coordinator aggregates into the summary table. Always uses Xpress for MIP solves.
 
+MIP time limits are *soft* (positive Xpress MAXTIME): the solver runs past
+MIP_TIME_LIMIT_SEC until it finds a first feasible solution, with
+KESTREL_HARD_TIME_LIMIT_SEC as a hard backstop, so TIME_LIMIT rows still report
+an objective whenever one exists (and at least the lower bound otherwise).
+
 Workers are spawned by re-executing THIS file with `--worker`; that path is why the
 worker subprocess gets all the shared model code (this file `include`s the common
 module, same as the coordinator).
@@ -36,6 +41,36 @@ using Xpress
 const LP_OPT = Xpress.Optimizer
 const KESTREL_XPRESS_THREADS = 20
 const KESTREL_MAX_WORKERS = 5
+const KESTREL_HARD_TIME_LIMIT_SEC = 2 * MIP_TIME_LIMIT_SEC
+
+"""
+    set_xpress_soft_time_limit!(jump_model, soft_limit)
+
+Soft time limit for Xpress MIP solves: a *positive* MAXTIME stops the search
+after `soft_limit` seconds only once an incumbent exists, otherwise the solver
+keeps searching for a first feasible solution. (`JuMP.set_time_limit_sec` sets
+a *negative* MAXTIME — a hard stop — which yields incumbent-less TIME_LIMIT
+rows with no objective.) KESTREL_HARD_TIME_LIMIT_SEC is applied as a hard
+backstop via the TIMELIMIT control where available (Xpress >= 9.0).
+"""
+function set_xpress_soft_time_limit!(jump_model, soft_limit)
+    JuMP.set_attribute(jump_model, "MAXTIME", round(Int, soft_limit))
+    # Probe before setting: on pre-9.0 Xpress the control doesn't exist, and a
+    # failed set could still leave the attribute cached for replay at solve time.
+    has_timelimit = try
+        JuMP.get_attribute(jump_model, "TIMELIMIT")
+        true
+    catch
+        false
+    end
+    if has_timelimit
+        JuMP.set_attribute(jump_model, "TIMELIMIT", KESTREL_HARD_TIME_LIMIT_SEC)
+    else
+        @warn "Xpress TIMELIMIT control unavailable; soft time limit only (no hard cap)" maxlog =
+            1
+    end
+    return
+end
 
 # ─── Parallel benchmark ───────────────────────────────────────────────────────
 
@@ -237,6 +272,7 @@ function run_worker(parsed)
             nlp_obj,
             logfile,
             time_limit = MIP_TIME_LIMIT_SEC,
+            set_time_limit = set_xpress_soft_time_limit!,
             threads = KESTREL_XPRESS_THREADS,
         )
 

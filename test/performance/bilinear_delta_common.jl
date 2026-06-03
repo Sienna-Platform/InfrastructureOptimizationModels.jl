@@ -612,13 +612,13 @@ const COLUMNS = Col[
     Col("Objective", 12, :right, r -> r.solved ? _fmt("%.6f", r.obj) : string(r.status)),
     Col("Gap(%)", 8, :right, r -> (r.solved && !isnan(r.gap)) ? _fmt("%.4f", r.gap) : "-"),
     Col("MIPGap(%)", 9, :right,
-        r -> if (r.solved && !r.is_exact && !isnan(r.mip_gap))
+        r -> if (!r.is_exact && isfinite(r.mip_gap))
             _fmt("%.4f", r.mip_gap)
         else
             "-"
         end),
     Col("LowerBnd", 12, :right,
-        r -> if (r.solved && !r.is_exact && !isnan(r.lower_bound))
+        r -> if (!r.is_exact && isfinite(r.lower_bound))
             _fmt("%.6f", r.lower_bound)
         else
             "-"
@@ -704,6 +704,10 @@ end
 
 Build and solve a single (method, refinement) benchmark case. Returns all metrics
 needed for the summary table row. Uses `JuMP.optimize!` directly.
+
+`set_time_limit` is called as `set_time_limit(jump_model, time_limit)` and defaults
+to `JuMP.set_time_limit_sec` (a hard stop). Entry-point scripts can pass a
+solver-specific setter (e.g. an Xpress soft limit) instead.
 """
 function run_single_case(;
     optimizer,
@@ -716,6 +720,7 @@ function run_single_case(;
     nlp_obj::Float64 = NaN,
     logfile::IO = devnull,
     time_limit::Float64 = NaN,
+    set_time_limit::Function = JuMP.set_time_limit_sec,
     threads::Int = 0,
 )
     build_t = @elapsed result =
@@ -723,7 +728,7 @@ function run_single_case(;
 
     jump_model = result.jump_model
     if !isnan(time_limit) && !is_exact
-        JuMP.set_time_limit_sec(jump_model, time_limit)
+        set_time_limit(jump_model, time_limit)
     end
     if threads > 0 && !is_exact
         JuMP.set_attribute(jump_model, JuMP.MOI.NumberOfThreads(), threads)
@@ -764,15 +769,19 @@ function run_single_case(;
         obj = JuMP.objective_value(result.jump_model)
         gap = residual(nlp_obj, obj) * 100.0
         mn_bi, mx_bi, mn_q, mx_q = compute_bilinear_residuals(result, net)
-        if !is_exact
-            try
-                mip_gap = JuMP.relative_gap(result.jump_model) * 100.0
-            catch
-            end
-            try
-                lower_bound = JuMP.objective_bound(result.jump_model)
-            catch
-            end
+    end
+
+    # Dual-side metrics don't need an incumbent — report them even when the
+    # solver timed out without a feasible solution (relative_gap is Inf then;
+    # non-finite values render as "-" and serialize to nothing).
+    if !is_exact
+        try
+            mip_gap = JuMP.relative_gap(result.jump_model) * 100.0
+        catch
+        end
+        try
+            lower_bound = JuMP.objective_bound(result.jump_model)
+        catch
         end
     end
 
