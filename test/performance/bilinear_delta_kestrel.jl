@@ -71,7 +71,10 @@ function run_benchmark_parallel(;
     nlp_results = []
     for (label, opt_fn) in [
         ("NLP (Ipopt)", Ipopt.Optimizer),
-        ("NLP (Uno)", () -> UnoSolver.Optimizer(; preset = "filtersqp")),
+        (
+            "NLP (Uno)",
+            optimizer_with_attributes(UnoSolver.Optimizer, "preset" => "filtersqp"),
+        ),
     ]
         r = run_single_case(;
             optimizer = opt_fn,
