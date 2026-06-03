@@ -57,16 +57,7 @@ maybe_throw_if_abstract(::Type{<:ConstraintType}, ::Type{U}) where {U} = nothing
 
 const CONTAINER_KEY_EMPTY_META = ""
 
-# A component's optimization-key identity excludes unit-system type parameters. PSY6
-# parameterizes cost-bearing components on a unit system (e.g.
-# `ReserveDemandCurve{ReserveUp, NaturalUnit}`); the trailing unit-system parameter is a
-# data-representation detail of the cost curve, not part of a variable/constraint's identity.
-# Stripping it here — the single point through which every container key is built — makes a key
-# constructed from a component instance (`typeof(service)`, which carries the unit) match one
-# constructed from the user-declared model type (`ReserveDemandCurve{ReserveUp}`, which does
-# not), so storage and every lookup agree no matter which form the caller passes. For the
-# common case of a type with no trailing unit-system parameter this returns `U` unchanged, and
-# being `@generated` it resolves to a compile-time constant (no runtime cost, type stable).
+# Strip units before making keys for parametric structs
 @generated function canonical_component_type(
     ::Type{U},
 ) where {U <: InfrastructureSystemsType}
