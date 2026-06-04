@@ -159,6 +159,8 @@ struct MockNetworkNode <: IS.InfrastructureSystemsComponent
     i_max::Float64
     v_min::Float64
     v_max::Float64
+    p_min::Float64
+    p_max::Float64
 end
 get_name(n::MockNetworkNode) = n.name
 
@@ -206,7 +208,7 @@ IOM.get_variable_upper_bound(
 ) = n.i_max
 
 IOM.get_min_max_limits(
-    ::MockNetworkNode,
+    n::MockNetworkNode,
     ::Type{MockPowerRangeConstraint},
     ::Type{TestDeviceFormulation},
-) = (min = 0.0, max = 1.5)
+) = (min = n.p_min, max = n.p_max)

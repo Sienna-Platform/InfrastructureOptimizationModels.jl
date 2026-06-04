@@ -76,12 +76,19 @@ struct MockNetworkProblem
     marginal_costs::Dict{String, Vector{Float64}}
     segment_widths::Dict{String, Vector{Float64}}
     loss::Dict{String, Vector{Float64}}
+    gen_limits::Dict{
+        String,
+        NamedTuple{(:p_min, :p_max, :i_min, :i_max), NTuple{4, Float64}},
+    }
 end
 
 # ─── Network generation ──────────────────────────────────────────────────────
 
 """
-Generate a lossy network with per-generator loss coefficients a, b, c ∈ [0, 0.01].
+Generate a lossy network with per-generator loss coefficients a, b, c ∈ [0, 0.01],
+randomized per-generator power limits within `[P_MIN, P_MAX]` (with the implied
+current limits `i_min = p_min / V_MAX`, `i_max = p_max / V_MIN`), and a random half
+of the generators carrying ~10x the marginal cost of the other half.
 """
 function generate_network(;
     N::Int = 10,
@@ -122,13 +129,28 @@ function generate_network(;
 
     demands = Dict(d => 0.05 + 0.1 * rand(rng) for d in dem_nodes)
 
+    # Per-generator power limits within the global [P_MIN, P_MAX] range, with the
+    # loosest current limits implied by them (so the power constraint stays binding).
+    gen_limits =
+        Dict{String, NamedTuple{(:p_min, :p_max, :i_min, :i_max), NTuple{4, Float64}}}()
+    for g in gen_nodes
+        p_min = P_MIN
+        p_max = P_MIN + (0.3 + 0.7 * rand(rng)) * (P_MAX - P_MIN)
+        gen_limits[g] =
+            (; p_min, p_max, i_min = p_min / V_MAX, i_max = p_max / V_MIN)
+    end
+
+    # A random half of the generators is ~10x more expensive than the other half.
+    expensive = Set(shuffle(rng, gen_nodes)[1:(length(gen_nodes) ÷ 2)])
+
     marginal_costs = Dict{String, Vector{Float64}}()
     segment_widths = Dict{String, Vector{Float64}}()
     for g in gen_nodes
         mc = sort(rand(rng, K) .* 10.0 .+ 1.0)
+        g in expensive && (mc .*= 10.0)
         marginal_costs[g] = mc
         widths = rand(rng, K) .+ 0.1
-        widths .*= 1.5 / sum(widths)
+        widths .*= gen_limits[g].p_max / sum(widths)
         segment_widths[g] = widths
     end
 
@@ -138,7 +160,7 @@ function generate_network(;
         N, K, gen_nodes, dem_nodes, all_nodes,
         edges, conductances, demands,
         marginal_costs, segment_widths,
-        loss,
+        loss, gen_limits,
     )
 end
 
@@ -160,10 +182,9 @@ end
 
 const V_MIN = 0.8
 const V_MAX = 1.2
-const I_GEN_MIN = 0.0
-const I_GEN_MAX = 1.0
 const I_DEM_MIN = -1.0
 const I_DEM_MAX = 0.0
+const P_MIN = 0.0
 const P_MAX = 1.5
 
 # ─── IOM container setup ─────────────────────────────────────────────────────
@@ -190,7 +211,10 @@ end
 function gen_bounds(net::MockNetworkProblem)
     ng = length(net.gen_nodes)
     V_bounds = fill((min = V_MIN, max = V_MAX), ng)
-    I_bounds = fill((min = I_GEN_MIN, max = I_GEN_MAX), ng)
+    I_bounds = [
+        (min = net.gen_limits[g].i_min, max = net.gen_limits[g].i_max) for
+        g in net.gen_nodes
+    ]
     return V_bounds, I_bounds
 end
 
@@ -319,11 +343,15 @@ function build_mip_model(
     adj = adjacency_list(net)
 
     gen_devices = [
-        MockNetworkNode(g, net.loss[g], I_GEN_MIN, I_GEN_MAX, V_MIN, V_MAX) for
-        g in net.gen_nodes
+        MockNetworkNode(
+            g, net.loss[g],
+            net.gen_limits[g].i_min, net.gen_limits[g].i_max,
+            V_MIN, V_MAX,
+            net.gen_limits[g].p_min, net.gen_limits[g].p_max,
+        ) for g in net.gen_nodes
     ]
     dem_devices = [
-        MockNetworkNode(d, [0.0], I_DEM_MIN, I_DEM_MAX, V_MIN, V_MAX) for
+        MockNetworkNode(d, [0.0], I_DEM_MIN, I_DEM_MAX, V_MIN, V_MAX, -P_MAX, 0.0) for
         d in net.dem_nodes
     ]
     all_devices = [gen_devices; dem_devices]
@@ -639,10 +667,14 @@ function print_network_info(net::MockNetworkProblem)
         "Network: $(net.N) nodes, $(length(net.edges)) edges, $(net.K) cost segments",
     )
     println("Generators: $(length(net.gen_nodes)), Demands: $(length(net.dem_nodes))")
-    println("Loss coefficients (a, b, c) per generator:")
+    println("Per-generator limits, costs, and loss coefficients (a, b, c):")
     for g in net.gen_nodes
-        @printf("  %s: a=%.6f  b=%.6f  c=%.6f\n",
-            g, net.loss[g][1], net.loss[g][2], net.loss[g][3])
+        lim = net.gen_limits[g]
+        @printf(
+            "  %s: P∈[%.3f, %.3f]  I∈[%.3f, %.3f]  mc₁=%.2f  a=%.6f  b=%.6f  c=%.6f\n",
+            g, lim.p_min, lim.p_max, lim.i_min, lim.i_max,
+            net.marginal_costs[g][1],
+            net.loss[g][1], net.loss[g][2], net.loss[g][3])
     end
 end
 
