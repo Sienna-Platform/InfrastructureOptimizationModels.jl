@@ -135,6 +135,25 @@ function finalize_template!(template::AbstractProblemTemplate, args...)
     )
 end
 
+# Deep-copy a template while sharing the network model's PNM matrices by reference:
+# their solver caches hold raw factorization handles and deliberately error on deepcopy
+# (PNM #312). The matrices are read-only inputs, so sharing is safe.
+function _deepcopy_template(template::AbstractProblemTemplate)
+    network_model = get_network_model(template)
+    network_model === nothing && return deepcopy(template)
+    ptdf = network_model.PTDF_matrix
+    modf = network_model.MODF_matrix
+    network_model.PTDF_matrix = nothing
+    network_model.MODF_matrix = nothing
+    template_ = deepcopy(template)
+    network_model.PTDF_matrix = ptdf
+    network_model.MODF_matrix = modf
+    copied_network_model = get_network_model(template_)
+    copied_network_model.PTDF_matrix = ptdf
+    copied_network_model.MODF_matrix = modf
+    return template_
+end
+
 """
 Return the set of device types whose formulation is FixedOutput (incompatible with
 service provision).

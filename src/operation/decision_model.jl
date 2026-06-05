@@ -59,7 +59,7 @@ function DecisionModel{M}(
         OptimizationContainer(sys, settings, jump_model, ts_type),
     )
 
-    template_ = deepcopy(template)
+    template_ = _deepcopy_template(template)
     finalize_template!(template_, sys)
     model = DecisionModel{M}(
         name,
