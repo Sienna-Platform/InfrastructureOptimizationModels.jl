@@ -2,6 +2,11 @@
 # duals are SparseAxisArray (Dict-backed), where `.data .= …` is undefined, so
 # copy per key instead.
 function _copy_dual_values!(dual::DenseAxisArray, constraint::DenseAxisArray)
+    # The dual container is built by reusing the constraint's axes (see
+    # `assign_dual_variable!` / `_assign_dual_from_existing!`), so a positional
+    # copy is correct only when the axes match. Mismatched axes would write each
+    # value onto the wrong label, so fail loudly instead.
+    IS.@assert_op axes(dual) == axes(constraint)
     dual.data .= jump_value.(constraint).data
     return
 end

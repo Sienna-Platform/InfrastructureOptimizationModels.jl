@@ -64,6 +64,22 @@ function assign_dual_variable!(
     return
 end
 
+_existing_constraint_keys(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{D},
+) where {T <: ConstraintType, D} = filter(
+    key -> get_entry_type(key) === T && get_component_type(key) === D,
+    get_constraint_keys(container),
+)
+
+_validate_keys(keys) =
+    isempty(keys) && throw(
+        IS.InvalidValue(
+            "No constraint of type $constraint_type for $D is stored; cannot assign a dual variable.",
+        ),
+    )
+
 # device formulation
 function assign_dual_variable!(
     container::OptimizationContainer,
@@ -75,33 +91,32 @@ function assign_dual_variable!(
 } where {D <: IS.InfrastructureSystemsComponent}
     @assert !isempty(devices)
     time_steps = get_time_steps(container)
-    metas = _existing_constraint_metas(container, constraint_type, D)
-    if isempty(metas)
-        device_names = IS.get_name.(devices)
-        add_dual_container!(container, constraint_type, D, device_names, time_steps)
-        return
-    end
-    for meta in metas
-        key = ConstraintKey(constraint_type, D, meta)
+    constraint_keys = _existing_constraint_keys(container, constraint_type, D)
+    _validate_keys(constraint_keys)
+    for key in constraint_keys
         existing = get_constraint(container, key)
         _assign_dual_from_existing!(container, key, existing, D, time_steps)
     end
     return
 end
 
-# Sparse constraints (e.g. post-contingency flow-rate constraints keyed by
-# (outage_id, name, t)) have no `axes`. Mirror the constraint's exact sparse keys
-# into a Float64 dual container so the dual matches the constraint storage one-to-one.
-function _assign_dual_from_existing!(
+# network model with buses
+function assign_dual_variable!(
     container::OptimizationContainer,
-    key::ConstraintKey,
-    existing::SparseAxisArray,
-    ::Type{D},
-    time_steps,
-) where {D}
-    dual_container =
-        SparseAxisArray(Dict(k => zero(Float64) for k in keys(existing.data)))
-    _assign_container!(container.duals, key, dual_container)
+    constraint_type::Type{<:ConstraintType},
+    devices::U,
+    ::NetworkModel{<:AbstractPowerModel},
+) where {
+    U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+} where {D <: IS.InfrastructureSystemsComponent}
+    IS.@assert_op !isempty(devices)
+    time_steps = get_time_steps(container)
+    constraint_keys = _existing_constraint_keys(container, constraint_type, D)
+    _validate_keys(constraint_keys)
+    for key in constraint_keys
+        existing = get_constraint(container, key)
+        _assign_dual_from_existing!(container, key, existing, D, time_steps)
+    end
     return
 end
 
@@ -129,38 +144,19 @@ function _assign_dual_from_existing!(
     return
 end
 
-function _existing_constraint_metas(
+function _assign_dual_from_existing!(
     container::OptimizationContainer,
-    ::Type{T},
+    key::ConstraintKey,
+    existing::SparseAxisArray,
     ::Type{D},
-) where {T <: ConstraintType, D}
-    metas = String[]
-    for key in get_constraint_keys(container)
-        if get_entry_type(key) === T &&
-           get_component_type(key) === D
-            push!(metas, key.meta)
-        end
-    end
-    return metas
-end
-
-# network model with buses
-function assign_dual_variable!(
-    container::OptimizationContainer,
-    constraint_type::Type{<:ConstraintType},
-    devices::U,
-    ::NetworkModel{<:AbstractPowerModel},
-) where {
-    U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
-} where {D <: IS.InfrastructureSystemsComponent}
-    @assert !isempty(devices)
-    time_steps = get_time_steps(container)
+    time_steps,
+) where {D}
     add_dual_container!(
         container,
-        constraint_type,
+        get_entry_type(key),
         D,
-        IS.get_name.(devices),
-        time_steps,
+        keys(existing.data);
+        sparse = true,
     )
     return
 end

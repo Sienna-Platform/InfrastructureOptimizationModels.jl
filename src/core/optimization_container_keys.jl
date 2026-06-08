@@ -57,6 +57,26 @@ maybe_throw_if_abstract(::Type{<:ConstraintType}, ::Type{U}) where {U} = nothing
 
 const CONTAINER_KEY_EMPTY_META = ""
 
+# Strip units before making keys for parametric structs
+@generated function canonical_component_type(
+    ::Type{U},
+) where {U <: InfrastructureSystemsType}
+    base = U isa UnionAll ? Base.unwrap_unionall(U) : U
+    base isa DataType || return :($U)
+    params = collect(base.parameters)
+    n = length(params)
+    while n > 0 && (
+        params[n] isa TypeVar ||
+        (params[n] isa Type && params[n] <: IS.AbstractUnitSystem)
+    )
+        n -= 1
+    end
+    n == length(params) && return :($U)
+    kept = params[1:n]
+    stripped = isempty(kept) ? base.name.wrapper : base.name.wrapper{kept...}
+    return :($stripped)
+end
+
 # see https://discourse.julialang.org/t/parametric-constructor-where-type-being-constructed-is-parameter/129866/3
 function (M::Type{S} where {S <: OptimizationContainerKey})(
     ::Type{T},
@@ -64,8 +84,9 @@ function (M::Type{S} where {S <: OptimizationContainerKey})(
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType}
     check_meta_chars(meta)
-    maybe_throw_if_abstract(T, U)
-    return M{T, U}(meta)
+    K = canonical_component_type(U)
+    maybe_throw_if_abstract(T, K)
+    return M{T, K}(meta)
 end
 
 function (M::Type{S} where {S <: OptimizationContainerKey})(
@@ -73,8 +94,9 @@ function (M::Type{S} where {S <: OptimizationContainerKey})(
     ::Type{U},
     meta::String,
 ) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType}
-    maybe_throw_if_abstract(T, U)
-    return M{T, U}(meta)
+    K = canonical_component_type(U)
+    maybe_throw_if_abstract(T, K)
+    return M{T, K}(meta)
 end
 
 function make_key(
@@ -87,7 +109,7 @@ function make_key(
     T <: OptimizationKeyType,
     U <: InfrastructureSystemsType,
 }
-    return S{T, U}(meta)
+    return S{T, canonical_component_type(U)}(meta)
 end
 
 ### Encoding keys ###
