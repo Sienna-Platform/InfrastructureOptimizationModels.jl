@@ -225,6 +225,7 @@ export add_to_expression!
 export add_constant_to_jump_expression!
 export add_proportional_to_jump_expression!
 export add_linear_to_jump_expression!
+export add_device_terms_to_expression!
 # Cost term helpers (generic objective function building blocks)
 export add_cost_term_to_expression!
 export add_cost_term_invariant!
