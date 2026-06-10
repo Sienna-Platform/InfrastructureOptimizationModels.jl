@@ -18,23 +18,23 @@ end
 """
     DeviceModel(
         ::Type{D},
-        ::Type{B},
-        feedforwards::Vector{<:AbstractAffectFeedforward}
-        use_slacks::Bool,
-        duals::Vector{DataType},
-        services::Vector{ServiceModel}
-        attributes::Dict{String, Any}
-        outages::AbstractVector{<:IS.InfrastructureSystemsComponent}
+        ::Type{B};
+        feedforwards = Vector{AbstractAffectFeedforward}(),
+        use_slacks = false,
+        duals = Vector{DataType}(),
+        time_series_names = get_default_time_series_names(D, B),
+        attributes = Dict{String, Any}(),
+        outages = IS.InfrastructureSystemsComponent[],
     )
 
 Establishes the model for a particular device specified by type. Uses the keyword argument
-feedforward to enable passing values between operation model at simulation time
+`feedforwards` to enable passing values between operation models at simulation time.
 
 # Arguments
 
   - `::Type{D}`: Device Type (e.g., PSY.ThermalStandard or a mock device type)
   - `::Type{B} where B<:AbstractDeviceFormulation`: Abstract Device Formulation
-  - `feedforward::Array{<:AbstractAffectFeedforward} = Vector{AbstractAffectFeedforward}()` : use to pass parameters between models
+  - `feedforwards::Vector{<:AbstractAffectFeedforward} = Vector{AbstractAffectFeedforward}()` : use to pass parameters between models
   - `use_slacks::Bool = false` : Add slacks to the device model. Implementation is model dependent and not all models feature slacks
   - `duals::Vector{DataType} = Vector{DataType}()`: use to pass constraint type to calculate the duals. The DataType needs to be a valid ConstraintType
   - `time_series_names::Dict{Type{<:TimeSeriesParameter}, String} = get_default_time_series_names(D, B)` : use to specify time series names associated to the device`
@@ -58,7 +58,8 @@ mutable struct DeviceModel{
     D <: IS.InfrastructureSystemsComponent,
     B <: AbstractDeviceFormulation,
 }
-    feedforwards::Vector{<:AbstractAffectFeedforward}
+    # Heterogeneous by design: concrete Vector of the abstract type, not a UnionAll field.
+    feedforwards::Vector{AbstractAffectFeedforward}
     use_slacks::Bool
     duals::Vector{DataType}
     services::Vector{ServiceModel}
@@ -91,7 +92,7 @@ mutable struct DeviceModel{
         _check_device_formulation(B)
         outages_field = _add_device_model_outages(D, B, outages)
         new{D, B}(
-            feedforwards,
+            convert(Vector{AbstractAffectFeedforward}, feedforwards),
             use_slacks,
             duals,
             Vector{ServiceModel}(),
