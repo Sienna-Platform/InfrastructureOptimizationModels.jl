@@ -112,6 +112,36 @@ struct MockVariableType <: ISOPT.VariableType end
         @test size(mat) == (2, 2)
     end
 
+    @testset "to_dataframe - SparseAxisArray mixed-type column labels" begin
+        # Regression: matrix columns were ordered by raw tuple while labels were ordered
+        # by encoded string. For mixed-type tuples these diverge — `("a",2) < ("a",10)`
+        # as tuples but `"a__10" < "a__2"` lexically — silently mislabeling exports.
+        key = IOM.ConstraintKey(TestConstraintType, IS.TestComponent)
+        contents = Dict(
+            ("a", 2, 1) => 10.0,
+            ("a", 10, 1) => 20.0,
+        )
+        sparse = SparseAxisArray(contents)
+        df = IOM.to_dataframe(sparse, key)
+        # Each value must sit under the label encoding its own key.
+        @test df[1, "a__2"] == 10.0
+        @test df[1, "a__10"] == 20.0
+    end
+
+    @testset "to_dataframe - SparseAxisArray non-contiguous time keys" begin
+        # Regression: `_to_matrix` indexed rows by the raw time value, so time keys that
+        # are not `1:n` (here {2, 4}) overran the matrix and threw.
+        key = IOM.ConstraintKey(TestConstraintType, IS.TestComponent)
+        contents = Dict(
+            ("g", 2) => 1.0,
+            ("g", 4) => 2.0,
+        )
+        sparse = SparseAxisArray(contents)
+        df = IOM.to_dataframe(sparse, key)
+        @test size(df) == (2, 1)
+        @test df[!, "g"] == [1.0, 2.0]
+    end
+
     @testset "get_column_names_from_axis_array - 1D String axis" begin
         data = DenseAxisArray([1.0, 2.0], ["gen1", "gen2"])
         cols = IOM.get_column_names_from_axis_array(data)
@@ -268,14 +298,16 @@ struct MockVariableType <: ISOPT.VariableType end
     end
 
     @testset "to_outputs_dataframe - 3D LONG format (String, Int, Int)" begin
+        # Integer second axis — the DecisionModelStore (Vector{String}, UnitRange,
+        # UnitRange) case that previously hit a MethodError with timestamps.
         data = DenseAxisArray(
             zeros(2, 2, 3),
             ["gen1", "gen2"],
-            ["area1", "area2"],
+            1:2,
             1:3,
         )
-        data["gen1", "area1", 1] = 1.0
-        data["gen2", "area2", 2] = 2.0
+        data["gen1", 1, 1] = 1.0
+        data["gen2", 2, 2] = 2.0
 
         timestamps = [DateTime(2024, 1, 1, i) for i in 0:2]
         df = IOM.to_outputs_dataframe(data, timestamps, Val(IOM.TableFormat.LONG))
@@ -283,7 +315,50 @@ struct MockVariableType <: ISOPT.VariableType end
         @test :DateTime in propertynames(df)
         @test :name in propertynames(df)
         @test :name2 in propertynames(df)
+        @test eltype(df.name2) == Int
         @test :value in propertynames(df)
         @test nrow(df) == 12  # 2 * 2 * 3
+        @test sum(df.value) == 3.0
+    end
+
+    @testset "to_outputs_dataframe - 1D LONG (Task 2.2)" begin
+        data = DenseAxisArray([10.0, 20.0, 30.0], ["g1", "g2", "g3"])
+        # Without timestamps: one row per component, time_index column all 1.
+        df = IOM.to_outputs_dataframe(data, nothing, Val(IOM.TableFormat.LONG))
+        @test nrow(df) == 3
+        @test :time_index in propertynames(df)
+        @test df.value == [10.0, 20.0, 30.0]
+        # With a single timestamp: DateTime column filled, multi-name no longer errors.
+        ts = [DateTime(2024, 1, 1)]
+        df2 = IOM.to_outputs_dataframe(data, ts, Val(IOM.TableFormat.LONG))
+        @test nrow(df2) == 3
+        @test all(df2.DateTime .== DateTime(2024, 1, 1))
+        @test df2.name == ["g1", "g2", "g3"]
+    end
+
+    @testset "to_outputs_dataframe - 2D LONG offset time axis (Task 2.2)" begin
+        # Time axis 0:1 (not 1-based) must index timestamps positionally, not by value.
+        data = DenseAxisArray([1.0 2.0; 3.0 4.0], ["g1", "g2"], 0:1)
+        ts = [DateTime(2024, 1, 1, 0), DateTime(2024, 1, 1, 1)]
+        df = IOM.to_outputs_dataframe(data, ts, Val(IOM.TableFormat.LONG))
+        @test nrow(df) == 4
+        @test sort(unique(df.DateTime)) == ts
+    end
+
+    @testset "find_timestamp_index (Task 2.18)" begin
+        dates = [DateTime(2024, 1, 1, h) for h in 0:3]
+        @test IOM.find_timestamp_index(dates, DateTime(2024, 1, 1, 0)) == 1
+        @test IOM.find_timestamp_index(dates, DateTime(2024, 1, 1, 2)) == 3
+        @test IOM.find_timestamp_index(dates, DateTime(2024, 1, 1, 3)) == 4
+        # Off-grid timestamp (30 min past) must error, not silently floor.
+        @test_throws ErrorException IOM.find_timestamp_index(
+            dates,
+            DateTime(2024, 1, 1, 1, 30),
+        )
+        # Length-1 vector with a non-matching date must error, not BoundsError.
+        @test_throws ErrorException IOM.find_timestamp_index(
+            [DateTime(2024, 1, 1)],
+            DateTime(2024, 1, 2),
+        )
     end
 end
