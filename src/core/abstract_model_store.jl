@@ -72,12 +72,14 @@ function Base.isempty(store::T) where {T <: AbstractModelStore}
     return true
 end
 
+# Route through `get_data_field` so subtypes with indirected containers (e.g.
+# EmulationModelStore, whose fields sit inside `data_container`) can override field access.
 @generated function list_fields(
     store::AbstractModelStore,
     ::Type{T},
 ) where {T <: OptimizationKeyType}
     field = QuoteNode(store_field_for_type(T))
-    return :(return keys(getfield(store, $field)))
+    return :(return keys(get_data_field(store, Val($field))))
 end
 
 @generated function list_keys(
@@ -85,7 +87,7 @@ end
     ::Type{T},
 ) where {T <: OptimizationKeyType}
     field = QuoteNode(store_field_for_type(T))
-    return :(return collect(keys(getfield(store, $field))))
+    return :(return collect(keys(get_data_field(store, Val($field)))))
 end
 
 @generated function get_value(
@@ -95,7 +97,7 @@ end
 ) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType}
     K = key_for_type(T)
     field = QuoteNode(store_field_for_type(T))
-    return :(return getfield(store, $field)[$K(T, U)])
+    return :(return get_data_field(store, Val($field))[$K(T, U)])
 end
 
 # TODO: deprecate once POM is migrated to pass types (issue #18)
