@@ -238,6 +238,8 @@ for each (name, t). This improves the lower bound quality of NMDT without adding
 - `time_steps::UnitRange{Int}`: time periods
 - `result_expr`: expression container for the NMDT quadratic result to be tightened
 - `x_disc`: `NMDTDiscretization` for x, providing `norm_expr` and `depth`
+- `bounds::Vector{MinMax}`: per-name lower and upper bounds of the x domain, used to
+  unnormalize the epigraph cut from the normalized frame `xh ∈ [0,1]` to original units
 - `epigraph_depth::Int`: depth for the epigraph Q^{L1} lower-bound approximation
 - `meta::String`: identifier encoding the original variable type being approximated
 """
@@ -248,6 +250,7 @@ function _tighten_lower_bounds!(
     time_steps::UnitRange{Int},
     result_expr,
     x_disc,
+    bounds::Vector{MinMax},
     epigraph_depth::Int,
     meta::String;
 ) where {C <: IS.InfrastructureSystemsComponent}
@@ -267,11 +270,20 @@ function _tighten_lower_bounds!(
         time_steps;
         meta,
     )
-    for name in names, t in time_steps
-        epi_cons[name, t] = JuMP.@constraint(
-            jump_model,
-            result_expr[name, t] >= epi_expr[name, t],
-        )
+    # `epi_expr` under-estimates the normalized `xh² ∈ [0,1]`. Unnormalize the cut to original
+    # units via `x² = b.min² + 2·b.min·lx·xh + lx²·xh²` (x = b.min + lx·xh); applying the raw
+    # [0,1] cut directly is only valid on [0,1] and is infeasible/loose on other domains.
+    for (ix, name) in enumerate(names)
+        b = bounds[ix]
+        lx = b.max - b.min
+        for t in time_steps
+            epi_cons[name, t] = JuMP.@constraint(
+                jump_model,
+                result_expr[name, t] >=
+                b.min^2 + 2.0 * b.min * lx * x_disc.norm_expr[name, t] +
+                lx^2 * epi_expr[name, t],
+            )
+        end
     end
 end
 
