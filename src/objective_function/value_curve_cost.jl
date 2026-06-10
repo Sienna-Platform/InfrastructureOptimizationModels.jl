@@ -176,7 +176,8 @@ function is_nontrivial_offer(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve})
     xs = IS.get_x_coords(IS.get_function_data(IS.get_value_curve(curve)))
     return last(xs) > first(xs)
 end
-is_nontrivial_offer(::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve}) = false
+# TS-backed curves always carry real data (never ZERO_OFFER_CURVE), so they are nontrivial.
+is_nontrivial_offer(::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve}) = true
 
 #################################################################################
 # Section 5: TimeSeriesValueCurve Objective Formulation (PSY-free)

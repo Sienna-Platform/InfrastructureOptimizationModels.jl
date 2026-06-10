@@ -223,7 +223,6 @@ function add_variable_cost_to_objective!(
     cost_function::IS.FuelCurve{IS.QuadraticCurve},
     ::Type{U},
 ) where {T <: VariableType, U <: AbstractDeviceFormulation}
-    multiplier = objective_function_multiplier(T, U)
     base_power = get_model_base_power(container)
     device_base_power = get_base_power(component)
     value_curve = IS.get_value_curve(cost_function)
@@ -244,14 +243,15 @@ function add_variable_cost_to_objective!(
         device_base_power,
     )
     fuel_cost = IS.get_fuel_cost(cost_function)
-    # Multiplier is not necessary here. There is no negative cost for fuel curves.
+    # No objective_function_multiplier: there is no negative cost for fuel curves
+    # (matches the linear fuel path).
     _add_fuel_quadratic_variable_cost!(
         container,
         T,
         U,
         component,
-        multiplier * proportional_term_per_unit,
-        multiplier * quadratic_term_per_unit,
+        proportional_term_per_unit,
+        quadratic_term_per_unit,
         fuel_cost,
     )
     return
