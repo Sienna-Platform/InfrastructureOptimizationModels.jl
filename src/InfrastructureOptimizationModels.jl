@@ -139,7 +139,6 @@ import PrettyTables
 ################################################################################
 # Type Aliases
 
-const POM = InfrastructureOptimizationModels
 const IS = InfrastructureSystems
 const ISOPT = InfrastructureSystems.Optimization
 const MOI = MathOptInterface
@@ -564,9 +563,10 @@ include("core/parameter_container.jl")                # Parameter container infr
 include("core/abstract_model_store.jl")               # Store depends on keys
 include("core/optimizer_stats.jl")                    # Stats standalone
 include("core/optimization_container_metadata.jl")    # Metadata depends on keys
+include("core/model_store_params.jl")                 # Store params depend on metadata
 include("core/optimization_problem_outputs_export.jl") # Export config
 include("core/optimization_problem_outputs.jl")       # Outputs depends on all above
-include("core/model_internal.jl")                     # Internal state (needs ModelBuildStatus)
+include("core/model_internal.jl")                     # Internal state (needs ModelBuildStatus, ModelStoreParams)
 
 include("core/time_series_parameter_types.jl")
 
@@ -587,7 +587,6 @@ include("core/outputs_by_time.jl")
 include("operation/problem_template.jl")
 include("core/optimization_container.jl")
 include("core/dual_processing.jl")
-include("core/model_store_params.jl")
 
 # Standard variable and expression types (after OptimizationContainer is defined)
 include("core/standard_variables_expressions.jl")
