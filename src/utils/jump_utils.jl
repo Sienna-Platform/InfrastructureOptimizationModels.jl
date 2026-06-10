@@ -84,10 +84,12 @@ function _to_matrix(
     array::SparseAxisArray{T, N, K},
     columns,
 ) where {T, N, K <: NTuple{N, Any}}
-    time_steps = Set{Int}(k[N] for k in keys(array.data))
-    data = Matrix{Float64}(undef, length(time_steps), length(columns))
-    for (ix, col) in enumerate(columns), t in time_steps
-        data[t, ix] = array.data[(col..., t)]
+    # Map non-contiguous time values to dense rows; fill missing (col, time) with NaN.
+    sorted_times = sort!(collect(Set{Int}(k[N] for k in keys(array.data))))
+    row_index = Dict(t => i for (i, t) in enumerate(sorted_times))
+    data = Matrix{Float64}(undef, length(sorted_times), length(columns))
+    for (ix, col) in enumerate(columns), t in sorted_times
+        data[row_index[t], ix] = get(array.data, (col..., t), NaN)
     end
     return data
 end
@@ -194,7 +196,9 @@ function encode_tuple_to_column(val::NTuple{N, <:AbstractString}) where {N}
     return join(val, PSI_NAME_DELIMITER)
 end
 
-function encode_tuple_to_column(val::Tuple{String, Int})
+# Generic fallback for mixed-type keys of any arity (e.g. the 4-tuple sparse
+# constraint containers).
+function encode_tuple_to_column(val::Tuple)
     return join(string.(val), PSI_NAME_DELIMITER)
 end
 
@@ -230,8 +234,17 @@ function to_dataframe(
     return DataFrame(Symbol(cols[1]) => array.data)
 end
 
-function to_dataframe(array::SparseAxisArray, key::OptimizationContainerKey)
-    return DataFrame(to_matrix(array), get_column_names_from_axis_array(key, array)[1])
+function to_dataframe(
+    array::SparseAxisArray{T, N, K},
+    key::OptimizationContainerKey,
+) where {T, N, K <: NTuple{N, Any}}
+    # Order raw tuples once for both matrix columns and labels; sorting encoded strings
+    # separately diverges for mixed-type keys (`("a",2)<("a",10)` but `"a__10"<"a__2"`).
+    tuple_columns = sort!(unique!([k[1:(N - 1)] for k in keys(array.data)]))
+    return DataFrame(
+        _to_matrix(array, tuple_columns),
+        encode_tuple_to_column.(tuple_columns),
+    )
 end
 
 """
@@ -250,7 +263,7 @@ Convert a DenseAxisArray containing components to a outputs DataFrame consumable
   format does not support arrays with more than two dimensions.
 """
 function to_outputs_dataframe(array::DenseAxisArray, timestamps)
-    return to_outputs_dataframe(array, timestamps, Val(TableFormat.LONG))()
+    return to_outputs_dataframe(array, timestamps, Val(TableFormat.LONG))
 end
 
 function to_outputs_dataframe(
@@ -259,7 +272,19 @@ function to_outputs_dataframe(
     ::Val{TableFormat.LONG},
 )
     return DataFrames.DataFrame(
-        :DateTime => [1],
+        :DateTime => fill(only(timestamps), length(array)),
+        :name => axes(array, 1),
+        :value => array.data,
+    )
+end
+
+function to_outputs_dataframe(
+    array::DenseAxisArray{Float64, 1, <:Tuple{Vector{String}}},
+    ::Nothing,
+    ::Val{TableFormat.LONG},
+)
+    return DataFrames.DataFrame(
+        :time_index => fill(1, length(array)),
         :name => axes(array, 1),
         :value => array.data,
     )
@@ -285,8 +310,10 @@ function to_outputs_dataframe(
 
     row_index = 1
     for name in axes(array, 1)
-        for time_index in axes(array, 2)
-            time_col[row_index] = timestamps_arr[time_index]
+        # Index timestamps positionally — the time axis may be e.g. `0:23` or `2:25`,
+        # so the axis value is not a valid index into `timestamps_arr`.
+        for (j, _) in enumerate(axes(array, 2))
+            time_col[row_index] = timestamps_arr[j]
             name_col[row_index] = name
             row_index += 1
         end
@@ -351,11 +378,11 @@ function to_outputs_dataframe(
     array::DenseAxisArray{
         Float64,
         3,
-        <:Tuple{Vector{String}, Vector{String}, UnitRange{Int}},
+        <:Tuple{Vector{String}, T, UnitRange{Int}},
     },
     timestamps,
     ::Val{TableFormat.LONG},
-)
+) where {T <: Union{Vector{String}, UnitRange{Int}}}
     num_timestamps = size(array, 3)
     if length(timestamps) != num_timestamps
         error(
@@ -368,17 +395,18 @@ function to_outputs_dataframe(
     timestamps_arr = _collect_timestamps(timestamps)
     time_col = Vector{Dates.DateTime}(undef, num_rows)
     name_col = Vector{String}(undef, num_rows)
-    name2_col = Vector{String}(undef, num_rows)
+    name2_col = Vector{eltype(T)}(undef, num_rows)
     vals = Vector{Float64}(undef, num_rows)
 
     row_index = 1
-    for name in axes(array, 1)
-        for name2 in axes(array, 2)
-            for time_index in axes(array, 3)
-                time_col[row_index] = timestamps_arr[time_index]
+    for (i, name) in enumerate(axes(array, 1))
+        for (k, name2) in enumerate(axes(array, 2))
+            # Index timestamps and data positionally; axes need not start at 1.
+            for (j, _) in enumerate(axes(array, 3))
+                time_col[row_index] = timestamps_arr[j]
                 name_col[row_index] = name
                 name2_col[row_index] = name2
-                vals[row_index] = array[name, name2, time_index]
+                vals[row_index] = array.data[i, k, j]
                 row_index += 1
             end
         end
@@ -408,13 +436,13 @@ function to_outputs_dataframe(
     vals = Vector{Float64}(undef, num_rows)
 
     row_index = 1
-    for name in axes(array, 1)
-        for name2 in axes(array, 2)
-            for time_index in axes(array, 3)
+    for (i, name) in enumerate(axes(array, 1))
+        for (k, name2) in enumerate(axes(array, 2))
+            for (j, time_index) in enumerate(axes(array, 3))
                 time_col[row_index] = time_index
                 name_col[row_index] = name
                 name2_col[row_index] = name2
-                vals[row_index] = array[name, name2, time_index]
+                vals[row_index] = array.data[i, k, j]
                 row_index += 1
             end
         end
@@ -426,23 +454,6 @@ function to_outputs_dataframe(
         :name2 => name2_col,
         :value => vals,
     )
-end
-
-function to_outputs_dataframe(
-    array::DenseAxisArray{
-        Float64,
-        3,
-        <:Tuple{Vector{String}, Vector{String}, UnitRange{Int}},
-    },
-    ::Nothing,
-    ::Val{TableFormat.LONG},
-)
-    return to_outputs_dataframe(array, nothing, TableFormat.LONG)
-end
-
-function to_dataframe(array::SparseAxisArray{T, N, K}) where {T, N, K <: NTuple{N, Any}}
-    columns = get_column_names_from_axis_array(array)
-    return DataFrames.DataFrame(_to_matrix(array, columns), columns)
 end
 
 """
@@ -457,7 +468,7 @@ Returns the correct container specification for the selected type of JuMP Model
 """
 function container_spec(::Type{Float64}, axs::Vararg{Any, N}) where {N}
     cont = DenseAxisArray{Float64}(undef, axs...)
-    cont.data .= fill(NaN, size(cont.data))
+    fill!(cont.data, NaN)
     return cont
 end
 
@@ -469,7 +480,9 @@ function sparse_container_spec(
     axs::Vararg{Any, N},
 ) where {T <: JuMP.AbstractJuMPScalar, N}
     indexes = Base.Iterators.product(axs...)
-    contents = Dict{eltype(indexes), T}(indexes .=> zero(T))
+    # Build a fresh zero(T) per key — `indexes .=> zero(T)` aliases one mutable
+    # zero (e.g. an AffExpr) across every entry, so mutating one corrupts all.
+    contents = Dict{eltype(indexes), T}(k => zero(T) for k in indexes)
     return SparseAxisArray(contents)
 end
 
@@ -511,51 +524,6 @@ end
 
 remove_undef!(expression_array::SparseAxisArray) = expression_array
 
-function _calc_dimensions(
-    array::DenseAxisArray,
-    key::OptimizationContainerKey,
-    num_rows::Int,
-    horizon::Int,
-)
-    ax = axes(array)
-    columns = get_column_names_from_axis_array(key, array)
-    # Two use cases for read:
-    # 1. Read data for one execution for one device.
-    # 2. Read data for one execution for all devices.
-    # This will ensure that data on disk is contiguous in both cases.
-    if length(ax) == 1
-        if length(ax[1]) != horizon
-            @debug "$(encode_key_as_string(key)) has length $(length(ax[1])). Different than horizon $horizon."
-        end
-        dims = (length(ax[1]), 1, num_rows)
-    elseif length(ax) == 2
-        if length(ax[2]) != horizon
-            @debug "$(encode_key_as_string(key)) has length $(length(ax[1])). Different than horizon $horizon."
-        end
-        dims = (length(ax[2]), length(columns[1]), num_rows)
-    elseif length(ax) == 3
-        if length(ax[3]) != horizon
-            @debug "$(encode_key_as_string(key)) has length $(length(ax[1])). Different than horizon $horizon."
-        end
-        dims = (length(ax[3]), length(columns[1]), length(columns[2]), num_rows)
-    else
-        error("unsupported data size $(length(ax))")
-    end
-
-    return Dict("columns" => columns, "dims" => dims)
-end
-
-function _calc_dimensions(
-    array::SparseAxisArray,
-    key::OptimizationContainerKey,
-    num_rows::Int,
-    horizon::Int,
-)
-    columns = get_column_names_from_axis_array(key, array)
-    dims = (horizon, length.(columns)..., num_rows)
-    return Dict("columns" => columns, "dims" => dims)
-end
-
 """
 Run this function only when getting detailed solver stats
 """
@@ -563,29 +531,24 @@ function _summary_to_dict!(optimizer_stats::OptimizerStats, jump_model::JuMP.Mod
     # JuMP.solution_summary uses a lot of try-catch so it has a performance hit and should be opt-in
     jump_summary = JuMP.solution_summary(jump_model; verbose = false)
     # Note we don't grab all the fields from the summary because not all can be encoded as Float for HDF store
-    fields = [
-        :has_values, # Bool
-        :has_duals, # Bool
-        # Candidate solution
-        :objective_bound, # Union{Missing,Float64}
-        :dual_objective_value, # Union{Missing,Float64}
-        # Work counters
-        :relative_gap, # Union{Missing,Int}
-        :barrier_iterations, # Union{Missing,Int}
-        :simplex_iterations, # Union{Missing,Int}
-        :node_count, # Union{Missing,Int}
-    ]
-
-    for field in fields
-        field_value = getfield(jump_summary, field)
-        if ismissing(field_value)
-            setfield!(optimizer_stats, field, missing)
-        else
-            setfield!(optimizer_stats, field, field_value)
-        end
+    for field in _SUMMARY_STATS_FIELDS
+        setfield!(optimizer_stats, field, getfield(jump_summary, field))
     end
     return
 end
+
+const _SUMMARY_STATS_FIELDS = (
+    :has_values, # Bool
+    :has_duals, # Bool
+    # Candidate solution
+    :objective_bound, # Union{Missing,Float64}
+    :dual_objective_value, # Union{Missing,Float64}
+    # Work counters
+    :relative_gap, # Union{Missing,Float64}
+    :barrier_iterations, # Union{Missing,Int}
+    :simplex_iterations, # Union{Missing,Int}
+    :node_count, # Union{Missing,Int}
+)
 
 function supports_milp(jump_model::JuMP.Model)
     optimizer_backend = JuMP.backend(jump_model)
@@ -656,8 +619,8 @@ function check_conflict_status(
     jump_model::JuMP.Model,
     constraint_container::DenseAxisArray{JuMP.ConstraintRef},
 )
-    conflict_indices = Vector()
     dims = axes(constraint_container)
+    conflict_indices = Vector{Tuple{eltype.(dims)...}}()
     for index in Iterators.product(dims...)
         if isassigned(constraint_container, index...) &&
            MOI.get(
@@ -671,14 +634,16 @@ function check_conflict_status(
     return conflict_indices
 end
 
+# Sparse constraint containers have eltype `Union{Nothing, ConstraintRef}`; dispatch on the
+# bare `SparseAxisArray` and skip `nothing` entries (a typed signature would never match).
 function check_conflict_status(
     jump_model::JuMP.Model,
-    constraint_container::SparseAxisArray{JuMP.ConstraintRef},
+    constraint_container::SparseAxisArray,
 )
-    conflict_indices = Vector()
-    for (index, constraint) in constraint_container
-        if isassigned(constraint_container, index...) &&
-           MOI.get(jump_model, MOI.ConstraintConflictStatus(), constraint) !=
+    conflict_indices = Vector{eltype(keys(constraint_container.data))}()
+    for (index, constraint) in pairs(constraint_container.data)
+        constraint === nothing && continue
+        if MOI.get(jump_model, MOI.ConstraintConflictStatus(), constraint) !=
            MOI.NOT_IN_CONFLICT
             push!(conflict_indices, index)
         end
