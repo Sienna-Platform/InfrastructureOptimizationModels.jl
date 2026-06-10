@@ -61,7 +61,7 @@ function get_detailed_constraint_numerical_bounds(model::AbstractOptimizationMod
     if !is_built(model)
         error("Model not built, can't calculate constraint numerical bounds")
     end
-    constraint_bounds = Dict()
+    constraint_bounds = Dict{ConstraintKey, ConstraintBounds}()
     for (const_key, constraint_array) in get_constraints(get_optimization_container(model))
         if isa(constraint_array, SparseAxisArray)
             bounds = ConstraintBounds()
@@ -75,6 +75,7 @@ function get_detailed_constraint_numerical_bounds(model::AbstractOptimizationMod
         else
             bounds = ConstraintBounds()
             for idx in Iterators.product(constraint_array.axes...)
+                !isassigned(constraint_array, idx...) && continue
                 con_obj = JuMP.constraint_object(constraint_array[idx...])
                 update_coefficient_bounds(bounds, con_obj, idx)
                 update_rhs_bounds(bounds, con_obj, idx)
@@ -89,7 +90,7 @@ function get_detailed_variable_numerical_bounds(model::AbstractOptimizationModel
     if !is_built(model)
         error("Model not built, can't calculate variable numerical bounds")
     end
-    variable_bounds = Dict()
+    variable_bounds = Dict{VariableKey, VariableBounds}()
     for (variable_key, variable_array) in get_variables(get_optimization_container(model))
         bounds = VariableBounds()
         if isa(variable_array, SparseAxisArray)

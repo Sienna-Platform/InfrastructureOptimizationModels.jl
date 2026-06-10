@@ -187,7 +187,10 @@ end
 set_initial_time!(model::AbstractOptimizationModel, val::Dates.DateTime) =
     set_initial_time!(get_settings(model), val)
 
-get_simulation_info(model::AbstractOptimizationModel, val) = model.simulation_info = val
+function set_simulation_info!(model::AbstractOptimizationModel, val)
+    model.simulation_info = val
+    return
+end
 
 function set_status!(model::AbstractOptimizationModel, status::ModelBuildStatus)
     set_status!(get_internal(model), status)
@@ -209,8 +212,8 @@ function _check_numerical_bounds(model::AbstractOptimizationModel)
     variable_bounds = get_variable_numerical_bounds(model)
     if variable_bounds.bounds.max - variable_bounds.bounds.min > 1e9
         @warn "Variable bounds range is $(variable_bounds.bounds.max - variable_bounds.bounds.min) and can result in numerical problems for the solver. \\
-        max_bound_variable = $(encode_key_as_string(variable_bounds.bounds.max_index)) \\
-        min_bound_variable = $(encode_key_as_string(variable_bounds.bounds.min_index)) \\
+        max_bound_variable = $(_bound_index_string(variable_bounds.bounds.max_index)) \\
+        min_bound_variable = $(_bound_index_string(variable_bounds.bounds.min_index)) \\
         Run get_detailed_variable_numerical_bounds on the model for a deeper analysis"
     else
         @info "Variable bounds range is [$(variable_bounds.bounds.min) $(variable_bounds.bounds.max)]"
@@ -219,8 +222,8 @@ function _check_numerical_bounds(model::AbstractOptimizationModel)
     constraint_bounds = get_constraint_numerical_bounds(model)
     if constraint_bounds.coefficient.max - constraint_bounds.coefficient.min > 1e9
         @warn "Constraint coefficient bounds range is $(constraint_bounds.coefficient.max - constraint_bounds.coefficient.min) and can result in numerical problems for the solver. \\
-        max_bound_constraint = $(encode_key_as_string(constraint_bounds.coefficient.max_index)) \\
-        min_bound_constraint = $(encode_key_as_string(constraint_bounds.coefficient.min_index)) \\
+        max_bound_constraint = $(_bound_index_string(constraint_bounds.coefficient.max_index)) \\
+        min_bound_constraint = $(_bound_index_string(constraint_bounds.coefficient.min_index)) \\
         Run get_detailed_constraint_numerical_bounds on the model for a deeper analysis"
     else
         @info "Constraint coefficient bounds range is [$(constraint_bounds.coefficient.min) $(constraint_bounds.coefficient.max)]"
@@ -228,8 +231,8 @@ function _check_numerical_bounds(model::AbstractOptimizationModel)
 
     if constraint_bounds.rhs.max - constraint_bounds.rhs.min > 1e9
         @warn "Constraint right-hand-side bounds range is $(constraint_bounds.rhs.max - constraint_bounds.rhs.min) and can result in numerical problems for the solver. \\
-        max_bound_constraint = $(encode_key_as_string(constraint_bounds.rhs.max_index)) \\
-        min_bound_constraint = $(encode_key_as_string(constraint_bounds.rhs.min_index)) \\
+        max_bound_constraint = $(_bound_index_string(constraint_bounds.rhs.max_index)) \\
+        min_bound_constraint = $(_bound_index_string(constraint_bounds.rhs.min_index)) \\
         Run get_detailed_constraint_numerical_bounds on the model for a deeper analysis"
     else
         @info "Constraint right-hand-side bounds [$(constraint_bounds.rhs.min) $(constraint_bounds.rhs.max)]"

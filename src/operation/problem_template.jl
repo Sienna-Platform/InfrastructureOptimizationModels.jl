@@ -145,9 +145,14 @@ function _deepcopy_template(template::AbstractProblemTemplate)
     modf = network_model.MODF_matrix
     network_model.PTDF_matrix = nothing
     network_model.MODF_matrix = nothing
-    template_ = deepcopy(template)
-    network_model.PTDF_matrix = ptdf
-    network_model.MODF_matrix = modf
+    # Restore the input template's matrices even if `deepcopy` throws, so a
+    # failed copy doesn't leave the caller's template stripped.
+    template_ = try
+        deepcopy(template)
+    finally
+        network_model.PTDF_matrix = ptdf
+        network_model.MODF_matrix = modf
+    end
     copied_network_model = get_network_model(template_)
     copied_network_model.PTDF_matrix = ptdf
     copied_network_model.MODF_matrix = modf
