@@ -1,7 +1,7 @@
 const _CONTAINER_METADATA_FILE = "optimization_container_metadata.bin"
 # TODO: IS has the same definition. Where does it belong, here or in IS?
 struct OptimizationContainerMetadata
-    container_key_lookup::Dict{String, <:OptimizationContainerKey}
+    container_key_lookup::Dict{String, OptimizationContainerKey}
 end
 
 function OptimizationContainerMetadata()
@@ -40,8 +40,14 @@ function deserialize_key(metadata::OptimizationContainerMetadata, name::Abstract
     return metadata.container_key_lookup[name]
 end
 
-add_container_key!(x::OptimizationContainerMetadata, key::String, val) =
+function add_container_key!(
+    x::OptimizationContainerMetadata,
+    key::String,
+    val::OptimizationContainerKey,
+)
     x.container_key_lookup[key] = val
+    return
+end
 get_container_key(x::OptimizationContainerMetadata, key::String) =
     x.container_key_lookup[key]
 has_container_key(x::OptimizationContainerMetadata, key::String) =

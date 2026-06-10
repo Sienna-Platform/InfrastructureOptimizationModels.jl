@@ -61,11 +61,11 @@ end
 
 struct VariableValueAttributes{T <: OptimizationContainerKey} <: ParameterAttributes
     attribute_key::T
-    affected_keys::Set
+    affected_keys::Set{OptimizationContainerKey}
 end
 
 function VariableValueAttributes(key::T) where {T <: OptimizationContainerKey}
-    return VariableValueAttributes{T}(key, Set())
+    return VariableValueAttributes{T}(key, Set{OptimizationContainerKey}())
 end
 
 get_attribute_key(attr::VariableValueAttributes) = attr.attribute_key
@@ -84,7 +84,14 @@ struct EventParametersAttributes{
     T <: IS.InfrastructureSystemsComponent,
     U <: ParameterType,
 } <: ParameterAttributes
-    affected_devices::Vector{<:IS.InfrastructureSystemsComponent}
+    affected_devices::Vector{T}
+end
+
+function EventParametersAttributes(
+    ::Type{T},
+    ::Type{U},
+) where {T <: IS.InfrastructureSystemsComponent, U <: ParameterType}
+    return EventParametersAttributes{T, U}(T[])
 end
 
 function get_param_type(
@@ -151,7 +158,9 @@ function calculate_parameter_values(
     param_array::SparseAxisArray,
     multiplier_array::SparseAxisArray,
 )
-    p_array = jump_value.(to_matrix(param_array))
+    # jump_value before to_matrix: the matrix is Float64, so VariableRef-backed
+    # parameter arrays (recurrent builds) must be resolved to values first.
+    p_array = to_matrix(jump_value.(param_array))
     m_array = to_matrix(multiplier_array)
     return p_array .* m_array
 end
@@ -196,7 +205,8 @@ function get_parameter_values(
     param_array::DenseAxisArray,
     multiplier_array::DenseAxisArray,
 )
-    return (.*).(jump_value.(param_array), multiplier_array)
+    # Return raw values; the multiplier is applied once by `calculate_parameter_values`.
+    return jump_value.(param_array)
 end
 
 function get_parameter_values(

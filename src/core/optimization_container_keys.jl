@@ -89,16 +89,6 @@ function (M::Type{S} where {S <: OptimizationContainerKey})(
     return M{T, K}(meta)
 end
 
-function (M::Type{S} where {S <: OptimizationContainerKey})(
-    ::Type{T},
-    ::Type{U},
-    meta::String,
-) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType}
-    K = canonical_component_type(U)
-    maybe_throw_if_abstract(T, K)
-    return M{T, K}(meta)
-end
-
 function make_key(
     ::Type{S},
     ::Type{T},
@@ -109,6 +99,7 @@ function make_key(
     T <: OptimizationKeyType,
     U <: InfrastructureSystemsType,
 }
+    check_meta_chars(meta)
     return S{T, canonical_component_type(U)}(meta)
 end
 
@@ -157,6 +148,3 @@ function convert_output_to_natural_units(
 ) where {T <: OptimizationKeyType}
     return convert_output_to_natural_units(T)
 end
-
-Base.convert(::Type{ExpressionKey}, name::Symbol) = ExpressionKey(decode_symbol(name)...)
-Base.convert(::Type{ConstraintKey}, name::Symbol) = ConstraintKey(decode_symbol(name)...)
