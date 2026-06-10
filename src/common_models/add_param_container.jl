@@ -96,7 +96,7 @@ function add_param_container!(
     V <: IS.InfrastructureSystemsComponent,
 }
     param_key = ParameterKey(T, U, meta)
-    attributes = EventParametersAttributes(V)
+    attributes = EventParametersAttributes(V, T)
     return add_param_container_shared_axes!(
         container, param_key, attributes, get_param_eltype(container), axs...;
         sparse = sparse)
