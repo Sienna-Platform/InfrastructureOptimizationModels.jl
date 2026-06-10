@@ -20,9 +20,12 @@ end
 
 # Values field is accessed with dot syntax to avoid type instability
 
-mutable struct InMemoryDataset{N} <: AbstractDataset
+# Fully parameterized on the array type: a bare `DenseAxisArray{Float64, N}` field is
+# abstract (axes/lookup parameters free), so every per-step state read/write would
+# dispatch dynamically. This is the emulation state store — a hot path.
+mutable struct InMemoryDataset{N, A <: DenseAxisArray{Float64, N}} <: AbstractDataset
     "Data with dimensions (N column names, row indexes)"
-    values::DenseAxisArray{Float64, N}
+    values::A
     # We use Array here to allow for overwrites when updating the state
     timestamps::Vector{Dates.DateTime}
     # Resolution is needed because AbstractDataset might have just one row
@@ -38,7 +41,7 @@ function InMemoryDataset(
     resolution::Dates.Millisecond,
     end_of_step_index::Int,
 ) where {N}
-    return InMemoryDataset{N}(
+    return InMemoryDataset{N, typeof(values)}(
         values,
         timestamps,
         resolution,
@@ -49,7 +52,7 @@ function InMemoryDataset(
 end
 
 function InMemoryDataset(values::DenseAxisArray{Float64, N}) where {N}
-    return InMemoryDataset{N}(
+    return InMemoryDataset{N, typeof(values)}(
         values,
         Vector{Dates.DateTime}(),
         Dates.Second(0.0),
@@ -175,7 +178,8 @@ end
 #the state so the incoming vals will have one dimension less than the DataSet. The exception
 # is for vals of Dimension 1 which are still stored in DataSets of dimension 2.
 function set_value!(s::InMemoryDataset{2}, vals::DenseAxisArray{Float64, 2}, index::Int)
-    s.values[:, index] = vals[:, index]
+    IS.@assert_op size(vals, 2) == 1
+    s.values[:, index] = vals[:, 1]
     return
 end
 
