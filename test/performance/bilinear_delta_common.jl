@@ -243,7 +243,8 @@ call DNMDT bilinear with pre-built discretizations. I² is reused in the loss co
 """
 function build_gen_bilinear(
     container, net::MockNetworkProblem, V_container, I_container, time_steps,
-    bilinear_config::IOM.NMDTBilinearConfig{IOM.DoubleNMDT}, quad_config::IOM.NMDTQuadConfig{IOM.DoubleNMDT},
+    bilinear_config::IOM.NMDTBilinearConfig{IOM.DoubleNMDT},
+    quad_config::IOM.NMDTQuadConfig{IOM.DoubleNMDT},
 )
     V_bounds, I_bounds = gen_bounds(net)
     V_disc = IOM._discretize!(

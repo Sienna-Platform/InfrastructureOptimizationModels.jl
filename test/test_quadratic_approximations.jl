@@ -7,14 +7,19 @@ const TEST_META = "TestVar"
         # with a PWL breakpoint, i.e. the McCormickTightener partitions evenly divide
         # depth. A misaligned grid such as (depth=3, partitions=2) cuts off
         # MIP-feasible points, so the constructor must reject it.
-        for T in (IOM.SOS2QuadConfig{IOM.SolverBackend}, IOM.SOS2QuadConfig{IOM.ManualBackend})
+        for T in
+            (IOM.SOS2QuadConfig{IOM.SolverBackend}, IOM.SOS2QuadConfig{IOM.ManualBackend})
             # Non-dividing: rejected.
             @test_throws ArgumentError T(; depth = 3, tightener = IOM.McCormickTightener(2))
             # Dividing: accepted.
-            @test T(; depth = 4, tightener = IOM.McCormickTightener(2)).tightener.partitions ==
+            @test T(;
+                depth = 4,
+                tightener = IOM.McCormickTightener(2),
+            ).tightener.partitions ==
                   2
             # NoTightener disables PWMCC entirely and is always accepted (also the default).
-            @test T(; depth = 3, tightener = IOM.NoTightener()).tightener isa IOM.NoTightener
+            @test T(; depth = 3, tightener = IOM.NoTightener()).tightener isa
+                  IOM.NoTightener
             @test T(; depth = 3).tightener isa IOM.NoTightener
         end
     end

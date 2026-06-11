@@ -168,7 +168,8 @@ function _sawtooth_ladder!(
         )
     else
         tooth_cons = add_constraints_container!(
-            container, SawtoothLPConstraint, C, names, alpha_levels, 1:2, time_steps; meta,
+            container, SawtoothLPConstraint, C, names, alpha_levels, 1:2, time_steps;
+            meta,
         )
     end
 

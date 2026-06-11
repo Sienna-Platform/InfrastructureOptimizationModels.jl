@@ -299,7 +299,12 @@ end
                     tolerance = tol, max_delta_x = delta_x, max_delta_y = delta_y,
                 )
                 cfg = IOM.NMDTBilinearConfig{IOM.DoubleNMDT}(; depth = d)
-                samples = _bilinear_samples(IOM.NMDTQuadConfig{IOM.DoubleNMDT}, d, delta_x, delta_y)
+                samples = _bilinear_samples(
+                    IOM.NMDTQuadConfig{IOM.DoubleNMDT},
+                    d,
+                    delta_x,
+                    delta_y,
+                )
                 result = _eval_bilinear(cfg, samples, delta_x, delta_y, tol)
                 @info "DNMDTBilinearConfig" tolerance = tol depth = d max_gap =
                     result.max_gap achieved_over_tol = result.ratio
@@ -339,8 +344,14 @@ end
         # derivation breaks).
         bin2_cases = [
             (IOM.SawtoothQuadConfig, d -> IOM.SawtoothQuadConfig(; depth = d)),
-            (IOM.SOS2QuadConfig{IOM.SolverBackend}, d -> IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = d)),
-            (IOM.SOS2QuadConfig{IOM.ManualBackend}, d -> IOM.SOS2QuadConfig{IOM.ManualBackend}(; depth = d)),
+            (
+                IOM.SOS2QuadConfig{IOM.SolverBackend},
+                d -> IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = d),
+            ),
+            (
+                IOM.SOS2QuadConfig{IOM.ManualBackend},
+                d -> IOM.SOS2QuadConfig{IOM.ManualBackend}(; depth = d),
+            ),
             (
                 IOM.NMDTQuadConfig{IOM.SingleNMDT},
                 d -> IOM.NMDTQuadConfig{IOM.SingleNMDT}(;
@@ -379,8 +390,14 @@ end
     @testset "HybSConfig{Q}" begin
         hybs_cases = [
             (IOM.SawtoothQuadConfig, d -> IOM.SawtoothQuadConfig(; depth = d)),
-            (IOM.SOS2QuadConfig{IOM.SolverBackend}, d -> IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = d)),
-            (IOM.SOS2QuadConfig{IOM.ManualBackend}, d -> IOM.SOS2QuadConfig{IOM.ManualBackend}(; depth = d)),
+            (
+                IOM.SOS2QuadConfig{IOM.SolverBackend},
+                d -> IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = d),
+            ),
+            (
+                IOM.SOS2QuadConfig{IOM.ManualBackend},
+                d -> IOM.SOS2QuadConfig{IOM.ManualBackend}(; depth = d),
+            ),
         ]
         for (Q, make_inner) in hybs_cases
             @testset "HybSConfig{$(nameof(Q))}" begin

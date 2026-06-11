@@ -119,7 +119,10 @@ end
                 JuMP.fix(setup.y_var_container["dev1", 1], y0; force = true)
 
                 IOM.add_bilinear_approx!(
-                    IOM.HybSConfig(IOM.SawtoothQuadConfig(; depth = 2); cross_term_depth = 2),
+                    IOM.HybSConfig(
+                        IOM.SawtoothQuadConfig(; depth = 2);
+                        cross_term_depth = 2,
+                    ),
                     setup.container,
                     MockThermalGen,
                     ["dev1"],

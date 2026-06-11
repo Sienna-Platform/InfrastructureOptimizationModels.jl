@@ -47,7 +47,10 @@ const NMDT_BILINEAR_META = "NMDTBilinearTest"
                 JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
 
                 IOM.add_quadratic_approx!(
-                    IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = 3, tightener = IOM.NoTightener()),
+                    IOM.NMDTQuadConfig{IOM.DoubleNMDT}(;
+                        depth = 3,
+                        tightener = IOM.NoTightener(),
+                    ),
                     setup.container, MockThermalGen, ["gen1"], 1:1,
                     setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
                 )
@@ -84,7 +87,10 @@ end
                         if tighten
                             IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = 2)
                         else
-                            IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = 2, tightener = IOM.NoTightener())
+                            IOM.NMDTQuadConfig{IOM.DoubleNMDT}(;
+                                depth = 2,
+                                tightener = IOM.NoTightener(),
+                            )
                         end
                     ),
                     setup.container, MockThermalGen, ["gen1"], 1:1,
@@ -363,7 +369,10 @@ end
                 JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
 
                 IOM.add_quadratic_approx!(
-                    IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth = 3, tightener = IOM.NoTightener()),
+                    IOM.NMDTQuadConfig{IOM.SingleNMDT}(;
+                        depth = 3,
+                        tightener = IOM.NoTightener(),
+                    ),
                     setup.container, MockThermalGen, ["gen1"], 1:1,
                     setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
                 )
@@ -416,7 +425,13 @@ end
     # toward x² without exceeding it.
     @testset "NMDT without tightening (tightener = IOM.NoTightener())" begin
         for x0 in [0.15, 0.35, 0.65, 0.85]
-            lb_nmdt = _nmdt_min(IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth = 2, tightener = IOM.NoTightener()), x0)
+            lb_nmdt = _nmdt_min(
+                IOM.NMDTQuadConfig{IOM.SingleNMDT}(;
+                    depth = 2,
+                    tightener = IOM.NoTightener(),
+                ),
+                x0,
+            )
             @test lb_nmdt <= x0^2 + 1e-6
         end
     end
@@ -424,9 +439,18 @@ end
     @testset "NMDT with tightening (tightener = IOM.EpigraphTightener(depth))" begin
         for x0 in [0.15, 0.35, 0.65, 0.85]
             depth = 2
-            lb_nmdt = _nmdt_min(IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth, tightener = IOM.NoTightener()), x0)
+            lb_nmdt = _nmdt_min(
+                IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth, tightener = IOM.NoTightener()),
+                x0,
+            )
             lb_tnmdt =
-                _nmdt_min(IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth, tightener = IOM.EpigraphTightener(depth)), x0)
+                _nmdt_min(
+                    IOM.NMDTQuadConfig{IOM.SingleNMDT}(;
+                        depth,
+                        tightener = IOM.EpigraphTightener(depth),
+                    ),
+                    x0,
+                )
             @test lb_tnmdt >= lb_nmdt - 1e-6   # tightening can only raise the MIN
             @test lb_tnmdt <= x0^2 + 1e-6      # but still ≤ x² (overestimator side)
         end
@@ -445,8 +469,20 @@ end
             gaps_dnmdt = Float64[]
             for x0 in range(0.05, 0.95; length = 9)
                 for (config_fn, tag) in [
-                    (L -> IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth = L, tightener = IOM.NoTightener()), :nmdt),
-                    (L -> IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = L, tightener = IOM.NoTightener()), :dnmdt),
+                    (
+                        L -> IOM.NMDTQuadConfig{IOM.SingleNMDT}(;
+                            depth = L,
+                            tightener = IOM.NoTightener(),
+                        ),
+                        :nmdt,
+                    ),
+                    (
+                        L -> IOM.NMDTQuadConfig{IOM.DoubleNMDT}(;
+                            depth = L,
+                            tightener = IOM.NoTightener(),
+                        ),
+                        :dnmdt,
+                    ),
                 ]
                     z_vals = Float64[]
                     for sense in [JuMP.MIN_SENSE, JuMP.MAX_SENSE]
@@ -489,7 +525,10 @@ end
         depth = 4
         setup_n = _setup_qa_test(["gen1"], 1:1)
         IOM.add_quadratic_approx!(
-            IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth = depth, tightener = IOM.NoTightener()),
+            IOM.NMDTQuadConfig{IOM.SingleNMDT}(;
+                depth = depth,
+                tightener = IOM.NoTightener(),
+            ),
             setup_n.container, MockThermalGen, ["gen1"], 1:1,
             setup_n.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
         )
@@ -497,7 +536,10 @@ end
 
         setup_d = _setup_qa_test(["gen1"], 1:1)
         IOM.add_quadratic_approx!(
-            IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = depth, tightener = IOM.NoTightener()),
+            IOM.NMDTQuadConfig{IOM.DoubleNMDT}(;
+                depth = depth,
+                tightener = IOM.NoTightener(),
+            ),
             setup_d.container, MockThermalGen, ["gen1"], 1:1,
             setup_d.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
         )

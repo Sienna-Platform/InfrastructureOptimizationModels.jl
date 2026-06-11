@@ -121,15 +121,18 @@ function _add_pwmcc_concave_cuts!(
         meta,
     )
     sos1_cons =
-        backend isa SolverBackend ?
-        add_constraints_container!(
+        if backend isa SolverBackend
+            add_constraints_container!(
             container,
             PiecewiseMcCormickSOS1,
             C,
             names,
             time_steps;
             meta,
-        ) : nothing
+        )
+        else
+            nothing
+        end
     linking_cons = add_constraints_container!(
         container,
         PiecewiseMcCormickLinking,

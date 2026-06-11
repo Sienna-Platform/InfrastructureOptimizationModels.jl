@@ -75,7 +75,11 @@ struct McCormickTightener <: Tightener
 
     function McCormickTightener(partitions::Int = 1; backend::SOS2Backend = ManualBackend())
         partitions >= 1 ||
-            throw(ArgumentError("McCormickTightener partitions must be ≥ 1, got $(partitions)"))
+            throw(
+                ArgumentError(
+                    "McCormickTightener partitions must be ≥ 1, got $(partitions)",
+                ),
+            )
         return new(partitions, backend)
     end
 end
