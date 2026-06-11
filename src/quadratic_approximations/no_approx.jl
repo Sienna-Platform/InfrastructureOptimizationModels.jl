@@ -5,7 +5,7 @@
 struct NoQuadApproxConfig <: QuadraticApproxConfig end
 
 """
-    _add_quadratic_approx!(::NoQuadApproxConfig, container, C, names, time_steps, x_var, bounds, meta)
+    add_quadratic_approx!(::NoQuadApproxConfig, container, C, names, time_steps, x_var, bounds, meta)
 
 No-op quadratic approximation: returns exact x² as a QuadExpr.
 
@@ -19,7 +19,7 @@ No-op quadratic approximation: returns exact x² as a QuadExpr.
 - `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: variable type identifier for the approximation
 """
-function _add_quadratic_approx!(
+function add_quadratic_approx!(
     ::NoQuadApproxConfig,
     container::OptimizationContainer,
     ::Type{C},

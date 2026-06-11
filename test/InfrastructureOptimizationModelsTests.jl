@@ -142,6 +142,7 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_hybs_approximations.jl"))
                     include(joinpath(TEST_DIR, "test_nmdt_approximations.jl"))
                     include(joinpath(TEST_DIR, "test_tolerance_dispatch.jl"))
+                    include(joinpath(TEST_DIR, "test_approx_interface.jl"))
                 end
 
                 #=
