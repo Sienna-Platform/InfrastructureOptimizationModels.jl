@@ -18,10 +18,7 @@ end
 
 function Base.empty!(container::DatasetContainer)
     for field in fieldnames(DatasetContainer)
-        field_dict = getfield(container, field)
-        for val in values(field_dict)
-            empty!(val)
-        end
+        empty!(getfield(container, field))
     end
     @debug "Emptied the store" _group = LOG_GROUP_SIMULATION_STORE
     return

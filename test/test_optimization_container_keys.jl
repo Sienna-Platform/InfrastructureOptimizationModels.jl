@@ -59,6 +59,20 @@ IOM.should_write_resulting_value(::Type{MockExpression2}) = false
 
     @test_throws IS.InvalidValue IOM.check_meta_chars("ZZ__CC")
 
+    # Task 2.11: the key constructor and make_key must validate meta so that a
+    # `__` (COMPONENT_NAME_DELIMITER) in meta can't silently corrupt encode/decode.
+    @test_throws IS.InvalidValue ConstraintKey(
+        MockConstraint,
+        IS.TestComponent,
+        "bad__meta",
+    )
+    @test_throws IS.InvalidValue IOM.make_key(
+        VariableKey,
+        MockVariable,
+        IS.TestComponent,
+        "bad__meta",
+    )
+
     @test !IOM.convert_output_to_natural_units(var_key)
     @test !IOM.convert_output_to_natural_units(constraint_key)
     @test !IOM.convert_output_to_natural_units(auxvar_key)

@@ -1,23 +1,41 @@
 """Typed container for export configuration parameters used during model output writing."""
-struct ExportParameters{E}
+struct ExportParameters{E, F}
     exports::E
     exports_path::String
-    file_type::Type
+    file_type::Type{F}
     resolution::Dates.Millisecond
     horizon_count::Int
 end
 
+# DecisionModel: `index` is the DateTime start; emit one timestamp per horizon row.
 function _export_container_output!(
     export_params::ExportParameters,
-    exports_path,
-    key,
-    index,
+    exports_path::AbstractString,
+    key::OptimizationContainerKey,
+    index::DecisionModelIndexType,
+    update_timestamp::Dates.DateTime,
     data,
 )
     df = to_dataframe(data, key)
     time_col =
         range(index; length = export_params.horizon_count, step = export_params.resolution)
     DataFrames.insertcols!(df, 1, :DateTime => time_col)
+    ISOPT.export_output(export_params.file_type, exports_path, key, index, df)
+    return
+end
+
+# EmulationModel: `index` is an Int execution counter, not a timestamp. Each write
+# is a single execution, so label its one row with the update timestamp.
+function _export_container_output!(
+    export_params::ExportParameters,
+    exports_path::AbstractString,
+    key::OptimizationContainerKey,
+    index::EmulationModelIndexType,
+    update_timestamp::Dates.DateTime,
+    data,
+)
+    df = to_dataframe(data, key)
+    DataFrames.insertcols!(df, 1, :DateTime => fill(update_timestamp, DataFrames.nrow(df)))
     ISOPT.export_output(export_params.file_type, exports_path, key, index, df)
     return
 end
@@ -88,7 +106,14 @@ function write_model_dual_outputs!(
 
         if !isnothing(export_params) &&
            should_export_dual(export_params.exports, update_timestamp, model_name, key)
-            _export_container_output!(export_params, exports_path, key, index, data)
+            _export_container_output!(
+                export_params,
+                exports_path,
+                key,
+                index,
+                update_timestamp,
+                data,
+            )
         end
     end
     return
@@ -121,7 +146,14 @@ function write_model_parameter_outputs!(
             model_name,
             key,
         )
-            _export_container_output!(export_params, exports_path, key, index, data)
+            _export_container_output!(
+                export_params,
+                exports_path,
+                key,
+                index,
+                update_timestamp,
+                data,
+            )
         end
     end
     return
@@ -159,7 +191,14 @@ function write_model_variable_outputs!(
             model_name,
             key,
         )
-            _export_container_output!(export_params, exports_path, key, index, data)
+            _export_container_output!(
+                export_params,
+                exports_path,
+                key,
+                index,
+                update_timestamp,
+                data,
+            )
         end
     end
     return
@@ -191,7 +230,14 @@ function write_model_aux_variable_outputs!(
             model_name,
             key,
         )
-            _export_container_output!(export_params, exports_path, key, index, data)
+            _export_container_output!(
+                export_params,
+                exports_path,
+                key,
+                index,
+                update_timestamp,
+                data,
+            )
         end
     end
     return
@@ -229,7 +275,14 @@ function write_model_expression_outputs!(
             model_name,
             key,
         )
-            _export_container_output!(export_params, exports_path, key, index, data)
+            _export_container_output!(
+                export_params,
+                exports_path,
+                key,
+                index,
+                update_timestamp,
+                data,
+            )
         end
     end
     return

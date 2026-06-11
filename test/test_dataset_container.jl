@@ -208,7 +208,13 @@ confirming that the code runs without errors.
         @test dataset.values["gen2", 2] == 20.0
     end
 
-    # Note: The empty!(DatasetContainer) method calls empty! on each dataset,
-    # but InMemoryDataset doesn't have an empty! method defined.
-    # This would need to be tested with HDF5Dataset or when empty! is added to InMemoryDataset.
+    @testset "empty! resets all dataset dicts" begin
+        container = IOM.DatasetContainer{IOM.InMemoryDataset}()
+        var_key = IOM.VariableKey(MockVariable, MockComponentType)
+        data = DenseAxisArray(zeros(2, 3), ["gen1", "gen2"], 1:3)
+        IOM.set_dataset!(container, var_key, IOM.InMemoryDataset(data))
+        @test IOM.has_dataset(container, var_key)
+        empty!(container)
+        @test !IOM.has_dataset(container, var_key)
+    end
 end

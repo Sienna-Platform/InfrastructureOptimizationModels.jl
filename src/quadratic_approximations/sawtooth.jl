@@ -167,6 +167,7 @@ function _add_quadratic_approx!(
         SawtoothMIPConstraint,
         C,
         names,
+        alpha_levels,
         1:4,
         time_steps;
         sparse = true,
@@ -255,15 +256,15 @@ function _add_quadratic_approx!(
             alpha_j = alpha_var[name, j, t]
 
             # g_j ≤ 2 g_{j-1}
-            mip_cons[name, 1, t] = JuMP.@constraint(jump_model, g_curr <= 2.0 * g_prev)
+            mip_cons[name, j, 1, t] = JuMP.@constraint(jump_model, g_curr <= 2.0 * g_prev)
             # g_j ≤ 2(1 - g_{j-1})
-            mip_cons[name, 2, t] =
+            mip_cons[name, j, 2, t] =
                 JuMP.@constraint(jump_model, g_curr <= 2.0 * (1.0 - g_prev))
             # g_j ≥ 2(g_{j-1} - α_j)
-            mip_cons[name, 3, t] =
+            mip_cons[name, j, 3, t] =
                 JuMP.@constraint(jump_model, g_curr >= 2.0 * (g_prev - alpha_j))
             # g_j ≥ 2(α_j - g_{j-1})
-            mip_cons[name, 4, t] =
+            mip_cons[name, j, 4, t] =
                 JuMP.@constraint(jump_model, g_curr >= 2.0 * (alpha_j - g_prev))
         end
 

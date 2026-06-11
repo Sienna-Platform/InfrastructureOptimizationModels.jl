@@ -6,8 +6,9 @@
 mutable struct NumericalBounds
     min::Float64
     max::Float64
-    min_index::Any
-    max_index::Any
+    # `(container_key, axis_index)` tuples set by the bound scans, or nothing when unset.
+    min_index::Union{Nothing, Tuple}
+    max_index::Union{Nothing, Tuple}
 end
 
 NumericalBounds() = NumericalBounds(Inf, -Inf, nothing, nothing)
@@ -16,6 +17,13 @@ set_min!(v::NumericalBounds, value::Real) = v.min = value
 set_max!(v::NumericalBounds, value::Real) = v.max = value
 set_min_index!(v::NumericalBounds, idx) = v.min_index = idx
 set_max_index!(v::NumericalBounds, idx) = v.max_index = idx
+
+# Indices are stored as `(container_key, axis_index)` tuples by the bound scans (or left
+# `nothing` when never set); render them for the conditioning warnings.
+_bound_index_string(::Nothing) = "not recorded"
+_bound_index_string(idx::Tuple) =
+    string(encode_key_as_string(idx[1]), " at ", join(idx[2:end], ", "))
+_bound_index_string(idx) = string(idx)
 
 mutable struct ConstraintBounds
     coefficient::NumericalBounds
@@ -63,11 +71,13 @@ end
 
 function update_numerical_bounds(v::NumericalBounds, value::Real, idx)
     if !isapprox(value, 0.0)
-        if v.min > abs(value)
-            set_min!(v, value)
+        a = abs(value)
+        if v.min > a
+            set_min!(v, a)
             set_min_index!(v, idx)
-        elseif v.max < abs(value)
-            set_max!(v, value)
+        end
+        if v.max < a
+            set_max!(v, a)
             set_max_index!(v, idx)
         end
     end

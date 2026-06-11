@@ -2,6 +2,21 @@ const MOI = JuMP.MOI
 const TEST_META = "TestVar"
 
 @testset "Quadratic Approximations" begin
+    @testset "PWMCC segment validation" begin
+        # PWMCC chord cuts are valid only when every sub-segment boundary coincides
+        # with a PWL breakpoint, i.e. pwmcc_segments evenly divides depth. The
+        # previous `pwmcc_segments ≤ depth` check let through misaligned grids such
+        # as (depth=3, pwmcc_segments=2), which cuts off MIP-feasible points.
+        for T in (IOM.SolverSOS2QuadConfig, IOM.ManualSOS2QuadConfig)
+            # Non-dividing: rejected.
+            @test_throws ArgumentError T(; depth = 3, pwmcc_segments = 2)
+            # Dividing: accepted.
+            @test T(; depth = 4, pwmcc_segments = 2).pwmcc_segments == 2
+            # 0 disables PWMCC entirely and is always accepted.
+            @test T(; depth = 3, pwmcc_segments = 0).pwmcc_segments == 0
+        end
+    end
+
     @testset "Solver SOS2" begin
         @testset "Solve min x^2 - 4x" begin
             # Analytic minimum of x^2 - 4x at x=2, value = -4

@@ -213,7 +213,7 @@ function _add_quadratic_approx!(
     if config.epigraph_depth > 0
         _tighten_lower_bounds!(
             container, C, names, time_steps,
-            result_expr, x_disc, config.epigraph_depth, meta,
+            result_expr, x_disc, bounds, config.epigraph_depth, meta,
         )
     end
 
@@ -310,7 +310,7 @@ function _add_quadratic_approx!(
     if config.epigraph_depth > 0
         _tighten_lower_bounds!(
             container, C, names, time_steps,
-            result_expr, x_disc, config.epigraph_depth, meta,
+            result_expr, x_disc, bounds, config.epigraph_depth, meta,
         )
     end
 

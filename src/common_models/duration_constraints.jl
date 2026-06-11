@@ -1,3 +1,8 @@
+# Names of devices with an IC in a given column (up = column 1, down = column 2). Each
+# duration container must be keyed by its own column to avoid #undef rows / KeyErrors.
+_ic_names(ics::AbstractVector{<:InitialCondition})::Vector{String} =
+    [get_component_name(ic) for ic in ics if !isnothing(get_value(ic))]
+
 @doc raw"""
 This formulation of the duration constraints adds over the start times looking backwards.
 
@@ -47,15 +52,13 @@ function device_duration_retrospective!(
     varstart = get_variable(container, StartVariable, T)
     varstop = get_variable(container, StopVariable, T)
 
-    device_name_sets = [
-        get_component_name(ic) for
-        ic in initial_duration[:, 1] if !isnothing(get_value(ic))
-    ]
+    up_names = _ic_names(initial_duration[:, 1])
+    down_names = _ic_names(initial_duration[:, 2])
     con_up = add_constraints_container!(
         container,
         C,
         T,
-        device_name_sets,
+        up_names,
         time_steps;
         meta = "up",
     )
@@ -63,7 +66,7 @@ function device_duration_retrospective!(
         container,
         C,
         T,
-        device_name_sets,
+        down_names,
         time_steps;
         meta = "dn",
     )
@@ -155,11 +158,10 @@ function device_duration_look_ahead!(
     varstart = get_variable(container, StartVariable, T)
     varstop = get_variable(container, StopVariable, T)
 
-    device_name_sets = [get_component_name(ic) for ic in initial_duration[:, 1]]
-    con_up =
-        add_constraints_container!(container, C_up, T, device_name_sets, time_steps)
-    con_down =
-        add_constraints_container!(container, C_dn, T, device_name_sets, time_steps)
+    up_names = _ic_names(initial_duration[:, 1])
+    down_names = _ic_names(initial_duration[:, 2])
+    con_up = add_constraints_container!(container, C_up, T, up_names, time_steps)
+    con_down = add_constraints_container!(container, C_dn, T, down_names, time_steps)
 
     for t in time_steps
         for (ix, ic) in enumerate(initial_duration[:, 1])
@@ -254,12 +256,13 @@ function device_duration_parameters!(
     varstart = get_variable(container, StartVariable, T)
     varstop = get_variable(container, StopVariable, T)
 
-    device_name_sets = [get_component_name(ic) for ic in initial_duration[:, 1]]
+    up_names = _ic_names(initial_duration[:, 1])
+    down_names = _ic_names(initial_duration[:, 2])
     con_up = add_constraints_container!(
         container,
         C,
         T,
-        device_name_sets,
+        up_names,
         time_steps;
         meta = "up",
     )
@@ -267,7 +270,7 @@ function device_duration_parameters!(
         container,
         C,
         T,
-        device_name_sets,
+        down_names,
         time_steps;
         meta = "dn",
     )

@@ -26,7 +26,7 @@ function InitialCondition(
     U <: IS.InfrastructureSystemsComponent,
     V <: Union{JuMP.VariableRef, Float64},
 }
-    return InitialCondition{T, U}(component, value)
+    return InitialCondition{T, V}(component, value)
 end
 
 function get_condition(p::InitialCondition{T, Float64}) where {T <: InitialConditionType}

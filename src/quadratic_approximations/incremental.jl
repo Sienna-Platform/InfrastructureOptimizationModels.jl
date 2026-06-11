@@ -68,31 +68,26 @@ function add_sparse_pwl_interpolation_variables!(
     # - Continuous variables: num_segments (one per segment)
     len_segs = binary_flag ? (num_segments - 1) : num_segments
 
+    jump_model = get_jump_model(container)
     # Iterate over all devices to create PWL variables
     for d in devices
         name = get_name(d)
-        # Create variables for each time step
+        # Bounds depend only on the device, not on the segment or time step.
+        # The ordering constraints δ_{i+1} ≤ z_i ≤ δ_i do not bound δ by themselves,
+        # so default to δ ∈ [0, 1] when the formulation hooks return nothing — an
+        # unbounded δ would silently leave the PWL curve.
+        ub = something(get_variable_upper_bound(T, d, V), 1.0)
+        lb = something(get_variable_lower_bound(T, d, V), 0.0)
         for t in time_steps
-            # Pre-allocate array to store variable references for this device and time step
-            pwlvars = Array{JuMP.VariableRef}(undef, len_segs)
-
-            # Create individual PWL variables for each segment
             for i in 1:len_segs
-                # Create JuMP variable with descriptive name and store in both arrays
-                pwlvars[i] =
+                v =
                     var_container[(name, i, t)] = JuMP.@variable(
-                        get_jump_model(container),
-                        base_name = "$(T)_$(name)_{pwl_$(i), $(t)}",  # Descriptive variable name
-                        binary = binary_flag  # Set as binary if this is a binary variable type
+                        jump_model,
+                        base_name = "$(T)_$(name)_{pwl_$(i), $(t)}",
+                        binary = binary_flag,
                     )
-
-                # Set upper bound if specified by the device formulation
-                ub = get_variable_upper_bound(T, d, V)
-                ub !== nothing && JuMP.set_upper_bound(var_container[name, i, t], ub)
-
-                # Set lower bound if specified by the device formulation
-                lb = get_variable_lower_bound(T, d, V)
-                lb !== nothing && JuMP.set_lower_bound(var_container[name, i, t], lb)
+                JuMP.set_upper_bound(v, ub)
+                JuMP.set_lower_bound(v, lb)
             end
         end
     end
@@ -196,6 +191,32 @@ function _add_generic_incremental_interpolation_constraint!(
         meta = "$(meta)pwl_function",
     )
 
+    # Containers for the incremental ordering constraints δᵢ₊₁ ≤ zᵢ ≤ δᵢ. These were
+    # previously anonymous (built but never stored); store them so container reads
+    # don't crash. The number of ordering rows varies per device, so use sparse axes.
+    max_segments = isempty(names) ? 0 :
+                   maximum(length(dic_var_bkpts[n]) - 1 for n in names)
+    const_container_order_lb = add_constraints_container!(
+        container,
+        V,
+        W,
+        names,
+        1:max(max_segments - 1, 1),
+        time_steps;
+        meta = "$(meta)pwl_order_lb",
+        sparse = true,
+    )
+    const_container_order_ub = add_constraints_container!(
+        container,
+        V,
+        W,
+        names,
+        1:max(max_segments - 1, 1),
+        time_steps;
+        meta = "$(meta)pwl_order_ub",
+        sparse = true,
+    )
+
     # Iterate over all devices to add constraints for each device and time step
     for d in devices
         name = get_name(d)
@@ -234,11 +255,19 @@ function _add_generic_incremental_interpolation_constraint!(
             # segments must be filled in order (δ₁ before δ₂, δ₂ before δ₃, etc.)
             for i in 1:(num_segments - 1)
                 # z[i] must be >= δ[i+1]: can't activate later segment without current one
-                JuMP.@constraint(JuMPmodel, z_var[name, i, t] >= δ_var[name, i + 1, t])
+                const_container_order_lb[name, i, t] =
+                    JuMP.@constraint(JuMPmodel, z_var[name, i, t] >= δ_var[name, i + 1, t])
                 # z[i] must be <= δ[i]: can't be more activated than current segment
-                JuMP.@constraint(JuMPmodel, z_var[name, i, t] <= δ_var[name, i, t])
+                const_container_order_ub[name, i, t] =
+                    JuMP.@constraint(JuMPmodel, z_var[name, i, t] <= δ_var[name, i, t])
             end
         end
+    end
+    # Devices have heterogeneous segment counts, so the sparse spec's nothing
+    # placeholders survive for unwritten (name, i, t) combos; drop them so container
+    # scans (e.g. get_constraint_numerical_bounds) don't hit JuMP.constraint_object(nothing).
+    for c in (const_container_order_lb, const_container_order_ub)
+        filter!(x -> x.second !== nothing, c.data)
     end
     return
 end

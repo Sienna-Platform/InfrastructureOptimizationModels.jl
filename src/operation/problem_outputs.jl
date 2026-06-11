@@ -69,9 +69,19 @@ function OptimizationProblemOutputs(model::EmulationModel)
     container = get_optimization_container(model)
     sys = get_system(model)
 
+    # One timestamp per solved execution (= nrow(optimizer_stats)). The old single-element
+    # range collapsed every execution row to `initial_time`.
+    resolution = Dates.Millisecond(get_resolution(model))
+    num_executions = DataFrames.nrow(optimizer_stats)
+    emulation_timestamps = StepRange(
+        initial_time,
+        resolution,
+        initial_time + (num_executions - 1) * resolution,
+    )
+
     return OptimizationProblemOutputs(
         get_problem_base_power(model),
-        StepRange(initial_time, get_resolution(model), initial_time),
+        emulation_timestamps,
         sys,
         get_uuid(sys),
         aux_variables,

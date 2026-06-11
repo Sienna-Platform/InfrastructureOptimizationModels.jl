@@ -106,6 +106,7 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_optimization_container_metadata.jl"))
                     # optimization_container_types.jl: no need for tests
                     include(joinpath(TEST_DIR, "test_optimization_container.jl"))
+                    include(joinpath(TEST_DIR, "test_network_model.jl"))
                     include(joinpath(TEST_DIR, "test_external_evaluation.jl"))
                     # optimization_problem_outputs_export.jl: low-complexity
                     include(joinpath(TEST_DIR, "test_optimization_outputs.jl"))
@@ -132,6 +133,9 @@ function run_tests()
                     # TODO tests?
                     include(joinpath(TEST_DIR, "test_jump_utils.jl"))
                     include(joinpath(TEST_DIR, "test_pwl_methods.jl"))
+                    include(joinpath(TEST_DIR, "test_ramp_constraints.jl"))
+                    include(joinpath(TEST_DIR, "test_duration_constraints.jl"))
+                    include(joinpath(TEST_DIR, "test_emulation_model_store.jl"))
 
                     # --- quadratic_approximations/ subfolder ---
                     include(joinpath(TEST_DIR, "test_quadratic_approximations.jl"))

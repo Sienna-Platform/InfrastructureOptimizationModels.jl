@@ -655,3 +655,66 @@ end
         end
     end
 end
+
+@testset "NMDT/DNMDT epigraph tightening on non-[0,1] domains" begin
+    # Regression: `_tighten_lower_bounds!` previously applied the normalized [0,1]
+    # epigraph cut directly to the unnormalized `result_expr`. On any domain other
+    # than exactly [0,1] this is invalid — on [-1,1] at x=0 it makes the model
+    # infeasible, and on [0,2] it collapses the lower envelope (massively
+    # under-estimating x²). Tightening is on by default (epigraph_depth = 3*depth).
+    for (config_fn, tag) in [
+        (depth -> IOM.NMDTQuadConfig(; depth), "NMDT"),
+        (depth -> IOM.DNMDTQuadConfig(; depth), "DNMDT"),
+    ]
+        @testset "$tag domain [-1, 1] feasible at x = 0" begin
+            for sense in [JuMP.MIN_SENSE, JuMP.MAX_SENSE]
+                setup = _setup_qa_test(["gen1"], 1:1)
+                JuMP.fix(setup.var_container["gen1", 1], 0.0; force = true)
+                IOM._add_quadratic_approx!(
+                    config_fn(3),
+                    setup.container, MockThermalGen, ["gen1"], 1:1,
+                    setup.var_container, [(min = -1.0, max = 1.0)], NMDT_META,
+                )
+                expr = IOM.get_expression(
+                    setup.container, IOM.QuadraticExpression, MockThermalGen, NMDT_META,
+                )
+                JuMP.@objective(setup.jump_model, sense, expr["gen1", 1])
+                JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+                JuMP.set_silent(setup.jump_model)
+                JuMP.optimize!(setup.jump_model)
+                # Pre-fix: the misframed cut made this INFEASIBLE at x = 0.
+                @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+                # x² = 0 at x = 0; the relaxation must bracket it.
+                if sense == JuMP.MIN_SENSE
+                    @test JuMP.objective_value(setup.jump_model) <= 1e-6
+                else
+                    @test JuMP.objective_value(setup.jump_model) >= -1e-6
+                end
+            end
+        end
+
+        @testset "$tag domain [0, 2] lower envelope not collapsed at x = 1" begin
+            setup = _setup_qa_test(["gen1"], 1:1)
+            JuMP.fix(setup.var_container["gen1", 1], 1.0; force = true)
+            IOM._add_quadratic_approx!(
+                config_fn(3),
+                setup.container, MockThermalGen, ["gen1"], 1:1,
+                setup.var_container, [(min = 0.0, max = 2.0)], NMDT_META,
+            )
+            expr = IOM.get_expression(
+                setup.container, IOM.QuadraticExpression, MockThermalGen, NMDT_META,
+            )
+            JuMP.@objective(setup.jump_model, Min, expr["gen1", 1])
+            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+            JuMP.set_silent(setup.jump_model)
+            JuMP.optimize!(setup.jump_model)
+            @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+            lb = JuMP.objective_value(setup.jump_model)
+            # Valid lower bound on x² = 1 ...
+            @test lb <= 1.0 + 1e-6
+            # ... and with default tightening (McCormick lower bounds dropped) the
+            # unnormalized epigraph cut must hold the envelope near x², not collapse it.
+            @test lb >= 1.0 - 0.1
+        end
+    end
+end
