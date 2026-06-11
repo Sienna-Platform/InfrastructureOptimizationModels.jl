@@ -4,16 +4,18 @@ const TEST_META = "TestVar"
 @testset "Quadratic Approximations" begin
     @testset "PWMCC segment validation" begin
         # PWMCC chord cuts are valid only when every sub-segment boundary coincides
-        # with a PWL breakpoint, i.e. pwmcc_segments evenly divides depth. The
-        # previous `pwmcc_segments ≤ depth` check let through misaligned grids such
-        # as (depth=3, pwmcc_segments=2), which cuts off MIP-feasible points.
-        for T in (IOM.SolverSOS2QuadConfig, IOM.ManualSOS2QuadConfig)
+        # with a PWL breakpoint, i.e. the McCormickTightener partitions evenly divide
+        # depth. A misaligned grid such as (depth=3, partitions=2) cuts off
+        # MIP-feasible points, so the constructor must reject it.
+        for T in (IOM.SOS2QuadConfig{IOM.SolverBackend}, IOM.SOS2QuadConfig{IOM.ManualBackend})
             # Non-dividing: rejected.
-            @test_throws ArgumentError T(; depth = 3, pwmcc_segments = 2)
+            @test_throws ArgumentError T(; depth = 3, tightener = IOM.McCormickTightener(2))
             # Dividing: accepted.
-            @test T(; depth = 4, pwmcc_segments = 2).pwmcc_segments == 2
-            # 0 disables PWMCC entirely and is always accepted.
-            @test T(; depth = 3, pwmcc_segments = 0).pwmcc_segments == 0
+            @test T(; depth = 4, tightener = IOM.McCormickTightener(2)).tightener.partitions ==
+                  2
+            # NoTightener disables PWMCC entirely and is always accepted (also the default).
+            @test T(; depth = 3, tightener = IOM.NoTightener()).tightener isa IOM.NoTightener
+            @test T(; depth = 3).tightener isa IOM.NoTightener
         end
     end
 
@@ -26,8 +28,8 @@ const TEST_META = "TestVar"
             JuMP.set_lower_bound(x_var, 0.0)
             JuMP.set_upper_bound(x_var, 4.0)
 
-            IOM._add_quadratic_approx!(
-                IOM.SolverSOS2QuadConfig(; depth = 4),
+            IOM.add_quadratic_approx!(
+                IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = 4),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -62,8 +64,8 @@ const TEST_META = "TestVar"
 
             y = JuMP.@variable(setup.jump_model, base_name = "y")
 
-            IOM._add_quadratic_approx!(
-                IOM.SolverSOS2QuadConfig(; depth = 4),
+            IOM.add_quadratic_approx!(
+                IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = 4),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -101,8 +103,8 @@ const TEST_META = "TestVar"
                 JuMP.set_lower_bound(x_var, 0.0)
                 JuMP.set_upper_bound(x_var, 6.0)
 
-                IOM._add_quadratic_approx!(
-                    IOM.SolverSOS2QuadConfig(; depth = num_segments),
+                IOM.add_quadratic_approx!(
+                    IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = num_segments),
                     setup.container,
                     MockThermalGen,
                     ["dev1"],
@@ -141,8 +143,8 @@ const TEST_META = "TestVar"
             JuMP.set_lower_bound(x_var, 0.0)
             JuMP.set_upper_bound(x_var, 4.0)
 
-            IOM._add_quadratic_approx!(
-                IOM.ManualSOS2QuadConfig(; depth = 4),
+            IOM.add_quadratic_approx!(
+                IOM.SOS2QuadConfig{IOM.ManualBackend}(; depth = 4),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -176,8 +178,8 @@ const TEST_META = "TestVar"
 
             y = JuMP.@variable(setup.jump_model, base_name = "y")
 
-            IOM._add_quadratic_approx!(
-                IOM.ManualSOS2QuadConfig(; depth = 4),
+            IOM.add_quadratic_approx!(
+                IOM.SOS2QuadConfig{IOM.ManualBackend}(; depth = 4),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -213,7 +215,7 @@ const TEST_META = "TestVar"
             JuMP.set_lower_bound(x_var, 0.0)
             JuMP.set_upper_bound(x_var, 4.0)
 
-            IOM._add_quadratic_approx!(
+            IOM.add_quadratic_approx!(
                 IOM.SawtoothQuadConfig(; depth = 2),
                 setup.container,
                 MockThermalGen,
@@ -248,7 +250,7 @@ const TEST_META = "TestVar"
 
             y = JuMP.@variable(setup.jump_model, base_name = "y")
 
-            IOM._add_quadratic_approx!(
+            IOM.add_quadratic_approx!(
                 IOM.SawtoothQuadConfig(; depth = 2),
                 setup.container,
                 MockThermalGen,
@@ -286,7 +288,7 @@ const TEST_META = "TestVar"
                 JuMP.set_lower_bound(x_var, 0.0)
                 JuMP.set_upper_bound(x_var, 6.0)
 
-                IOM._add_quadratic_approx!(
+                IOM.add_quadratic_approx!(
                     IOM.SawtoothQuadConfig(; depth = depth),
                     setup.container,
                     MockThermalGen,
@@ -328,8 +330,8 @@ const TEST_META = "TestVar"
                     JuMP.set_upper_bound(x_var, 4.0)
 
                     if method == :sos2
-                        IOM._add_quadratic_approx!(
-                            IOM.SolverSOS2QuadConfig(; depth = 2^depth),
+                        IOM.add_quadratic_approx!(
+                            IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = 2^depth),
                             setup.container,
                             MockThermalGen,
                             ["dev1"],
@@ -339,7 +341,7 @@ const TEST_META = "TestVar"
                             TEST_META,
                         )
                     else
-                        IOM._add_quadratic_approx!(
+                        IOM.add_quadratic_approx!(
                             IOM.SawtoothQuadConfig(; depth = depth),
                             setup.container,
                             MockThermalGen,

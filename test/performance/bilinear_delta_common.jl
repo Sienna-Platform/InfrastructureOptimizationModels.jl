@@ -203,7 +203,7 @@ function build_gen_bilinear(
     bilinear_config::Union{IOM.Bin2Config, IOM.HybSConfig}, quad_config,
 )
     V_bounds, I_bounds = gen_bounds(net)
-    V_sq = IOM._add_quadratic_approx!(
+    V_sq = IOM.add_quadratic_approx!(
         quad_config,
         container,
         MockNetworkNode,
@@ -213,7 +213,7 @@ function build_gen_bilinear(
         V_bounds,
         "gen_V_sq",
     )
-    I_sq = IOM._add_quadratic_approx!(
+    I_sq = IOM.add_quadratic_approx!(
         quad_config,
         container,
         MockNetworkNode,
@@ -223,20 +223,17 @@ function build_gen_bilinear(
         I_bounds,
         "gen_I_sq",
     )
-    z_gen = IOM._add_bilinear_approx!(
-        bilinear_config,
-        container,
-        MockNetworkNode,
-        net.gen_nodes,
-        time_steps,
-        V_sq,
-        I_sq,
-        V_container,
-        I_container,
-        V_bounds,
-        I_bounds,
-        "gen",
-    )
+    z_gen = if bilinear_config isa IOM.Bin2Config
+        IOM._assemble_bin2!(
+            bilinear_config, container, MockNetworkNode, net.gen_nodes, time_steps,
+            V_sq, I_sq, V_container, I_container, V_bounds, I_bounds, "gen",
+        )
+    else
+        IOM._assemble_hybs!(
+            bilinear_config, container, MockNetworkNode, net.gen_nodes, time_steps,
+            V_sq, I_sq, V_container, I_container, V_bounds, I_bounds, "gen",
+        )
+    end
     return z_gen, I_sq
 end
 
@@ -246,7 +243,7 @@ call DNMDT bilinear with pre-built discretizations. I² is reused in the loss co
 """
 function build_gen_bilinear(
     container, net::MockNetworkProblem, V_container, I_container, time_steps,
-    bilinear_config::IOM.DNMDTBilinearConfig, quad_config::IOM.DNMDTQuadConfig,
+    bilinear_config::IOM.NMDTBilinearConfig{IOM.DoubleNMDT}, quad_config::IOM.NMDTQuadConfig{IOM.DoubleNMDT},
 )
     V_bounds, I_bounds = gen_bounds(net)
     V_disc = IOM._discretize!(
@@ -257,11 +254,11 @@ function build_gen_bilinear(
         container, MockNetworkNode, net.gen_nodes, time_steps,
         I_container, I_bounds, quad_config.depth, "gen_I",
     )
-    I_sq = IOM._add_quadratic_approx!(
+    I_sq = IOM._quadratic_from_discretization!(
         quad_config, container, MockNetworkNode, net.gen_nodes, time_steps,
         I_disc, I_bounds, "gen_I_sq",
     )
-    z_gen = IOM._add_bilinear_approx!(
+    z_gen = IOM._bilinear_from_discretization!(
         bilinear_config, container, MockNetworkNode, net.gen_nodes, time_steps,
         V_disc, I_disc, V_bounds, I_bounds, "gen",
     )
@@ -276,7 +273,7 @@ function build_gen_bilinear(
     bilinear_config::IOM.NoBilinearApproxConfig, quad_config::IOM.NoQuadApproxConfig,
 )
     V_bounds, I_bounds = gen_bounds(net)
-    z_gen = IOM._add_bilinear_approx!(
+    z_gen = IOM.add_bilinear_approx!(
         bilinear_config,
         container,
         MockNetworkNode,
@@ -288,7 +285,7 @@ function build_gen_bilinear(
         I_bounds,
         "gen",
     )
-    I_sq = IOM._add_quadratic_approx!(
+    I_sq = IOM.add_quadratic_approx!(
         quad_config,
         container,
         MockNetworkNode,
@@ -358,7 +355,7 @@ function build_mip_model(
 
     # --- Bilinear dem: always uses the config-based dispatch ---
     nd = length(net.dem_nodes)
-    z_dem = IOM._add_bilinear_approx!(
+    z_dem = IOM.add_bilinear_approx!(
         bilinear_config, container, MockNetworkNode, net.dem_nodes, time_steps,
         V_container, I_container,
         fill((min = V_MIN, max = V_MAX), nd),
@@ -804,21 +801,23 @@ function Bin2_(R, quad_config)
     q = quad_config(; depth = R)
     IOM.Bin2Config(q), q
 end
-Bin2_sSOS(R) = Bin2_(R, IOM.SolverSOS2QuadConfig)
-Bin2_mSOS(R) = Bin2_(R, IOM.ManualSOS2QuadConfig)
+Bin2_sSOS(R) = Bin2_(R, IOM.SOS2QuadConfig{IOM.SolverBackend})
+Bin2_mSOS(R) = Bin2_(R, IOM.SOS2QuadConfig{IOM.ManualBackend})
 Bin2_Saw(R) = Bin2_(R, IOM.SawtoothQuadConfig)
 
 function HybS_(R, quad_config)
     q = quad_config(; depth = R)
-    IOM.HybSConfig(q; epigraph_depth = ceil(Int, epi_C * R)), q
+    IOM.HybSConfig(q; cross_term_depth = ceil(Int, epi_C * R)), q
 end
-HybS_sSOS(R) = HybS_(R, IOM.SolverSOS2QuadConfig)
-HybS_mSOS(R) = HybS_(R, IOM.ManualSOS2QuadConfig)
+HybS_sSOS(R) = HybS_(R, IOM.SOS2QuadConfig{IOM.SolverBackend})
+HybS_mSOS(R) = HybS_(R, IOM.SOS2QuadConfig{IOM.ManualBackend})
 HybS_Saw(R) = HybS_(R, IOM.SawtoothQuadConfig)
 
 function DNMDT_DNMDT(R)
-    IOM.DNMDTBilinearConfig(; depth = R),
-    IOM.DNMDTQuadConfig(; depth = R, epigraph_depth = ceil(Int, epi_C * R))
+    IOM.NMDTBilinearConfig{IOM.DoubleNMDT}(; depth = R),
+    IOM.NMDTQuadConfig{IOM.DoubleNMDT}(;
+        depth = R, tightener = IOM.EpigraphTightener(ceil(Int, epi_C * R)),
+    )
 end
 
 exact(_) = (IOM.NoBilinearApproxConfig(), IOM.NoQuadApproxConfig())

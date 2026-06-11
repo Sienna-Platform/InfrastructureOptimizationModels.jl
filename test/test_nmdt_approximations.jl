@@ -12,8 +12,8 @@ const NMDT_BILINEAR_META = "NMDTBilinearTest"
         JuMP.set_upper_bound(setup.var_container["gen1", 1], 1.0)
         JuMP.fix(setup.var_container["gen1", 1], 0.6; force = true)
 
-        IOM._add_quadratic_approx!(
-            IOM.DNMDTQuadConfig(; depth = 4, epigraph_depth = 0),
+        IOM.add_quadratic_approx!(
+            IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = 4, tightener = IOM.NoTightener()),
             setup.container, MockThermalGen, names, ts,
             setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
         )
@@ -46,8 +46,8 @@ const NMDT_BILINEAR_META = "NMDTBilinearTest"
                 setup = _setup_qa_test(["gen1"], 1:1)
                 JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
 
-                IOM._add_quadratic_approx!(
-                    IOM.DNMDTQuadConfig(; depth = 3, epigraph_depth = 0),
+                IOM.add_quadratic_approx!(
+                    IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = 3, tightener = IOM.NoTightener()),
                     setup.container, MockThermalGen, ["gen1"], 1:1,
                     setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
                 )
@@ -79,12 +79,12 @@ end
                 setup = _setup_qa_test(["gen1"], 1:1)
                 JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
 
-                IOM._add_quadratic_approx!(
+                IOM.add_quadratic_approx!(
                     (
                         if tighten
-                            IOM.DNMDTQuadConfig(; depth = 2)
+                            IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = 2)
                         else
-                            IOM.DNMDTQuadConfig(; depth = 2, epigraph_depth = 0)
+                            IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = 2, tightener = IOM.NoTightener())
                         end
                     ),
                     setup.container, MockThermalGen, ["gen1"], 1:1,
@@ -122,8 +122,8 @@ end
             setup = _setup_qa_test(["gen1"], 1:1)
             JuMP.fix(setup.var_container["gen1", 1], 0.35; force = true)
 
-            IOM._add_quadratic_approx!(
-                IOM.DNMDTQuadConfig(; depth = L),
+            IOM.add_quadratic_approx!(
+                IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = L),
                 setup.container, MockThermalGen, ["gen1"], 1:1,
                 setup.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
             )
@@ -156,8 +156,8 @@ end
                 JuMP.fix(setup.x_var_container["dev1", 1], x0; force = true)
                 JuMP.fix(setup.y_var_container["dev1", 1], y0; force = true)
 
-                IOM._add_bilinear_approx!(
-                    IOM.DNMDTBilinearConfig(; depth = 2),
+                IOM.add_bilinear_approx!(
+                    IOM.NMDTBilinearConfig{IOM.DoubleNMDT}(; depth = 2),
                     setup.container, MockThermalGen, ["dev1"], 1:1,
                     setup.x_var_container, setup.y_var_container,
                     [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
@@ -194,8 +194,8 @@ end
                 JuMP.fix(setup.x_var_container["dev1", 1], x0; force = true)
                 JuMP.fix(setup.y_var_container["dev1", 1], y0; force = true)
 
-                IOM._add_bilinear_approx!(
-                    IOM.DNMDTBilinearConfig(; depth = 8),
+                IOM.add_bilinear_approx!(
+                    IOM.NMDTBilinearConfig{IOM.DoubleNMDT}(; depth = 8),
                     setup.container, MockThermalGen, ["dev1"], 1:1,
                     setup.x_var_container, setup.y_var_container,
                     [(min = x_min, max = x_max)], [(min = y_min, max = y_max)], DNMDT_META,
@@ -221,7 +221,7 @@ end
     # @testset "McCormick toggle" begin
     #     setup = _setup_bilinear_test(["dev1"], 1:1)
 
-    #     IOM._add_bilinear_approx!(
+    #     IOM.add_bilinear_approx!(
     #         setup.container, MockThermalGen, ["dev1"], 1:1,
     #         setup.x_var_container, setup.y_var_container,
     #         0.0, 1.0, 0.0, 1.0, 2, DNMDT_META;
@@ -238,8 +238,8 @@ end
         JuMP.fix(setup.x_var_container["dev1", 1], 2.0; force = true)
         JuMP.fix(setup.y_var_container["dev1", 1], 3.0; force = true)
 
-        IOM._add_bilinear_approx!(
-            IOM.DNMDTBilinearConfig(; depth = 3),
+        IOM.add_bilinear_approx!(
+            IOM.NMDTBilinearConfig{IOM.DoubleNMDT}(; depth = 3),
             setup.container, MockThermalGen, ["dev1"], 1:1,
             setup.y_var_container, setup.x_var_container,
             [(min = 0.0, max = 4.0)], [(min = 0.0, max = 4.0)], DNMDT_META,
@@ -266,8 +266,8 @@ end
             JuMP.fix(setup_d.x_var_container["dev1", 1], 0.4; force = true)
             JuMP.fix(setup_d.y_var_container["dev1", 1], 0.7; force = true)
 
-            IOM._add_bilinear_approx!(
-                IOM.DNMDTBilinearConfig(; depth = depth),
+            IOM.add_bilinear_approx!(
+                IOM.NMDTBilinearConfig{IOM.DoubleNMDT}(; depth = depth),
                 setup_d.container, MockThermalGen, ["dev1"], 1:1,
                 setup_d.x_var_container, setup_d.y_var_container,
                 [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
@@ -288,10 +288,10 @@ end
             JuMP.fix(setup_h.x_var_container["dev1", 1], 0.4; force = true)
             JuMP.fix(setup_h.y_var_container["dev1", 1], 0.7; force = true)
 
-            IOM._add_bilinear_approx!(
+            IOM.add_bilinear_approx!(
                 IOM.HybSConfig(
                     IOM.SawtoothQuadConfig(; depth = depth);
-                    epigraph_depth = depth,
+                    cross_term_depth = depth,
                 ),
                 setup_h.container, MockThermalGen, ["dev1"], 1:1,
                 setup_h.x_var_container, setup_h.y_var_container,
@@ -328,8 +328,8 @@ end
         JuMP.set_upper_bound(setup.var_container["gen1", 1], 1.0)
         JuMP.fix(setup.var_container["gen1", 1], 0.6; force = true)
 
-        IOM._add_quadratic_approx!(
-            IOM.NMDTQuadConfig(; depth = 4, epigraph_depth = 0),
+        IOM.add_quadratic_approx!(
+            IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth = 4, tightener = IOM.NoTightener()),
             setup.container, MockThermalGen, names, ts,
             setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
         )
@@ -362,8 +362,8 @@ end
                 setup = _setup_qa_test(["gen1"], 1:1)
                 JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
 
-                IOM._add_quadratic_approx!(
-                    IOM.NMDTQuadConfig(; depth = 3, epigraph_depth = 0),
+                IOM.add_quadratic_approx!(
+                    IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth = 3, tightener = IOM.NoTightener()),
                     setup.container, MockThermalGen, ["gen1"], 1:1,
                     setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
                 )
@@ -393,7 +393,7 @@ end
     function _nmdt_min(config, x0)
         setup = _setup_qa_test(["gen1"], 1:1)
         JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
-        IOM._add_quadratic_approx!(
+        IOM.add_quadratic_approx!(
             config,
             setup.container, MockThermalGen, ["gen1"], 1:1,
             setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
@@ -410,23 +410,23 @@ end
         return JuMP.objective_value(setup.jump_model)
     end
 
-    # When epigraph_depth = 0, result_expr is the bare NMDT approximation; MIN
-    # of result_expr is the NMDT value itself. When epigraph_depth = depth, the
+    # When tightener = IOM.NoTightener(), result_expr is the bare NMDT approximation; MIN
+    # of result_expr is the NMDT value itself. When tightener = IOM.EpigraphTightener(depth), the
     # tolerance contract holds and result_expr ≥ epigraph(x), so MIN tightens
     # toward x² without exceeding it.
-    @testset "NMDT without tightening (epigraph_depth = 0)" begin
+    @testset "NMDT without tightening (tightener = IOM.NoTightener())" begin
         for x0 in [0.15, 0.35, 0.65, 0.85]
-            lb_nmdt = _nmdt_min(IOM.NMDTQuadConfig(; depth = 2, epigraph_depth = 0), x0)
+            lb_nmdt = _nmdt_min(IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth = 2, tightener = IOM.NoTightener()), x0)
             @test lb_nmdt <= x0^2 + 1e-6
         end
     end
 
-    @testset "NMDT with tightening (epigraph_depth = depth)" begin
+    @testset "NMDT with tightening (tightener = IOM.EpigraphTightener(depth))" begin
         for x0 in [0.15, 0.35, 0.65, 0.85]
             depth = 2
-            lb_nmdt = _nmdt_min(IOM.NMDTQuadConfig(; depth, epigraph_depth = 0), x0)
+            lb_nmdt = _nmdt_min(IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth, tightener = IOM.NoTightener()), x0)
             lb_tnmdt =
-                _nmdt_min(IOM.NMDTQuadConfig(; depth, epigraph_depth = depth), x0)
+                _nmdt_min(IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth, tightener = IOM.EpigraphTightener(depth)), x0)
             @test lb_tnmdt >= lb_nmdt - 1e-6   # tightening can only raise the MIN
             @test lb_tnmdt <= x0^2 + 1e-6      # but still ≤ x² (overestimator side)
         end
@@ -437,7 +437,7 @@ end
     @testset "D-NMDT tighter than NMDT at same binary count" begin
         # Both use L binary variables for x²; D-NMDT has bound 2^(-2L-2)
         # while NMDT has the looser bound 2^(-L-2).
-        # epigraph_depth = 0 on both sides isolates the comparison to the bare
+        # tightener = IOM.NoTightener() on both sides isolates the comparison to the bare
         # NMDT/DNMDT approximation — tightening would muddy the comparison
         # because epigraph(x) is the same for both configs.
         for L in [2, 3]
@@ -445,15 +445,15 @@ end
             gaps_dnmdt = Float64[]
             for x0 in range(0.05, 0.95; length = 9)
                 for (config_fn, tag) in [
-                    (L -> IOM.NMDTQuadConfig(; depth = L, epigraph_depth = 0), :nmdt),
-                    (L -> IOM.DNMDTQuadConfig(; depth = L, epigraph_depth = 0), :dnmdt),
+                    (L -> IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth = L, tightener = IOM.NoTightener()), :nmdt),
+                    (L -> IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = L, tightener = IOM.NoTightener()), :dnmdt),
                 ]
                     z_vals = Float64[]
                     for sense in [JuMP.MIN_SENSE, JuMP.MAX_SENSE]
                         setup = _setup_qa_test(["gen1"], 1:1)
                         JuMP.fix(setup.var_container["gen1", 1], x0; force = true)
 
-                        IOM._add_quadratic_approx!(
+                        IOM.add_quadratic_approx!(
                             config_fn(L),
                             setup.container, MockThermalGen, ["gen1"], 1:1,
                             setup.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
@@ -488,16 +488,16 @@ end
         # Both D-NMDT and NMDT univariate use L binary variables for depth=L
         depth = 4
         setup_n = _setup_qa_test(["gen1"], 1:1)
-        IOM._add_quadratic_approx!(
-            IOM.NMDTQuadConfig(; depth = depth, epigraph_depth = 0),
+        IOM.add_quadratic_approx!(
+            IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth = depth, tightener = IOM.NoTightener()),
             setup_n.container, MockThermalGen, ["gen1"], 1:1,
             setup_n.var_container, [(min = 0.0, max = 1.0)], NMDT_META,
         )
         n_bin_nmdt = count(JuMP.is_binary, JuMP.all_variables(setup_n.jump_model))
 
         setup_d = _setup_qa_test(["gen1"], 1:1)
-        IOM._add_quadratic_approx!(
-            IOM.DNMDTQuadConfig(; depth = depth, epigraph_depth = 0),
+        IOM.add_quadratic_approx!(
+            IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth = depth, tightener = IOM.NoTightener()),
             setup_d.container, MockThermalGen, ["gen1"], 1:1,
             setup_d.var_container, [(min = 0.0, max = 1.0)], DNMDT_META,
         )
@@ -509,7 +509,7 @@ end
     end
 end
 
-# NOTE: _add_bilinear_approx! discretizes only x (L binary variables), leaving
+# NOTE: add_bilinear_approx! discretizes only x (L binary variables), leaving
 # y normalized but continuous. This halves the binary count vs D-NMDT bilinear (2L).
 # The trade-off: NMDT bilinear error bound is 2^(-L-2) vs D-NMDT's 2^(-2L-2).
 @testset "NMDT Bilinear Approximation" begin
@@ -522,8 +522,8 @@ end
                 JuMP.fix(setup.x_var_container["dev1", 1], x0; force = true)
                 JuMP.fix(setup.y_var_container["dev1", 1], y0; force = true)
 
-                IOM._add_bilinear_approx!(
-                    IOM.NMDTBilinearConfig(; depth = 3),
+                IOM.add_bilinear_approx!(
+                    IOM.NMDTBilinearConfig{IOM.SingleNMDT}(; depth = 3),
                     setup.container, MockThermalGen, ["dev1"], 1:1,
                     setup.x_var_container, setup.y_var_container,
                     [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], NMDT_BILINEAR_META,
@@ -554,8 +554,8 @@ end
         JuMP.fix(setup.x_var_container["dev1", 1], 0.75; force = true)
         JuMP.fix(setup.y_var_container["dev1", 1], 0.5; force = true)
 
-        IOM._add_bilinear_approx!(
-            IOM.NMDTBilinearConfig(; depth = 4),
+        IOM.add_bilinear_approx!(
+            IOM.NMDTBilinearConfig{IOM.SingleNMDT}(; depth = 4),
             setup.container, MockThermalGen, ["dev1"], 1:1,
             setup.x_var_container, setup.y_var_container,
             [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], NMDT_BILINEAR_META,
@@ -580,8 +580,8 @@ end
     @testset "NMDT uses L binaries, D-NMDT uses 2L" begin
         L = 3
         setup_n = _setup_bilinear_test(["dev1"], 1:1)
-        IOM._add_bilinear_approx!(
-            IOM.NMDTBilinearConfig(; depth = L),
+        IOM.add_bilinear_approx!(
+            IOM.NMDTBilinearConfig{IOM.SingleNMDT}(; depth = L),
             setup_n.container, MockThermalGen, ["dev1"], 1:1,
             setup_n.x_var_container, setup_n.y_var_container,
             [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], NMDT_BILINEAR_META,
@@ -589,8 +589,8 @@ end
         n_bin_nmdt = count(JuMP.is_binary, JuMP.all_variables(setup_n.jump_model))
 
         setup_d = _setup_bilinear_test(["dev1"], 1:1)
-        IOM._add_bilinear_approx!(
-            IOM.DNMDTBilinearConfig(; depth = L),
+        IOM.add_bilinear_approx!(
+            IOM.NMDTBilinearConfig{IOM.DoubleNMDT}(; depth = L),
             setup_d.container, MockThermalGen, ["dev1"], 1:1,
             setup_d.x_var_container, setup_d.y_var_container,
             [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
@@ -610,8 +610,8 @@ end
             JuMP.fix(setup_n.x_var_container["dev1", 1], 0.4; force = true)
             JuMP.fix(setup_n.y_var_container["dev1", 1], 0.7; force = true)
 
-            IOM._add_bilinear_approx!(
-                IOM.NMDTBilinearConfig(; depth = L),
+            IOM.add_bilinear_approx!(
+                IOM.NMDTBilinearConfig{IOM.SingleNMDT}(; depth = L),
                 setup_n.container, MockThermalGen, ["dev1"], 1:1,
                 setup_n.x_var_container, setup_n.y_var_container,
                 [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], NMDT_BILINEAR_META,
@@ -631,8 +631,8 @@ end
             JuMP.fix(setup_d.x_var_container["dev1", 1], 0.4; force = true)
             JuMP.fix(setup_d.y_var_container["dev1", 1], 0.7; force = true)
 
-            IOM._add_bilinear_approx!(
-                IOM.DNMDTBilinearConfig(; depth = L),
+            IOM.add_bilinear_approx!(
+                IOM.NMDTBilinearConfig{IOM.DoubleNMDT}(; depth = L),
                 setup_d.container, MockThermalGen, ["dev1"], 1:1,
                 setup_d.x_var_container, setup_d.y_var_container,
                 [(min = 0.0, max = 1.0)], [(min = 0.0, max = 1.0)], DNMDT_META,
@@ -663,14 +663,14 @@ end
     # infeasible, and on [0,2] it collapses the lower envelope (massively
     # under-estimating x²). Tightening is on by default (epigraph_depth = 3*depth).
     for (config_fn, tag) in [
-        (depth -> IOM.NMDTQuadConfig(; depth), "NMDT"),
-        (depth -> IOM.DNMDTQuadConfig(; depth), "DNMDT"),
+        (depth -> IOM.NMDTQuadConfig{IOM.SingleNMDT}(; depth), "NMDT"),
+        (depth -> IOM.NMDTQuadConfig{IOM.DoubleNMDT}(; depth), "DNMDT"),
     ]
         @testset "$tag domain [-1, 1] feasible at x = 0" begin
             for sense in [JuMP.MIN_SENSE, JuMP.MAX_SENSE]
                 setup = _setup_qa_test(["gen1"], 1:1)
                 JuMP.fix(setup.var_container["gen1", 1], 0.0; force = true)
-                IOM._add_quadratic_approx!(
+                IOM.add_quadratic_approx!(
                     config_fn(3),
                     setup.container, MockThermalGen, ["gen1"], 1:1,
                     setup.var_container, [(min = -1.0, max = 1.0)], NMDT_META,
@@ -696,7 +696,7 @@ end
         @testset "$tag domain [0, 2] lower envelope not collapsed at x = 1" begin
             setup = _setup_qa_test(["gen1"], 1:1)
             JuMP.fix(setup.var_container["gen1", 1], 1.0; force = true)
-            IOM._add_quadratic_approx!(
+            IOM.add_quadratic_approx!(
                 config_fn(3),
                 setup.container, MockThermalGen, ["gen1"], 1:1,
                 setup.var_container, [(min = 0.0, max = 2.0)], NMDT_META,

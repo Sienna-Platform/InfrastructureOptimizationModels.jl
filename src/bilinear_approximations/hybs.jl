@@ -17,8 +17,12 @@ Adds two inequalities that sandwich `z ≈ x·y`:
 
 # Fields
 - `quad_config::Q`: quadratic method for the shared x² and y² terms
-- `epigraph_depth::Int`: depth for the epigraph approximation of cross-terms (x±y)²
-- `add_mccormick::Bool`: whether to add standard McCormick envelope cuts on the product variable (default false)
+- `cross_term_depth::Int`: depth for the epigraph approximation of the cross-terms (x±y)².
+  This is a **structural** part of HybS (the LP-only lower bounds that form the sandwich),
+  not an optional tightener.
+- `tightener::Tightener`: optional strengthener (default `NoTightener()`). The supported
+  tightener is `McCormickTightener` (standard McCormick envelope cuts on the product
+  variable; `partitions`/`backend` ignored here).
 
 `Q` must be a **strictly one-sided-over** quadratic approximation (so
 `z_x ≥ x²` and `z_y ≥ y²` hold at every MIP-feasible point). With a two-sided
@@ -36,25 +40,37 @@ Lower − Upper = ½(z_p1 + z_p2) − z_x − z_y
 So `Lower > Upper` whenever `2ε_Q > ε_E` — model infeasible. This rules out
 `EpigraphQuadConfig` (one-sided under, so `z_x` has no MIP-feasible upper
 bound) and `NMDTQuadConfig` / `DNMDTQuadConfig` (two-sided in both regimes:
-at `epigraph_depth = 0` the McCormick on the δ·δ or δ·xh residual product
-has slack even at integer β, and at `epigraph_depth > 0` the result floats
-in `[epigraph(x), nmdt(x)]`). Only `SawtoothQuadConfig`, `SolverSOS2QuadConfig`,
-and `ManualSOS2QuadConfig` are supported. See
-`tolerance_depth(::Type{HybSConfig{Q}}; …)` and
+the McCormick on the δ·δ or δ·xh residual product has slack even at integer β, and with an
+`EpigraphTightener` the result floats in `[epigraph(x), nmdt(x)]`). Only `SawtoothQuadConfig`
+and `SOS2QuadConfig` (`sidedness(Q) == OneSidedOver()`) are supported — the constructor
+enforces this. See `tolerance_depth(::Type{HybSConfig{Q}}; …)` and
 `tolerance_epigraph_depth(::Type{HybSConfig{Q}}; …)`.
 """
-struct HybSConfig{Q <: QuadraticApproxConfig} <: BilinearApproxConfig
+struct HybSConfig{Q <: QuadraticApproxConfig} <: SeparableConfig
     quad_config::Q
-    epigraph_depth::Int
-    add_mccormick::Bool
+    cross_term_depth::Int
+    tightener::Tightener
 
-    HybSConfig(
+    function HybSConfig(
         quad_config::Q;
-        epigraph_depth::Int,
-        add_mccormick::Bool = false,
-    ) where {Q <: QuadraticApproxConfig} =
-        new{Q}(quad_config, epigraph_depth, add_mccormick)
+        cross_term_depth::Int,
+        tightener::Tightener = NoTightener(),
+    ) where {Q <: QuadraticApproxConfig}
+        sidedness(Q) isa OneSidedOver || throw(
+            ArgumentError(
+                "HybSConfig requires a one-sided-over inner Q; got $(Q) with sidedness " *
+                "$(sidedness(Q)). Only SawtoothQuadConfig and SOS2QuadConfig qualify.",
+            ),
+        )
+        supports_tightener(HybSConfig, tightener) || throw(
+            ArgumentError("HybSConfig does not support tightener $(typeof(tightener))"),
+        )
+        return new{Q}(quad_config, cross_term_depth, tightener)
+    end
 end
+
+"HybS supports standard McCormick envelope cuts (`McCormickTightener`) on the product."
+supports_tightener(::Type{<:HybSConfig}, ::McCormickTightener) = true
 
 # --- Tolerance helpers ---
 #
@@ -91,7 +107,7 @@ whose inner-quad error on `[ax, ax+Δx]` (and `[ay, ay+Δy]`) is `≤ τ/2`, whi
 satisfies the `ε_Q ≤ τ/2` half of the HybS budget.
 
 Defined only for strictly one-sided-over inner quads:
-`SawtoothQuadConfig`, `SolverSOS2QuadConfig`, `ManualSOS2QuadConfig`. Other Q
+`SawtoothQuadConfig`, `SOS2QuadConfig`. Other Q
 raise `MethodError`. See the `HybSConfig` docstring for why two-sided or
 one-sided-under inner Qs (`EpigraphQuadConfig`, `NMDTQuadConfig`,
 `DNMDTQuadConfig`) make the sandwich infeasible.
@@ -103,7 +119,13 @@ function tolerance_depth(
     tolerance::Float64,
     max_delta_x::Float64,
     max_delta_y::Float64,
-) where {Q <: Union{SawtoothQuadConfig, SolverSOS2QuadConfig, ManualSOS2QuadConfig}}
+) where {Q <: QuadraticApproxConfig}
+    sidedness(Q) isa OneSidedOver || throw(
+        ArgumentError(
+            "HybSConfig requires a one-sided-over inner Q; got $(Q) with sidedness " *
+            "$(sidedness(Q)).",
+        ),
+    )
     return tolerance_depth(Q;
         tolerance = tolerance / 2,
         max_delta = max(max_delta_x, max_delta_y),
@@ -118,7 +140,7 @@ whose epigraph error on the cross-term range `Δx + Δy` is `≤ τ`, which
 satisfies the `½ε_E ≤ τ/2` half of the HybS budget.
 
 Defined only for strictly one-sided-over inner quads:
-`SawtoothQuadConfig`, `SolverSOS2QuadConfig`, `ManualSOS2QuadConfig`. Other Q
+`SawtoothQuadConfig`, `SOS2QuadConfig`. Other Q
 raise `MethodError`.
 """
 function tolerance_epigraph_depth(
@@ -126,7 +148,13 @@ function tolerance_epigraph_depth(
     tolerance::Float64,
     max_delta_x::Float64,
     max_delta_y::Float64,
-) where {Q <: Union{SawtoothQuadConfig, SolverSOS2QuadConfig, ManualSOS2QuadConfig}}
+) where {Q <: QuadraticApproxConfig}
+    sidedness(Q) isa OneSidedOver || throw(
+        ArgumentError(
+            "HybSConfig requires a one-sided-over inner Q; got $(Q) with sidedness " *
+            "$(sidedness(Q)).",
+        ),
+    )
     return tolerance_depth(EpigraphQuadConfig;
         tolerance = tolerance,
         max_delta = max_delta_x + max_delta_y,
@@ -136,7 +164,7 @@ end
 # --- Unified HybS dispatch methods ---
 
 """
-    _add_bilinear_approx!(config::HybSConfig, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
+    add_bilinear_approx!(config::HybSConfig, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
 
 Approximate x·y using HybS (Hybrid Separable) relaxation with config-selected quadratic method.
 
@@ -144,7 +172,7 @@ Approximate x·y using HybS (Hybrid Separable) relaxation with config-selected q
 - `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
 - `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
-function _add_bilinear_approx!(
+function add_bilinear_approx!(
     config::HybSConfig,
     container::OptimizationContainer,
     ::Type{C},
@@ -156,15 +184,15 @@ function _add_bilinear_approx!(
     y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    xsq = _add_quadratic_approx!(
+    xsq = add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
         x_var, x_bounds, meta * "_x",
     )
-    ysq = _add_quadratic_approx!(
+    ysq = add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
         y_var, y_bounds, meta * "_y",
     )
-    return _add_bilinear_approx!(
+    return _assemble_hybs!(
         config, container, C, names, time_steps,
         xsq, ysq, x_var, y_var,
         x_bounds, y_bounds, meta,
@@ -172,7 +200,7 @@ function _add_bilinear_approx!(
 end
 
 """
-    _add_bilinear_approx!(config::HybSConfig, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
+    _assemble_hybs!(config::HybSConfig, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
 
 HybS bilinear approximation with pre-computed quadratic approximations for x² and y².
 
@@ -186,7 +214,7 @@ The cross-terms (x+y)² and (x−y)² always use epigraph Q^{L1} (pure LP).
 - `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
 - `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
-function _add_bilinear_approx!(
+function _assemble_hybs!(
     config::HybSConfig,
     container::OptimizationContainer,
     ::Type{C},
@@ -253,13 +281,13 @@ function _add_bilinear_approx!(
     end
 
     # --- Epigraph Q^{L1} lower bound for (x+y)² and (x−y)² (no binaries) ---
-    epi_cfg = EpigraphQuadConfig(; depth = config.epigraph_depth)
-    zp1_expr = _add_quadratic_approx!(
+    epi_cfg = EpigraphQuadConfig(; depth = config.cross_term_depth)
+    zp1_expr = add_quadratic_approx!(
         epi_cfg,
         container, C, names, time_steps,
         p1_expr, p1_bounds, meta_p1,
     )
-    zp2_expr = _add_quadratic_approx!(
+    zp2_expr = add_quadratic_approx!(
         epi_cfg,
         container, C, names, time_steps,
         p2_expr, p2_bounds, meta_p2,
@@ -331,7 +359,7 @@ function _add_bilinear_approx!(
     end
 
     # --- Standard McCormick envelope cuts on the product variable ---
-    if config.add_mccormick
+    if config.tightener isa McCormickTightener
         _add_mccormick_envelope!(
             container, C, names, time_steps,
             x_var, y_var, z_var,

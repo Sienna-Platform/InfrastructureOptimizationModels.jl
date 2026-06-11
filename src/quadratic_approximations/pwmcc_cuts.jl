@@ -31,6 +31,32 @@ struct PiecewiseMcCormickTangentLBL <: ConstraintType end
 "Piecewise McCormick tangent lower-bound constraint (right endpoint)."
 struct PiecewiseMcCormickTangentLBR <: ConstraintType end
 
+"Solver-native SOS1 interval-selection constraint for piecewise McCormick cuts."
+struct PiecewiseMcCormickSOS1 <: ConstraintType end
+
+"""
+    _pwmcc_selector_var!(backend, jump_model, C, name, k, t)
+
+Create one interval-selection variable `δ_k` for the piecewise McCormick cuts. The
+`ManualBackend` makes it binary; the `SolverBackend` makes it continuous in `[0,1]` (paired
+with a `MOI.SOS1` constraint over the K selectors, which together with `Σ δ_k = 1` forces
+exactly one selector to 1 — the same feasible set as the binaries).
+"""
+_pwmcc_selector_var!(::ManualBackend, jump_model, ::Type{C}, name, k, t) where {C} =
+    JuMP.@variable(
+        jump_model,
+        base_name = "PwMcCBin_$(C)_{$(name), $(k), $(t)}",
+        binary = true,
+    )
+
+_pwmcc_selector_var!(::SolverBackend, jump_model, ::Type{C}, name, k, t) where {C} =
+    JuMP.@variable(
+        jump_model,
+        base_name = "PwMcCSel_$(C)_{$(name), $(k), $(t)}",
+        lower_bound = 0.0,
+        upper_bound = 1.0,
+    )
+
 """
     _add_pwmcc_concave_cuts!(container, C, names, time_steps, v_var, q_expr, bounds, K, meta)
 
@@ -60,7 +86,8 @@ function _add_pwmcc_concave_cuts!(
     q_expr,
     bounds::Vector{MinMax},
     K::Int,
-    meta::String,
+    meta::String;
+    backend::SOS2Backend = ManualBackend(),
 ) where {C <: IS.InfrastructureSystemsComponent}
     IS.@assert_op K >= 1
 
@@ -93,6 +120,16 @@ function _add_pwmcc_concave_cuts!(
         time_steps;
         meta,
     )
+    sos1_cons =
+        backend isa SolverBackend ?
+        add_constraints_container!(
+            container,
+            PiecewiseMcCormickSOS1,
+            C,
+            names,
+            time_steps;
+            meta,
+        ) : nothing
     linking_cons = add_constraints_container!(
         container,
         PiecewiseMcCormickLinking,
@@ -167,11 +204,8 @@ function _add_pwmcc_concave_cuts!(
 
         for k in 1:K
             delta[k] =
-                delta_var[name, k, t] = JuMP.@variable(
-                    jump_model,
-                    base_name = "PwMcCBin_$(C)_{$(name), $(k), $(t)}",
-                    binary = true,
-                )
+                delta_var[name, k, t] =
+                    _pwmcc_selector_var!(backend, jump_model, C, name, k, t)
             vd[k] =
                 vd_var[name, k, t] = JuMP.@variable(
                     jump_model,
@@ -184,6 +218,10 @@ function _add_pwmcc_concave_cuts!(
             JuMP.add_to_expression!(sel_expr, delta[k])
         end
         selector_cons[name, t] = JuMP.@constraint(jump_model, sel_expr == 1.0)
+        if backend isa SolverBackend
+            sos1_cons[name, t] =
+                JuMP.@constraint(jump_model, delta in MOI.SOS1(collect(1:K)))
+        end
 
         link_expr = JuMP.AffExpr(0.0)
         for k in 1:K
@@ -191,6 +229,9 @@ function _add_pwmcc_concave_cuts!(
         end
         linking_cons[name, t] = JuMP.@constraint(jump_model, link_expr == v)
 
+        # We copy v to whichever vd[k] is active, and the rest are all 0.
+        # So when constructing the chords and tangents for "all" vd[k], we are
+        # really only constructing one. (unless LP)
         for k in 1:K
             interval_lb_cons[name, k, t] = JuMP.@constraint(
                 jump_model,

@@ -19,25 +19,62 @@ struct BilinearProductLinkingConstraint <: ConstraintType end
 abstract type BilinearApproxConfig end
 
 """
+    add_bilinear_approx!(config, container, ::Type{C}, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
+
+Approximate the bilinear product `x·y` for each `(name, t)`, storing the result in an
+expression container and returning it. This is the uniform-arity interface every
+`BilinearApproxConfig` implements; methods differ only by the config type. Internal staged
+builders that take precomputed inputs (e.g. precomputed `xsq`/`ysq` or an `NMDTDiscretization`)
+use distinct names and are not part of this interface.
+"""
+function add_bilinear_approx! end
+
+# Fallback: a config without a concrete `add_bilinear_approx!` method lands here.
+add_bilinear_approx!(config::BilinearApproxConfig, args...) = error(
+    "add_bilinear_approx! is not implemented for $(typeof(config)); required signature: " *
+    "(config, container, ::Type{C}, names::Vector{String}, time_steps::UnitRange{Int}, " *
+    "x_var, y_var, x_bounds::Vector{MinMax}, y_bounds::Vector{MinMax}, meta::String)",
+)
+
+# Bilinear tightener support (mirrors the quadratic fallbacks in common.jl).
+supports_tightener(::Type{<:BilinearApproxConfig}, ::Tightener) = false
+supports_tightener(::Type{<:BilinearApproxConfig}, ::NoTightener) = true
+
+"""
+Abstract supertype for separable bilinear methods that reduce `x·y` to a combination of
+squares evaluated with an inner quadratic config `Q` — `Bin2Config` and `HybSConfig`.
+"""
+abstract type SeparableConfig <: BilinearApproxConfig end
+
+"""
 Config for Bin2 bilinear approximation using z = ½((x+y)² − x² − y²).
 
 # Fields
 - `quad_config::Q`: quadratic method used for x², y², and (x+y)²
-- `add_mccormick::Bool`: whether to add reformulated McCormick cuts through separable variables (default true)
+- `tightener::Tightener`: optional strengthener (default `McCormickTightener()`). The supported
+  tightener is `McCormickTightener` (standard reformulated McCormick cuts through the separable
+  variables; `partitions`/`backend` are ignored here). Use `NoTightener()` to disable.
 
-The Q type parameter lets tolerance helpers dispatch on the inner quad method;
+The `Q` type parameter lets `tolerance_depth` dispatch on the inner quad's `sidedness`;
 see `tolerance_depth(::Type{Bin2Config{Q}}; …)`.
 """
-struct Bin2Config{Q <: QuadraticApproxConfig} <: BilinearApproxConfig
+struct Bin2Config{Q <: QuadraticApproxConfig} <: SeparableConfig
     quad_config::Q
-    add_mccormick::Bool
+    tightener::Tightener
 
-    Bin2Config(
+    function Bin2Config(
         quad_config::Q;
-        add_mccormick::Bool = true,
-    ) where {Q <: QuadraticApproxConfig} =
-        new{Q}(quad_config, add_mccormick)
+        tightener::Tightener = McCormickTightener(),
+    ) where {Q <: QuadraticApproxConfig}
+        supports_tightener(Bin2Config, tightener) || throw(
+            ArgumentError("Bin2Config does not support tightener $(typeof(tightener))"),
+        )
+        return new{Q}(quad_config, tightener)
+    end
 end
+
+"Bin2 supports standard reformulated McCormick cuts (`McCormickTightener`)."
+supports_tightener(::Type{<:Bin2Config}, ::McCormickTightener) = true
 
 # --- Tolerance helpers ---
 #
@@ -96,13 +133,12 @@ end
 Inner-quad depth such that Bin2's worst-case gap `|z − xy|` is ≤ `tolerance`.
 Derivation: see the comment block above.
 
-For **one-sided-over** inner quads (`SawtoothQuadConfig`, `SolverSOS2QuadConfig`,
-`ManualSOS2QuadConfig`), forwards to
-`tolerance_depth(Q; tolerance = 2·τ, max_delta = Δx + Δy)`.
-
-For **two-sided** inner quads (`NMDTQuadConfig`, `DNMDTQuadConfig`), forwards
-to `tolerance_depth(Q; tolerance = (Δx+Δy)²·τ/(Δx² + Δy² + Δx·Δy),
-max_delta = Δx + Δy)`.
+Dispatches on `sidedness(Q)`:
+- **one-sided-over** (`SawtoothQuadConfig`, `SOS2QuadConfig`): forwards to
+  `tolerance_depth(Q; tolerance = 2·τ, max_delta = Δx + Δy)`.
+- **two-sided** (`NMDTQuadConfig`): forwards to
+  `tolerance_depth(Q; tolerance = (Δx+Δy)²·τ/(Δx² + Δy² + Δx·Δy), max_delta = Δx + Δy)`.
+- **one-sided-under** (`EpigraphQuadConfig`): throws — no finite bound exists (see below).
 
 `EpigraphQuadConfig` is excluded. The epigraph is one-sided-under
 (z_• ≤ •²), so with ε_x = x² − z_x ≥ 0 and ε_y = y² − z_y ≥ 0 (unbounded
@@ -126,41 +162,39 @@ function tolerance_depth(
     tolerance::Float64,
     max_delta_x::Float64,
     max_delta_y::Float64,
-) where {
-    Q <: Union{SawtoothQuadConfig, SolverSOS2QuadConfig, ManualSOS2QuadConfig},
-}
-    return tolerance_depth(Q;
-        tolerance = 2 * tolerance,
-        max_delta = max_delta_x + max_delta_y,
-    )
-end
-
-function tolerance_depth(
-    ::Type{Bin2Config{Q}};
-    tolerance::Float64,
-    max_delta_x::Float64,
-    max_delta_y::Float64,
-) where {Q <: Union{NMDTQuadConfig, DNMDTQuadConfig}}
-    sum_sq = max_delta_x^2 + max_delta_y^2 + max_delta_x * max_delta_y
+) where {Q <: QuadraticApproxConfig}
     max_delta = max_delta_x + max_delta_y
-    return tolerance_depth(Q;
-        tolerance = max_delta^2 * tolerance / sum_sq,
-        max_delta = max_delta,
-    )
+    s = sidedness(Q)
+    if s isa OneSidedOver
+        return tolerance_depth(Q; tolerance = 2 * tolerance, max_delta = max_delta)
+    elseif s isa TwoSided
+        sum_sq = max_delta_x^2 + max_delta_y^2 + max_delta_x * max_delta_y
+        return tolerance_depth(Q;
+            tolerance = max_delta^2 * tolerance / sum_sq,
+            max_delta = max_delta,
+        )
+    else
+        throw(
+            ArgumentError(
+                "Bin2Config requires a one-sided-over or two-sided inner Q; got $(Q) " *
+                "with sidedness $(s), which has no finite Bin2 tolerance bound.",
+            ),
+        )
+    end
 end
 
 # --- Unified bilinear approximation dispatch ---
 
 """
-    _add_bilinear_approx!(config::Bin2Config, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
+    add_bilinear_approx!(config::Bin2Config, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
 
-Standard form: compute x² and y² quadratic approximations, then delegate to precomputed form.
+Standard form: compute x² and y² quadratic approximations, then delegate to `_assemble_bin2!`.
 
 # Arguments
 - `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
 - `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
-function _add_bilinear_approx!(
+function add_bilinear_approx!(
     config::Bin2Config,
     container::OptimizationContainer,
     ::Type{C},
@@ -172,15 +206,15 @@ function _add_bilinear_approx!(
     y_bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    xsq = _add_quadratic_approx!(
+    xsq = add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
         x_var, x_bounds, meta * "_x",
     )
-    ysq = _add_quadratic_approx!(
+    ysq = add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
         y_var, y_bounds, meta * "_y",
     )
-    return _add_bilinear_approx!(
+    return _assemble_bin2!(
         config, container, C, names, time_steps,
         xsq, ysq, x_var, y_var,
         x_bounds, y_bounds, meta,
@@ -188,7 +222,7 @@ function _add_bilinear_approx!(
 end
 
 """
-    _add_bilinear_approx!(config::Bin2Config, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
+    _assemble_bin2!(config::Bin2Config, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
 
 Precomputed form: Bin2 identity z = ½((x+y)² − x² − y²) with optional PWMCC concave cuts.
 Accepts pre-computed quadratic approximations `xsq` ≈ x² and `ysq` ≈ y².
@@ -197,7 +231,7 @@ Accepts pre-computed quadratic approximations `xsq` ≈ x² and `ysq` ≈ y².
 - `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
 - `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
-function _add_bilinear_approx!(
+function _assemble_bin2!(
     config::Bin2Config,
     container::OptimizationContainer,
     ::Type{C},
@@ -239,7 +273,7 @@ function _add_bilinear_approx!(
     end
 
     # Approximate p² = (x+y)² using the provided quadratic config
-    psq = _add_quadratic_approx!(
+    psq = add_quadratic_approx!(
         config.quad_config, container, C, names, time_steps,
         p_expr, p_bounds, meta_plus,
     )
@@ -262,7 +296,7 @@ function _add_bilinear_approx!(
     end
 
     # --- Reformulated McCormick cuts (optional) ---
-    if config.add_mccormick
+    if config.tightener isa McCormickTightener
         _add_reformulated_mccormick!(
             container, C, names, time_steps,
             x_var, y_var, psq, xsq, ysq,

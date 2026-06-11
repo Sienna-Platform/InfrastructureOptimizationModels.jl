@@ -12,10 +12,10 @@ const BILINEAR_META = "BilinearTest"
                 JuMP.fix(setup.x_var_container["dev1", 1], 2.5; force = true)
                 JuMP.fix(setup.y_var_container["dev1", 1], 1.5; force = true)
 
-                IOM._add_bilinear_approx!(
+                IOM.add_bilinear_approx!(
                     IOM.Bin2Config(
-                        IOM.SolverSOS2QuadConfig(; depth = 4, pwmcc_segments = 0);
-                        add_mccormick = add_mc,
+                        IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = 4);
+                        tightener = add_mc ? IOM.McCormickTightener() : IOM.NoTightener(),
                     ),
                     setup.container,
                     MockThermalGen,
@@ -56,8 +56,8 @@ const BILINEAR_META = "BilinearTest"
             JuMP.set_lower_bound(y_var, 0.0)
             JuMP.set_upper_bound(y_var, 4.0)
 
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SolverSOS2QuadConfig(; depth = 8, pwmcc_segments = 0)),
+            IOM.add_bilinear_approx!(
+                IOM.Bin2Config(IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = 8)),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -89,8 +89,8 @@ const BILINEAR_META = "BilinearTest"
             JuMP.fix(setup2.x_var_container["dev1", 1], 2.0; force = true)
             JuMP.fix(setup2.y_var_container["dev1", 1], 3.0; force = true)
 
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SolverSOS2QuadConfig(; depth = 8, pwmcc_segments = 0)),
+            IOM.add_bilinear_approx!(
+                IOM.Bin2Config(IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = 8)),
                 setup2.container,
                 MockThermalGen,
                 ["dev1"],
@@ -127,8 +127,8 @@ const BILINEAR_META = "BilinearTest"
 
             w = JuMP.@variable(setup.jump_model, base_name = "w")
 
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SolverSOS2QuadConfig(; depth = 8, pwmcc_segments = 0)),
+            IOM.add_bilinear_approx!(
+                IOM.Bin2Config(IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = 8)),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -168,8 +168,8 @@ const BILINEAR_META = "BilinearTest"
             JuMP.set_lower_bound(y_var, 0.0)
             JuMP.set_upper_bound(y_var, 4.0)
 
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.SolverSOS2QuadConfig(; depth = 8, pwmcc_segments = 0)),
+            IOM.add_bilinear_approx!(
+                IOM.Bin2Config(IOM.SOS2QuadConfig{IOM.SolverBackend}(; depth = 8)),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -209,11 +209,10 @@ const BILINEAR_META = "BilinearTest"
                 JuMP.fix(x_var, 2.5; force = true)
                 JuMP.fix(y_var, 1.5; force = true)
 
-                IOM._add_bilinear_approx!(
+                IOM.add_bilinear_approx!(
                     IOM.Bin2Config(
-                        IOM.SolverSOS2QuadConfig(;
+                        IOM.SOS2QuadConfig{IOM.SolverBackend}(;
                             depth = num_segments,
-                            pwmcc_segments = 0,
                         ),
                     ),
                     setup.container,
@@ -254,8 +253,8 @@ const BILINEAR_META = "BilinearTest"
             JuMP.fix(setup.x_var_container["dev1", 1], 2.0; force = true)
             JuMP.fix(setup.y_var_container["dev1", 1], 3.0; force = true)
 
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.ManualSOS2QuadConfig(; depth = 8, pwmcc_segments = 0)),
+            IOM.add_bilinear_approx!(
+                IOM.Bin2Config(IOM.SOS2QuadConfig{IOM.ManualBackend}(; depth = 8)),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -290,8 +289,8 @@ const BILINEAR_META = "BilinearTest"
 
             w = JuMP.@variable(setup.jump_model, base_name = "w")
 
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.ManualSOS2QuadConfig(; depth = 8, pwmcc_segments = 0)),
+            IOM.add_bilinear_approx!(
+                IOM.Bin2Config(IOM.SOS2QuadConfig{IOM.ManualBackend}(; depth = 8)),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -329,8 +328,8 @@ const BILINEAR_META = "BilinearTest"
             JuMP.set_lower_bound(y_var, 0.0)
             JuMP.set_upper_bound(y_var, 4.0)
 
-            IOM._add_bilinear_approx!(
-                IOM.Bin2Config(IOM.ManualSOS2QuadConfig(; depth = 8, pwmcc_segments = 0)),
+            IOM.add_bilinear_approx!(
+                IOM.Bin2Config(IOM.SOS2QuadConfig{IOM.ManualBackend}(; depth = 8)),
                 setup.container,
                 MockThermalGen,
                 ["dev1"],
@@ -366,11 +365,10 @@ const BILINEAR_META = "BilinearTest"
                 JuMP.fix(setup.x_var_container["dev1", 1], 2.5; force = true)
                 JuMP.fix(setup.y_var_container["dev1", 1], 1.5; force = true)
 
-                IOM._add_bilinear_approx!(
+                IOM.add_bilinear_approx!(
                     IOM.Bin2Config(
-                        IOM.ManualSOS2QuadConfig(;
+                        IOM.SOS2QuadConfig{IOM.ManualBackend}(;
                             depth = num_segments,
-                            pwmcc_segments = 0,
                         ),
                     ),
                     setup.container,
@@ -411,7 +409,7 @@ const BILINEAR_META = "BilinearTest"
             JuMP.fix(setup.x_var_container["dev1", 1], 2.0; force = true)
             JuMP.fix(setup.y_var_container["dev1", 1], 3.0; force = true)
 
-            IOM._add_bilinear_approx!(
+            IOM.add_bilinear_approx!(
                 IOM.Bin2Config(IOM.SawtoothQuadConfig(; depth = 3)),
                 setup.container,
                 MockThermalGen,
@@ -447,7 +445,7 @@ const BILINEAR_META = "BilinearTest"
 
             w = JuMP.@variable(setup.jump_model, base_name = "w")
 
-            IOM._add_bilinear_approx!(
+            IOM.add_bilinear_approx!(
                 IOM.Bin2Config(IOM.SawtoothQuadConfig(; depth = 3)),
                 setup.container,
                 MockThermalGen,
@@ -486,7 +484,7 @@ const BILINEAR_META = "BilinearTest"
             JuMP.set_lower_bound(y_var, 0.0)
             JuMP.set_upper_bound(y_var, 4.0)
 
-            IOM._add_bilinear_approx!(
+            IOM.add_bilinear_approx!(
                 IOM.Bin2Config(IOM.SawtoothQuadConfig(; depth = 3)),
                 setup.container,
                 MockThermalGen,
@@ -523,7 +521,7 @@ const BILINEAR_META = "BilinearTest"
                 JuMP.fix(setup.x_var_container["dev1", 1], 2.5; force = true)
                 JuMP.fix(setup.y_var_container["dev1", 1], 1.5; force = true)
 
-                IOM._add_bilinear_approx!(
+                IOM.add_bilinear_approx!(
                     IOM.Bin2Config(IOM.SawtoothQuadConfig(; depth = depth)),
                     setup.container,
                     MockThermalGen,

@@ -4,65 +4,69 @@
 # with a McCormick-linearized auxiliary variable. Assembles the result via the
 # separable identity x² = (lx·xh + x_min)². Optionally tightens with an epigraph
 # lower bound on xh².
+#
+# A single parametric config `NMDTQuadConfig{V}` covers both variants:
+#   - `SingleNMDT`: discretizes one factor (cross term δ·xh), error `Δ²·2^{-L-2}`.
+#   - `DoubleNMDT`: discretizes both factors (DNMDT), error `Δ²·2^{-2L-2}`.
 # NMDT Reference: Teles, Castro, Matos (2013), Multiparametric disaggregation
 # technique for global optimization of polynomial programming problems.
 
 """
-Config for double-NMDT quadratic approximation.
+Config for NMDT quadratic approximation, parameterized by the discretization variant
+`V <: NMDTVariant` (`SingleNMDT` or `DoubleNMDT`).
 
 # Fields
 - `depth::Int`: number of binary discretization levels L
-- `epigraph_depth::Int`: depth of an additional epigraph Q^{L1} lower bound;
-  0 disables (default 3×depth)
+- `tightener::Tightener`: optional strengthener (default `EpigraphTightener(3·depth)`). The
+  supported tightener is `EpigraphTightener(L_e)`, adding an epigraph Q^{L1} lower bound on
+  xh²; use `NoTightener()` to disable.
 
-The DNMDT side gives worst-case `|result_expr − x²| ≤ Δ²·2^{-2L-2}` (two-sided
-magnitude bound). The binary discretization `x = x_grid + δ` is exact in MIP
-(binary×binary and binary×continuous McCormick are tight at integer β), but
-the residual `δ²` term is approximated by a McCormick envelope on (δ, δ) over
-`[0, 2^{-L}]²` — and continuous×continuous McCormick has slack at interior δ
-even at integer β. So `result_expr` floats in an interval around `x²` whose
-half-width is at most `Δ²·2^{-2L-2}` (max gap at `δ = 2^{-L-1}`).
+`DoubleNMDT` gives worst-case `|result_expr − x²| ≤ Δ²·2^{-2L-2}`; `SingleNMDT` gives
+`Δ²·2^{-L-2}` (single `L`, since only one factor is discretized). Both are two-sided
+magnitude bounds: the binary discretization `x = x_grid + δ` is exact in MIP, but the
+residual product (continuous×continuous McCormick) has slack at interior points, so
+`result_expr` floats around `x²`.
 
-When `epigraph_depth = L_e > 0`, the McCormick lower bounds on the
-binary–continuous products are dropped and a lower bound `result_expr ≥
-epigraph(x)` is added in their place. The result remains two-sided around
-`x²`, but the lower envelope is now the global epigraph instead of the
-per-product McCormick LBs; worst case becomes
-`max(Δ²·2^{-2L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
-SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
+With an `EpigraphTightener(L_e)`, the McCormick lower bounds on the binary–continuous
+products are dropped and a lower bound `result_expr ≥ epigraph(x)` is added in their place;
+the worst case becomes `max(<variant bound>, Δ²·2^{-2L_e-4})`. Contrast with a
+`McCormickTightener` on the SOS2 config, which adds genuine LP cuts and never changes the
+MIP-feasible set.
 
-See `tolerance_depth(::Type{DNMDTQuadConfig}; …)` to derive `depth` from a
-target tolerance, and `tolerance_epigraph_depth(::Type{DNMDTQuadConfig}; …)`
-for the matching `epigraph_depth`.
+See `tolerance_depth(::Type{NMDTQuadConfig{V}}; …)` to derive `depth` from a target
+tolerance, and `tolerance_epigraph_depth(::Type{<:NMDTQuadConfig}; …)` for the matching
+`EpigraphTightener` depth.
 """
-struct DNMDTQuadConfig <: QuadraticApproxConfig
+struct NMDTQuadConfig{V <: NMDTVariant} <: QuadraticApproxConfig
     depth::Int
-    epigraph_depth::Int
+    tightener::Tightener
 
-    DNMDTQuadConfig(; depth::Int, epigraph_depth::Int = 3 * depth) =
-        new(depth, epigraph_depth)
+    function NMDTQuadConfig{V}(;
+        depth::Int,
+        tightener::Tightener = EpigraphTightener(3 * depth),
+    ) where {V <: NMDTVariant}
+        supports_tightener(NMDTQuadConfig{V}, tightener) || throw(
+            ArgumentError("NMDTQuadConfig does not support tightener $(typeof(tightener))"),
+        )
+        return new{V}(depth, tightener)
+    end
 end
 
+"NMDT is two-sided around x² (continuous×continuous McCormick slack on the residual)."
+sidedness(::Type{<:NMDTQuadConfig}) = TwoSided()
+
+"NMDT supports an `EpigraphTightener` lower bound."
+supports_tightener(::Type{<:NMDTQuadConfig}, ::EpigraphTightener) = true
+
 """
-    tolerance_depth(::Type{DNMDTQuadConfig}; tolerance, max_delta)::Int
+    tolerance_depth(::Type{NMDTQuadConfig{DoubleNMDT}}; tolerance, max_delta)::Int
 
-Smallest DNMDT depth `L` whose worst-case overestimation gap on `[a, a+Δ]`
-falls within `tolerance`. Inverts `Δ²·2^{-2L-2} ≤ τ`:
-```
-L = ⌈(log₂(Δ²/τ) − 2) / 2⌉
-```
-clamped to `L ≥ 1`. Sizes only the DNMDT side.
-
-**Contract on `epigraph_depth`**: the returned depth meets the tolerance iff
-the user picks `epigraph_depth = 0` (tightening disabled) or
-`epigraph_depth ≥ depth − 1`. The DNMDT side error is `Δ²·2^{-2L-2}` and
-the epigraph side error is `Δ²·2^{-2L_e-4}`; epigraph ≤ DNMDT iff
-`L_e ≥ L − 1`. When `0 < epigraph_depth < depth − 1`, the epigraph side
-has a larger error than the DNMDT side and the realized error can exceed
-`tolerance`. Use `tolerance_epigraph_depth` to size both knobs consistently.
+Smallest DNMDT depth `L` whose worst-case gap on `[a, a+Δ]` falls within `tolerance`.
+Inverts `Δ²·2^{-2L-2} ≤ τ`: `L = ⌈(log₂(Δ²/τ) − 2) / 2⌉`, clamped to `L ≥ 1`. Sizes only
+the DNMDT side; pair with `tolerance_epigraph_depth` to size the `EpigraphTightener`.
 """
 function tolerance_depth(
-    ::Type{DNMDTQuadConfig};
+    ::Type{NMDTQuadConfig{DoubleNMDT}};
     tolerance::Float64,
     max_delta::Float64,
 )
@@ -71,75 +75,14 @@ function tolerance_depth(
 end
 
 """
-    tolerance_epigraph_depth(::Type{DNMDTQuadConfig}; tolerance, max_delta)::Int
+    tolerance_depth(::Type{NMDTQuadConfig{SingleNMDT}}; tolerance, max_delta)::Int
 
-Smallest `epigraph_depth` whose epigraph error on `[a, a+Δ]` is `≤ tolerance`.
-Pass alongside `tolerance_depth(DNMDTQuadConfig; …)` to honor the contract.
-"""
-function tolerance_epigraph_depth(
-    ::Type{DNMDTQuadConfig};
-    tolerance::Float64,
-    max_delta::Float64,
-)
-    return tolerance_depth(EpigraphQuadConfig; tolerance, max_delta)
-end
-
-"""
-Config for single-NMDT quadratic approximation.
-
-# Fields
-- `depth::Int`: number of binary discretization levels L
-- `epigraph_depth::Int`: depth of an additional epigraph Q^{L1} lower bound;
-  0 disables (default 3×depth)
-
-The NMDT side gives worst-case `|result_expr − x²| ≤ Δ²·2^{-L-2}` two-sided
-magnitude bound (note the single `L`, not `2L` — single NMDT discretizes only
-one factor). The binary discretization `x = x_grid + δ` is exact in MIP, but
-the cross term `δ·xh` (where `xh` is the full normalized x) is approximated by
-McCormick on (δ, xh) — both continuous — and that has slack at interior values
-even at integer β. So `result_expr` floats in a two-sided interval around `x²`.
-
-When `epigraph_depth = L_e > 0`, the McCormick lower bounds on the
-binary–continuous products are dropped and a lower bound `result_expr ≥
-epigraph(x)` is added in their place. The result remains two-sided around
-`x²`, but the lower envelope is now the global epigraph instead of the
-per-product McCormick LBs; worst case becomes
-`max(Δ²·2^{-L-2}, Δ²·2^{-2L_e-4})`. Contrast with `pwmcc_segments` on the
-SOS2 variants, which adds genuine LP cuts and never changes the MIP-feasible set.
-
-See `tolerance_depth(::Type{NMDTQuadConfig}; …)` to derive `depth` from a
-target tolerance, and `tolerance_epigraph_depth(::Type{NMDTQuadConfig}; …)`
-for the matching `epigraph_depth`.
-"""
-struct NMDTQuadConfig <: QuadraticApproxConfig
-    depth::Int
-    epigraph_depth::Int
-
-    NMDTQuadConfig(; depth::Int, epigraph_depth::Int = 3 * depth) =
-        new(depth, epigraph_depth)
-end
-
-"""
-    tolerance_depth(::Type{NMDTQuadConfig}; tolerance, max_delta)::Int
-
-Smallest NMDT depth `L` whose worst-case overestimation gap on `[a, a+Δ]`
-falls within `tolerance`. Inverts `Δ²·2^{-L-2} ≤ τ`:
-```
-L = ⌈log₂(Δ²/τ) − 2⌉
-```
-clamped to `L ≥ 1`. Sizes only the NMDT side.
-
-**Contract on `epigraph_depth`**: the returned depth meets the tolerance iff
-the user picks `epigraph_depth = 0` (tightening disabled) or
-`epigraph_depth ≥ ⌈(depth − 2) / 2⌉`. The NMDT side error is `Δ²·2^{-L-2}`
-and the epigraph side error is `Δ²·2^{-2L_e-4}`; epigraph ≤ NMDT iff
-`2L_e + 4 ≥ L + 2`, i.e. `L_e ≥ (L − 2)/2`. When the user picks a smaller
-`epigraph_depth`, the epigraph side has a larger error than the NMDT side
-and the realized error can exceed `tolerance`. Use
-`tolerance_epigraph_depth` to size both knobs consistently.
+Smallest single-NMDT depth `L` whose worst-case gap on `[a, a+Δ]` falls within `tolerance`.
+Inverts `Δ²·2^{-L-2} ≤ τ`: `L = ⌈log₂(Δ²/τ) − 2⌉`, clamped to `L ≥ 1`. Sizes only the NMDT
+side; pair with `tolerance_epigraph_depth` to size the `EpigraphTightener`.
 """
 function tolerance_depth(
-    ::Type{NMDTQuadConfig};
+    ::Type{NMDTQuadConfig{SingleNMDT}};
     tolerance::Float64,
     max_delta::Float64,
 )
@@ -148,40 +91,33 @@ function tolerance_depth(
 end
 
 """
-    tolerance_epigraph_depth(::Type{NMDTQuadConfig}; tolerance, max_delta)::Int
+    tolerance_epigraph_depth(::Type{<:NMDTQuadConfig}; tolerance, max_delta)::Int
 
-Smallest `epigraph_depth` whose epigraph error on `[a, a+Δ]` is `≤ tolerance`.
-Pass alongside `tolerance_depth(NMDTQuadConfig; …)` to honor the contract.
+Smallest `EpigraphTightener` depth whose epigraph error on `[a, a+Δ]` is `≤ tolerance`.
+Pass `tightener = EpigraphTightener(tolerance_epigraph_depth(...))` alongside
+`tolerance_depth(NMDTQuadConfig{V}; …)` to honor the tolerance contract.
 """
 function tolerance_epigraph_depth(
-    ::Type{NMDTQuadConfig};
+    ::Type{<:NMDTQuadConfig};
     tolerance::Float64,
     max_delta::Float64,
 )
     return tolerance_depth(EpigraphQuadConfig; tolerance, max_delta)
 end
 
+# --- DoubleNMDT (DNMDT) ---
+
 """
-    _add_quadratic_approx!(config::DNMDTQuadConfig, container, C, names, time_steps, x_disc, bounds, meta)
+    _quadratic_from_discretization!(config::NMDTQuadConfig{DoubleNMDT}, container, C, names, time_steps, x_disc, bounds, meta)
 
 Approximate x² using the Double NMDT (DNMDT) method from a pre-built discretization.
 
 Constructs two binary-continuous products (β·xh and β·δ) and delegates to the core
-DNMDT assembler, storing results in a `QuadraticExpression` container. Optionally
-tightens lower bounds with an epigraph relaxation via `_tighten_lower_bounds!`.
-
-# Arguments
-- `config::DNMDTQuadConfig`: configuration with `depth` (binary discretization levels) and `epigraph_depth` (LP tightening depth; 0 to disable, default 3×depth)
-- `container::OptimizationContainer`: the optimization container
-- `::Type{C}`: component type
-- `names::Vector{String}`: component names
-- `time_steps::UnitRange{Int}`: time periods
-- `x_disc::NMDTDiscretization`: pre-built discretization for x
-- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
-- `meta::String`: identifier encoding the original variable type being approximated
+DNMDT assembler, storing results in a `QuadraticExpression` container. With an
+`EpigraphTightener`, tightens lower bounds via `_tighten_lower_bounds!`.
 """
-function _add_quadratic_approx!(
-    config::DNMDTQuadConfig,
+function _quadratic_from_discretization!(
+    config::NMDTQuadConfig{DoubleNMDT},
     container::OptimizationContainer,
     ::Type{C},
     names::Vector{String},
@@ -190,7 +126,7 @@ function _add_quadratic_approx!(
     bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    tighten = config.epigraph_depth > 0
+    tighten = config.tightener isa EpigraphTightener
     bx_xh_expr = _binary_continuous_product!(
         container, C, names, time_steps,
         x_disc, x_disc.norm_expr, 0.0, 1.0,
@@ -210,10 +146,10 @@ function _add_quadratic_approx!(
         result_type = QuadraticExpression,
     )
 
-    if config.epigraph_depth > 0
+    if tighten
         _tighten_lower_bounds!(
             container, C, names, time_steps,
-            result_expr, x_disc, bounds, config.epigraph_depth, meta,
+            result_expr, x_disc, bounds, config.tightener.depth, meta,
         )
     end
 
@@ -221,25 +157,13 @@ function _add_quadratic_approx!(
 end
 
 """
-    _add_quadratic_approx!(config::DNMDTQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
+    add_quadratic_approx!(config::NMDTQuadConfig{DoubleNMDT}, container, C, names, time_steps, x_var, bounds, meta)
 
 Approximate x² using the Double NMDT (DNMDT) method from raw variable inputs.
-
 Discretizes x via `_discretize!` then delegates to the `NMDTDiscretization` overload.
-Stores results in a `QuadraticExpression` container.
-
-# Arguments
-- `config::DNMDTQuadConfig`: configuration with `depth` (binary discretization levels) and `epigraph_depth` (LP tightening depth; 0 to disable, default 3×depth)
-- `container::OptimizationContainer`: the optimization container
-- `::Type{C}`: component type
-- `names::Vector{String}`: component names
-- `time_steps::UnitRange{Int}`: time periods
-- `x_var`: container of variables indexed by (name, t)
-- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
-- `meta::String`: identifier encoding the original variable type being approximated
 """
-function _add_quadratic_approx!(
-    config::DNMDTQuadConfig,
+function add_quadratic_approx!(
+    config::NMDTQuadConfig{DoubleNMDT},
     container::OptimizationContainer,
     ::Type{C},
     names::Vector{String},
@@ -253,33 +177,24 @@ function _add_quadratic_approx!(
         x_var, bounds, config.depth, meta,
     )
 
-    return _add_quadratic_approx!(
+    return _quadratic_from_discretization!(
         config, container, C, names, time_steps,
         x_disc, bounds, meta,
     )
 end
 
+# --- SingleNMDT ---
+
 """
-    _add_quadratic_approx!(config::NMDTQuadConfig, container, C, names, time_steps, x_disc, bounds, meta)
+    _quadratic_from_discretization!(config::NMDTQuadConfig{SingleNMDT}, container, C, names, time_steps, x_disc, bounds, meta)
 
-Approximate x² using the NMDT method from a pre-built discretization.
+Approximate x² using the single-NMDT method from a pre-built discretization.
 
-Computes the binary-continuous product β·xh and residual product δ·xh, then
-assembles x² via `_assemble_product!`. Stores results in a `QuadraticExpression`
-container. Optionally tightens lower bounds with an epigraph relaxation.
-
-# Arguments
-- `config::NMDTQuadConfig`: configuration with `depth` (binary discretization levels) and `epigraph_depth` (LP tightening depth; 0 to disable, default 3×depth)
-- `container::OptimizationContainer`: the optimization container
-- `::Type{C}`: component type
-- `names::Vector{String}`: component names
-- `time_steps::UnitRange{Int}`: time periods
-- `x_disc::NMDTDiscretization`: pre-built discretization for x
-- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
-- `meta::String`: identifier encoding the original variable type being approximated
+Computes the binary-continuous product β·xh and residual product δ·xh, then assembles x²
+via `_assemble_product!`. With an `EpigraphTightener`, tightens lower bounds.
 """
-function _add_quadratic_approx!(
-    config::NMDTQuadConfig,
+function _quadratic_from_discretization!(
+    config::NMDTQuadConfig{SingleNMDT},
     container::OptimizationContainer,
     ::Type{C},
     names::Vector{String},
@@ -288,7 +203,7 @@ function _add_quadratic_approx!(
     bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    tighten = config.epigraph_depth > 0
+    tighten = config.tightener isa EpigraphTightener
     bx_y_expr = _binary_continuous_product!(
         container, C, names, time_steps,
         x_disc, x_disc.norm_expr, 0.0, 1.0,
@@ -307,10 +222,10 @@ function _add_quadratic_approx!(
         meta; result_type = QuadraticExpression,
     )
 
-    if config.epigraph_depth > 0
+    if tighten
         _tighten_lower_bounds!(
             container, C, names, time_steps,
-            result_expr, x_disc, bounds, config.epigraph_depth, meta,
+            result_expr, x_disc, bounds, config.tightener.depth, meta,
         )
     end
 
@@ -318,25 +233,13 @@ function _add_quadratic_approx!(
 end
 
 """
-    _add_quadratic_approx!(config::NMDTQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
+    add_quadratic_approx!(config::NMDTQuadConfig{SingleNMDT}, container, C, names, time_steps, x_var, bounds, meta)
 
-Approximate x² using the NMDT method from raw variable inputs.
-
+Approximate x² using the single-NMDT method from raw variable inputs.
 Discretizes x via `_discretize!` then delegates to the `NMDTDiscretization` overload.
-Stores results in a `QuadraticExpression` container.
-
-# Arguments
-- `config::NMDTQuadConfig`: configuration with `depth` (binary discretization levels) and `epigraph_depth` (LP tightening depth; 0 to disable, default 3×depth)
-- `container::OptimizationContainer`: the optimization container
-- `::Type{C}`: component type
-- `names::Vector{String}`: component names
-- `time_steps::UnitRange{Int}`: time periods
-- `x_var`: container of variables indexed by (name, t)
-- `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
-- `meta::String`: identifier encoding the original variable type being approximated
 """
-function _add_quadratic_approx!(
-    config::NMDTQuadConfig,
+function add_quadratic_approx!(
+    config::NMDTQuadConfig{SingleNMDT},
     container::OptimizationContainer,
     ::Type{C},
     names::Vector{String},
@@ -350,7 +253,7 @@ function _add_quadratic_approx!(
         x_var, bounds, config.depth, meta,
     )
 
-    return _add_quadratic_approx!(
+    return _quadratic_from_discretization!(
         config, container, C, names, time_steps,
         x_disc, bounds, meta,
     )

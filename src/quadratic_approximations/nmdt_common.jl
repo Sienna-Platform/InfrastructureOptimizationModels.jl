@@ -256,7 +256,7 @@ function _tighten_lower_bounds!(
 ) where {C <: IS.InfrastructureSystemsComponent}
     jump_model = get_jump_model(container)
 
-    epi_expr = _add_quadratic_approx!(
+    epi_expr = add_quadratic_approx!(
         EpigraphQuadConfig(; depth = epigraph_depth),
         container, C, names, time_steps,
         x_disc.norm_expr, fill(MinMax((min = 0.0, max = 1.0)), length(names)),
