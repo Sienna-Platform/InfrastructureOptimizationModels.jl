@@ -22,15 +22,16 @@ Config for sawtooth MIP quadratic approximation.
 
 # Fields
 - `depth::Int`: recursion depth L; uses L binary variables for 2^L + 1 breakpoints
-- `epigraph_depth::Int`: depth of an additional epigraph Q^{L1} lower bound (0 disables, default 0)
+- `tightener::Tightener`: optional strengthener (default `NoTightener()`). The supported
+  tightener is `EpigraphTightener(L_e)`, adding an epigraph Q^{L1} lower bound.
 
-## Effect of `epigraph_depth` on the worst-case error
+## Effect of an `EpigraphTightener` on the worst-case error
 
-`epigraph_depth = 0`: the formulation is purely deterministic — `result_expr =
+`NoTightener()`: the formulation is purely deterministic — `result_expr =
 sawtooth(x)` is pinned by the binary structure, so `|z − x²| ≤ Δ²·2^{-2L-2}`
 where Δ = max − min.
 
-`epigraph_depth = L_e > 0`: a free continuous variable `z` is introduced with
+`EpigraphTightener(L_e)`: a free continuous variable `z` is introduced with
 `z ≤ sawtooth(x)` and `z ≥ epigraph(x)`, and `result_expr = z`. This is a
 *structural* change, not just LP-tightening: the MIP-feasible set of
 `result_expr` values grows from a single point to the interval
@@ -41,20 +42,33 @@ where Δ = max − min.
 - `L_e ≥ L − 1`: sawtooth dominates, worst-case = `Δ²·2^{-2L-2}`.
 - `L_e < L − 1`: epigraph dominates, worst-case = `Δ²·2^{-2L_e-4}`.
 
-Contrast with `pwmcc_segments` on the SOS2 variants, which adds genuine LP cuts
-and never changes the MIP-feasible set.
+Contrast with a `McCormickTightener` on the SOS2 config, which adds genuine LP cuts
+and never changes the MIP-feasible set (`preserves_mip_optimum` is `true` there,
+`false` here).
 
 See `tolerance_depth(::Type{SawtoothQuadConfig}; …)` to derive `depth` from a
 target tolerance, and `tolerance_epigraph_depth(::Type{SawtoothQuadConfig}; …)`
-for the matching `epigraph_depth`.
+for the matching `EpigraphTightener` depth.
 """
 struct SawtoothQuadConfig <: QuadraticApproxConfig
     depth::Int
-    epigraph_depth::Int
+    tightener::Tightener
 
-    SawtoothQuadConfig(; depth::Int, epigraph_depth::Int = 0) =
-        new(depth, epigraph_depth)
+    function SawtoothQuadConfig(; depth::Int, tightener::Tightener = NoTightener())
+        supports_tightener(SawtoothQuadConfig, tightener) || throw(
+            ArgumentError(
+                "SawtoothQuadConfig does not support tightener $(typeof(tightener))",
+            ),
+        )
+        return new(depth, tightener)
+    end
 end
+
+"Sawtooth over-estimates x² at the segment midpoints."
+sidedness(::Type{SawtoothQuadConfig}) = OneSidedOver()
+
+"Sawtooth supports an `EpigraphTightener` lower bound."
+supports_tightener(::Type{SawtoothQuadConfig}, ::EpigraphTightener) = true
 
 """
     tolerance_depth(::Type{SawtoothQuadConfig}; tolerance, max_delta)::Int
@@ -106,7 +120,115 @@ function tolerance_epigraph_depth(
 end
 
 """
-    _add_quadratic_approx!(config::SawtoothQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
+    _sawtooth_ladder!(container, C, names, time_steps, x_var, bounds, depth, meta; mip)
+
+Build the shared sawtooth auxiliary ladder used by both the sawtooth MIP
+approximation and the epigraph LP relaxation: continuous variables
+g_0,…,g_L ∈ [0,1] (`SawtoothAuxVariable`) with the linking constraint
+g_0 = (x − x_min)/Δ (`SawtoothLinkingConstraint`) and the recursive tooth
+constraints g_j ≤ 2·g_{j-1}, g_j ≤ 2·(1 − g_{j-1}).
+
+When `mip = true`, also creates the α binaries (`SawtoothBinaryVariable`) and the
+two additional rows g_j ≥ 2(g_{j-1} − α_j), g_j ≥ 2(α_j − g_{j-1}) that pin the
+sawtooth deterministically — the four rows are stored as `SawtoothMIPConstraint`.
+When `mip = false`, only the two `≤` rows are added, as `SawtoothLPConstraint`,
+giving the LP relaxation the epigraph relies on.
+
+Returns the `g_var` container.
+"""
+function _sawtooth_ladder!(
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    x_var,
+    bounds::Vector{MinMax},
+    depth::Int,
+    meta::String;
+    mip::Bool,
+) where {C <: IS.InfrastructureSystemsComponent}
+    IS.@assert_op depth >= 1
+    jump_model = get_jump_model(container)
+    g_levels = 0:depth
+    alpha_levels = 1:depth
+
+    g_var = add_variable_container!(
+        container, SawtoothAuxVariable, C, names, g_levels, time_steps; meta,
+    )
+    link_cons = add_constraints_container!(
+        container, SawtoothLinkingConstraint, C, names, time_steps; meta,
+    )
+    if mip
+        alpha_var = add_variable_container!(
+            container, SawtoothBinaryVariable, C, names, alpha_levels, time_steps; meta,
+        )
+        tooth_cons = add_constraints_container!(
+            container, SawtoothMIPConstraint, C, names, alpha_levels, 1:4, time_steps;
+            sparse = true, meta,
+        )
+    else
+        tooth_cons = add_constraints_container!(
+            container, SawtoothLPConstraint, C, names, alpha_levels, 1:2, time_steps; meta,
+        )
+    end
+
+    for (i, name) in enumerate(names), t in time_steps
+        b = bounds[i]
+        IS.@assert_op b.max > b.min
+        delta = b.max - b.min
+        x = x_var[name, t]
+
+        # Auxiliary variables g_0,...,g_L ∈ [0, 1]
+        for j in g_levels
+            g_var[name, j, t] = JuMP.@variable(
+                jump_model,
+                base_name = "SawtoothAux_$(C)_{$(name), $(j), $(t)}",
+                lower_bound = 0.0,
+                upper_bound = 1.0,
+            )
+        end
+
+        # Binary variables α_1,...,α_L (MIP formulation only)
+        if mip
+            for j in alpha_levels
+                alpha_var[name, j, t] = JuMP.@variable(
+                    jump_model,
+                    base_name = "SawtoothBin_$(C)_{$(name), $(j), $(t)}",
+                    binary = true,
+                )
+            end
+        end
+
+        # Linking constraint: g_0 = (x - x_min) / Δ
+        link_cons[name, t] =
+            JuMP.@constraint(jump_model, g_var[name, 0, t] == (x - b.min) / delta)
+
+        # Tooth constraints for j = 1,...,L
+        for j in alpha_levels
+            g_prev = g_var[name, j - 1, t]
+            g_curr = g_var[name, j, t]
+            # g_j ≤ 2 g_{j-1}
+            tooth_cons[name, j, 1, t] = JuMP.@constraint(jump_model, g_curr <= 2.0 * g_prev)
+            # g_j ≤ 2(1 - g_{j-1})
+            tooth_cons[name, j, 2, t] =
+                JuMP.@constraint(jump_model, g_curr <= 2.0 * (1.0 - g_prev))
+            if mip
+                alpha_j = alpha_var[name, j, t]
+                # g_j ≥ 2(g_{j-1} - α_j)
+                tooth_cons[name, j, 3, t] =
+                    JuMP.@constraint(jump_model, g_curr >= 2.0 * (g_prev - alpha_j))
+                # g_j ≥ 2(α_j - g_{j-1})
+                tooth_cons[name, j, 4, t] =
+                    JuMP.@constraint(jump_model, g_curr >= 2.0 * (alpha_j - g_prev))
+            end
+        end
+    end
+
+    return g_var
+end
+
+"""
+    add_quadratic_approx!(config::SawtoothQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 
 Approximate x² using the sawtooth MIP formulation.
 
@@ -119,7 +241,7 @@ For depth L, the approximation interpolates x² at 2^L + 1 uniformly spaced brea
 with maximum overestimation error Δ² · 2^{-2L-2} where Δ = x_max - x_min.
 
 # Arguments
-- `config::SawtoothQuadConfig`: configuration with `depth` (recursion depth L; uses L binary variables) and `epigraph_depth` (LP tightening depth; 0 to disable)
+- `config::SawtoothQuadConfig`: configuration with `depth` (recursion depth L; uses L binary variables) and `tightener` (`EpigraphTightener` for an epigraph lower bound, or `NoTightener()`)
 - `container::OptimizationContainer`: the optimization container
 - `::Type{C}`: component type
 - `names::Vector{String}`: component names
@@ -128,7 +250,7 @@ with maximum overestimation error Δ² · 2^{-2L-2} where Δ = x_max - x_min.
 - `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: variable type identifier for the approximation (allows multiple approximations per component type)
 """
-function _add_quadratic_approx!(
+function add_quadratic_approx!(
     config::SawtoothQuadConfig,
     container::OptimizationContainer,
     ::Type{C},
@@ -140,47 +262,13 @@ function _add_quadratic_approx!(
 ) where {C <: IS.InfrastructureSystemsComponent}
     IS.@assert_op config.depth >= 1
     jump_model = get_jump_model(container)
-
-    # Create containers with known dimensions
-    g_levels = 0:(config.depth)
     alpha_levels = 1:(config.depth)
-    g_var = add_variable_container!(
-        container,
-        SawtoothAuxVariable,
-        C,
-        names,
-        g_levels,
-        time_steps;
-        meta,
+
+    # Shared sawtooth ladder: g_0,…,g_L + α binaries + 4-row MIP tooth constraints + linking.
+    g_var = _sawtooth_ladder!(
+        container, C, names, time_steps, x_var, bounds, config.depth, meta; mip = true,
     )
-    alpha_var = add_variable_container!(
-        container,
-        SawtoothBinaryVariable,
-        C,
-        names,
-        alpha_levels,
-        time_steps;
-        meta,
-    )
-    mip_cons = add_constraints_container!(
-        container,
-        SawtoothMIPConstraint,
-        C,
-        names,
-        alpha_levels,
-        1:4,
-        time_steps;
-        sparse = true,
-        meta,
-    )
-    link_cons = add_constraints_container!(
-        container,
-        SawtoothLinkingConstraint,
-        C,
-        names,
-        time_steps;
-        meta,
-    )
+
     result_expr = add_expression_container!(
         container,
         QuadraticExpression,
@@ -190,9 +278,9 @@ function _add_quadratic_approx!(
         meta,
     )
 
-    if config.epigraph_depth > 0
-        lp_expr = _add_quadratic_approx!(
-            EpigraphQuadConfig(; depth = config.epigraph_depth),
+    if config.tightener isa EpigraphTightener
+        lp_expr = add_quadratic_approx!(
+            EpigraphQuadConfig(; depth = config.tightener.depth),
             container, C, names, time_steps,
             x_var, bounds, meta * "_lb",
         )
@@ -222,51 +310,6 @@ function _add_quadratic_approx!(
         saw_coeffs = [delta * delta * (2.0^(-2 * j)) for j in alpha_levels]
         z_min = (b.min <= 0.0 <= b.max) ? 0.0 : min(b.min * b.min, b.max * b.max)
         z_max = max(b.min * b.min, b.max * b.max)
-        x = x_var[name, t]
-
-        # Auxiliary variables g_0,...,g_L ∈ [0, 1]
-        for j in g_levels
-            g_var[name, j, t] = JuMP.@variable(
-                jump_model,
-                base_name = "SawtoothAux_$(C)_{$(name), $(j), $(t)}",
-                lower_bound = 0.0,
-                upper_bound = 1.0,
-            )
-        end
-
-        # Binary variables α_1,...,α_L
-        for j in alpha_levels
-            alpha_var[name, j, t] = JuMP.@variable(
-                jump_model,
-                base_name = "SawtoothBin_$(C)_{$(name), $(j), $(t)}",
-                binary = true,
-            )
-        end
-
-        # Linking constraint: g_0 = (x - x_min) / Δ
-        link_cons[name, t] = JuMP.@constraint(
-            jump_model,
-            g_var[name, 0, t] == (x - b.min) / delta,
-        )
-
-        # S^L constraints for j = 1,...,L
-        for j in alpha_levels
-            g_prev = g_var[name, j - 1, t]
-            g_curr = g_var[name, j, t]
-            alpha_j = alpha_var[name, j, t]
-
-            # g_j ≤ 2 g_{j-1}
-            mip_cons[name, j, 1, t] = JuMP.@constraint(jump_model, g_curr <= 2.0 * g_prev)
-            # g_j ≤ 2(1 - g_{j-1})
-            mip_cons[name, j, 2, t] =
-                JuMP.@constraint(jump_model, g_curr <= 2.0 * (1.0 - g_prev))
-            # g_j ≥ 2(g_{j-1} - α_j)
-            mip_cons[name, j, 3, t] =
-                JuMP.@constraint(jump_model, g_curr >= 2.0 * (g_prev - alpha_j))
-            # g_j ≥ 2(α_j - g_{j-1})
-            mip_cons[name, j, 4, t] =
-                JuMP.@constraint(jump_model, g_curr >= 2.0 * (alpha_j - g_prev))
-        end
 
         # Build x² ≈ x_min² + (2 x_min Δ + Δ²) g_0 - Σ_{j=1}^L Δ² 2^{-2j} g_j
         x_sq_approx = JuMP.AffExpr(b.min * b.min)
@@ -283,7 +326,7 @@ function _add_quadratic_approx!(
             )
         end
 
-        if config.epigraph_depth > 0
+        if config.tightener isa EpigraphTightener
             z =
                 z_var[name, t] = JuMP.@variable(
                     jump_model,

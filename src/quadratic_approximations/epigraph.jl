@@ -35,6 +35,9 @@ struct EpigraphQuadConfig <: QuadraticApproxConfig
     EpigraphQuadConfig(; depth::Int) = new(depth)
 end
 
+"The epigraph relaxation under-estimates x² (it is a tangent-line lower bound)."
+sidedness(::Type{EpigraphQuadConfig}) = OneSidedUnder()
+
 """
     tolerance_depth(::Type{EpigraphQuadConfig}; tolerance, max_delta)::Int
 
@@ -55,7 +58,7 @@ function tolerance_depth(
 end
 
 """
-    _add_quadratic_approx!(::EpigraphQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
+    add_quadratic_approx!(::EpigraphQuadConfig, container, C, names, time_steps, x_var, bounds, meta)
 
 Create a variable z that lower-bounds x² using the sawtooth-epigraph
 Q^{L1} relaxation (Beach, Burlacu, Hager, Hildebrand 2024, Definition 6).
@@ -82,7 +85,7 @@ The maximum underestimation gap between the tangent envelope and x² is
 - `bounds::Vector{MinMax}`: per-name lower and upper bounds of x domain
 - `meta::String`: variable type identifier for the approximated variable
 """
-function _add_quadratic_approx!(
+function add_quadratic_approx!(
     config::EpigraphQuadConfig,
     container::OptimizationContainer,
     ::Type{C},
@@ -94,38 +97,15 @@ function _add_quadratic_approx!(
 ) where {C <: IS.InfrastructureSystemsComponent}
     IS.@assert_op config.depth >= 1
     jump_model = get_jump_model(container)
-    g_levels = 0:(config.depth)
+
+    # Shared sawtooth ladder (LP relaxation: g vars + linking + the two `≤` rows).
+    g_var = _sawtooth_ladder!(
+        container, C, names, time_steps, x_var, bounds, config.depth, meta; mip = false,
+    )
 
     z_var = add_variable_container!(
         container,
         EpigraphVariable,
-        C,
-        names,
-        time_steps;
-        meta,
-    )
-    g_var = add_variable_container!(
-        container,
-        SawtoothAuxVariable,
-        C,
-        names,
-        g_levels,
-        time_steps;
-        meta,
-    )
-    lp_cons = add_constraints_container!(
-        container,
-        SawtoothLPConstraint,
-        C,
-        names,
-        1:(config.depth),
-        1:2,
-        time_steps;
-        meta,
-    )
-    link_cons = add_constraints_container!(
-        container,
-        SawtoothLinkingConstraint,
         C,
         names,
         time_steps;
@@ -163,36 +143,7 @@ function _add_quadratic_approx!(
         IS.@assert_op b.max > b.min
         delta = b.max - b.min
         z_ub = max(b.min^2, b.max^2)
-        x = x_var[name, t]
-
-        # Auxiliary variables g_0,...,g_L ∈ [0, 1]
-        for j in g_levels
-            g_var[name, j, t] = JuMP.@variable(
-                jump_model,
-                base_name = "SawtoothAux_$(C)_{$(name), $(j), $(t)}",
-                lower_bound = 0.0,
-                upper_bound = 1.0,
-            )
-        end
         g0 = g_var[name, 0, t]
-
-        # Linking constraint: g_0 = (x - x_min) / Δ
-        link_cons[name, t] = JuMP.@constraint(
-            jump_model,
-            g0 == (x - b.min) / delta,
-        )
-
-        # T^L constraints for j = 1,...,L
-        for j in 1:(config.depth)
-            g_prev = g_var[name, j - 1, t]
-            g_curr = g_var[name, j, t]
-
-            # g_j ≤ 2 g_{j-1}
-            lp_cons[name, j, 1, t] = JuMP.@constraint(jump_model, g_curr <= 2.0 * g_prev)
-            # g_j ≤ 2(1 - g_{j-1})
-            lp_cons[name, j, 2, t] =
-                JuMP.@constraint(jump_model, g_curr <= 2.0 * (1.0 - g_prev))
-        end
 
         # Create the epigraph variable (bounded from below by tangent cuts)
         z =
