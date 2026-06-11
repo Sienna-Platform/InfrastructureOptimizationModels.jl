@@ -15,8 +15,8 @@ import MathOptInterface
 import LinearAlgebra
 import JSON3
 import InfrastructureSystems
-import PowerNetworkMatrices
-import PowerNetworkMatrices: PTDF, VirtualPTDF, LODF, VirtualLODF, VirtualMODF
+import InfrastructureSystems.InfrastructureMatrices:
+    AbstractInfrastructureNetworkMatrix, AbstractInfrastructureNetworkReductionData
 import InfrastructureSystems: @assert_op, TableFormat, list_recorder_events, get_name
 import InfrastructureSystems:
     get_value_curve, get_power_units, get_function_data, get_proportional_term,
@@ -144,7 +144,6 @@ const ISOPT = InfrastructureSystems.Optimization
 const MOI = MathOptInterface
 const MOIU = MathOptInterface.Utilities
 const MOPFM = MOI.FileFormats.Model
-const PNM = PowerNetworkMatrices
 const TS = TimeSeries
 
 ################################################################################
@@ -176,11 +175,10 @@ export set_subsystem!, add_dual!
 export requires_all_branch_models, supports_branch_filtering, ignores_branch_filtering
 export supports_outages
 export validate_network_model
-export BranchReductionOptimizationTracker
-export get_variable_dict, get_constraint_dict, get_constraint_map_by_type
-export get_number_of_steps, set_number_of_steps!
+export AbstractBranchReductionTracker
+export set_reduced_branch_tracker!
 # Note: Concrete network model types (PTDFPowerModel, CopperPlatePowerModel, etc.)
-# are defined in PowerOperationsModels, not IOM.
+# and the branch-reduction tracker machinery are defined in PowerOperationsModels, not IOM.
 
 ######## Model Container Types ########
 export DeviceModel
@@ -331,17 +329,10 @@ export add_param_container!,
     add_param_container_split_axes!,
     add_param_container_shared_axes!
 export remove_undef!
-export get_branch_argument_variable_axis
 
 # Bulk-added: symbols used by POM but previously not exported
-# Network reduction helpers
-export get_branch_argument_constraint_axis, get_reduced_branch_tracker
-export search_for_reduced_branch_variable!
-export search_for_reduced_branch_parameter!
-export search_for_reduced_branch_argument!
-export get_branch_argument_parameter_axes
-export get_parameter_dict
-export get_branch_with_time_series
+# Network reduction tracker access (the tracker machinery itself lives in POM)
+export get_reduced_branch_tracker
 # Container/variable helpers
 export add_variable_container!, add_constraint_dual!
 export add_to_objective_invariant_expression!, lazy_container_addition!
@@ -527,11 +518,8 @@ export INITIALIZATION_PROBLEM_HORIZON_COUNT
 
 # Re-exports from imports
 export optimizer_with_attributes
-export PTDF
-export VirtualPTDF
-export LODF
-export VirtualLODF
-export VirtualMODF
+export AbstractInfrastructureNetworkMatrix
+export AbstractInfrastructureNetworkReductionData
 export get_name
 export get_model_base_power
 export get_optimizer_stats
@@ -572,7 +560,6 @@ include("core/time_series_parameter_types.jl")
 
 # Core components
 include("core/operation_model_abstract_types.jl")
-include("core/network_reductions.jl")
 include("core/service_model.jl")
 include("core/device_model.jl")
 include("core/external_evaluation.jl")

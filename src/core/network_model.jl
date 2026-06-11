@@ -2,6 +2,14 @@ const DeviceModelForBranches =
     DeviceModel{<:IS.InfrastructureSystemsComponent, <:AbstractDeviceFormulation}
 const BranchModelContainer = Dict{Symbol, DeviceModelForBranches}
 
+"""
+Abstract anchor for the branch-reduction bookkeeping carried by a `NetworkModel`.
+The concrete tracker (and all reduction machinery) lives in the matrix-aware
+downstream package (POM), which constructs it during network model instantiation
+via [`set_reduced_branch_tracker!`](@ref).
+"""
+abstract type AbstractBranchReductionTracker end
+
 function _check_pm_formulation(::Type{T}) where {T <: AbstractPowerModel}
     if !isconcretetype(T)
         throw(
@@ -21,9 +29,9 @@ Establishes the NetworkModel for a given AC network formulation type.
 # Accepted keyword arguments
 - `use_slacks::Bool` = false
     Adds slack buses to the network modeling.
-- `PTDF_matrix::Union{PNM.PowerNetworkMatrix, Nothing}` = nothing
-    PTDF/VirtualPTDF matrix produced by PowerNetworkMatrices (optional).
-- `MODF_matrix::Union{PNM.VirtualMODF, Nothing}` = nothing
+- `PTDF_matrix::Union{AbstractInfrastructureNetworkMatrix, Nothing}` = nothing
+    PTDF/VirtualPTDF matrix (e.g. produced by PowerNetworkMatrices; optional).
+- `MODF_matrix::Union{AbstractInfrastructureNetworkMatrix, Nothing}` = nothing
     VirtualMODF matrix for security-constrained models (N-k contingencies).
     If `nothing` and the template includes a security-constrained branch
     formulation, the matrix is constructed from the system during
@@ -49,7 +57,7 @@ Establishes the NetworkModel for a given AC network formulation type.
   `reduce_radial_branches` or `reduce_degree_two_branches`.
 
 # Examples (concrete types like PTDFPowerModel, CopperPlatePowerModel are defined in PowerSimulations)
-# ptdf = PNM.VirtualPTDF(system)
+# ptdf = PowerNetworkMatrices.VirtualPTDF(system)
 # ec = EvaluationContainer()
 # add_evaluator!(ec, PFS.PowerFlowEvaluationModel, PFS.PowerFlowEvaluationModel())
 # nw = NetworkModel(PTDFPowerModel; PTDF_matrix = ptdf, reduce_radial_branches = true,
@@ -59,19 +67,19 @@ Establishes the NetworkModel for a given AC network formulation type.
 """
 mutable struct NetworkModel{T <: AbstractPowerModel}
     use_slacks::Bool
-    PTDF_matrix::Union{Nothing, PNM.PowerNetworkMatrix}
-    MODF_matrix::Union{Nothing, PNM.VirtualMODF}
+    PTDF_matrix::Union{Nothing, AbstractInfrastructureNetworkMatrix}
+    MODF_matrix::Union{Nothing, AbstractInfrastructureNetworkMatrix}
     subnetworks::Dict{Int, Set{Int}}
     bus_area_map::Dict{IS.InfrastructureSystemsComponent, Int}
     duals::Vector{DataType}
-    network_reduction::PNM.NetworkReductionData
+    network_reduction::Union{Nothing, AbstractInfrastructureNetworkReductionData}
     reduce_radial_branches::Bool
     reduce_degree_two_branches::Bool
     evaluations::EvaluationContainer
     subsystem::Union{Nothing, String}
     hvdc_network_model::Union{Nothing, AbstractHVDCNetworkModel}
     modeled_branch_types::Vector{DataType}
-    reduced_branch_tracker::BranchReductionOptimizationTracker
+    reduced_branch_tracker::Union{Nothing, AbstractBranchReductionTracker}
 
     function NetworkModel(
         ::Type{T};
@@ -93,14 +101,16 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
             subnetworks,
             Dict{IS.InfrastructureSystemsComponent, Int}(),
             duals,
-            PNM.NetworkReductionData(),
+            # Populated by the network-matrix-aware instantiation code (POM); IOM
+            # holds it behind the IS abstraction so it carries no PNM dependency.
+            nothing,
             reduce_radial_branches,
             reduce_degree_two_branches,
             evaluations,
             nothing,
             hvdc_network_model,
             Vector{DataType}(),
-            BranchReductionOptimizationTracker(),
+            nothing,
         )
     end
 end
@@ -125,50 +135,15 @@ get_hvdc_network_model(m::NetworkModel) = m.hvdc_network_model
 set_subsystem!(m::NetworkModel, id::String) = m.subsystem = id
 set_hvdc_network_model!(m::NetworkModel, val::Union{Nothing, AbstractHVDCNetworkModel}) =
     m.hvdc_network_model = val
+function set_reduced_branch_tracker!(m::NetworkModel, val::AbstractBranchReductionTracker)
+    m.reduced_branch_tracker = val
+    return
+end
 
 function add_dual!(model::NetworkModel, dual)
     dual in model.duals && error("dual = $dual is already stored")
     push!(model.duals, dual)
     @debug "Added dual" dual _group = LOG_GROUP_NETWORK_CONSTRUCTION
-    return
-end
-
-function _build_network_reductions(
-    model::NetworkModel,
-    irreducible_buses::Vector{Int64},
-)
-    reductions = PNM.NetworkReduction[]
-    if model.reduce_radial_branches
-        push!(reductions, PNM.RadialReduction(; irreducible_buses = irreducible_buses))
-    end
-    if model.reduce_degree_two_branches
-        push!(
-            reductions,
-            PNM.DegreeTwoReduction(; irreducible_buses = irreducible_buses),
-        )
-    end
-    return reductions
-end
-
-# Verify a user-provided MODF Matrix was built with the same network reduction
-# as the active reduction (derived from the PTDF Matrix). Equality of the bus
-# reduction map is the decisive check: it fixes the reduced bus/arc numbering
-# the post-contingency builder uses to index `modf_matrix[arc, outage_spec]`.
-function _validate_provided_modf_reduction!(
-    modf::PNM.VirtualMODF,
-    network_reduction::PNM.NetworkReductionData,
-)
-    if PNM.get_bus_reduction_map(modf.network_reduction_data) !=
-       PNM.get_bus_reduction_map(network_reduction)
-        throw(
-            IS.ConflictingInputsError(
-                "The provided MODF Matrix was built with a different network \
-                reduction than the active reduction derived from the PTDF \
-                Matrix. Rebuild the MODF with a consistent network reduction, \
-                or omit it so it is recalculated automatically.",
-            ),
-        )
-    end
     return
 end
 
@@ -188,31 +163,6 @@ function _template_has_outage_aware_branch(branch_models::BranchModelContainer)
         end
     end
     return false
-end
-
-"""
-Drop outages from each outage-aware-branch `DeviceModel` whose UUID isn't
-registered on `modf_matrix`; without this they'd `KeyError` downstream in
-post-contingency expression construction. PNM's `_register_outages!` silently
-skips outages it can't convert to a `NetworkModification`, so the IOM-side
-view of `m.outages` can be a strict superset of what's actually usable.
-"""
-function _consolidate_device_model_outages_with_modf!(
-    branch_models::BranchModelContainer,
-    modf_matrix::PNM.VirtualMODF,
-)
-    registered = PNM.get_registered_contingencies(modf_matrix)
-    for m in values(branch_models)
-        supports_outages(get_formulation(m)) || continue
-        for uuid in setdiff(keys(m.outages), keys(registered))
-            @warn "Outage $(uuid) (DeviceModel{$(get_component_type(m)), \
-                   $(get_formulation(m))}) is not registered on the MODF \
-                   matrix and will not contribute any post-contingency \
-                   constraints." _group = LOG_GROUP_MODELS_VALIDATION
-            delete!(m.outages, uuid)
-        end
-    end
-    return
 end
 
 # Default implementations for network model compatibility checks

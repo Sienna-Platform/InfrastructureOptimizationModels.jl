@@ -21,6 +21,9 @@ src/
     optimization_container_keys.jl
     optimization_container_types.jl
     optimization_container_metadata.jl
+    optimization_container_utils.jl    # Container key/field-routing helpers
+    dual_processing.jl        # Dual variable extraction (LP relaxation of MILPs)
+    external_evaluation.jl    # External evaluator hooks
     dataset.jl / dataset_container.jl  # Output dataset storage
     device_model.jl           # DeviceModel parametric wrapper
     network_model.jl          # NetworkModel parametric wrapper
@@ -53,16 +56,15 @@ src/
     get_time_series.jl        # Time series retrieval
     interfaces.jl             # Abstract interface definitions
   initial_conditions/     # Initial condition logic
-    add_initial_condition.jl
     calculate_initial_condition.jl
-    initialization.jl
   objective_function/     # Objective function formulations (see note below)
     common.jl                 # Shared objective function utilities
     cost_term_helpers.jl      # Generic objective term → JuMP expression builders
-    import_export.jl          # Import/export objective handling
     linear_curve.jl           # LinearCurve objective formulation
     quadratic_curve.jl        # QuadraticCurve objective formulation
     piecewise_linear.jl       # PiecewiseLinearCurve → lambda PWL formulation
+    objective_function_pwl_lambda.jl   # Lambda PWL constraint/expression builders
+    objective_function_pwl_delta.jl    # Delta PWL constraint/expression builders
     proportional.jl           # Proportional objective terms
     value_curve_cost.jl       # ValueCurve → delta PWL formulation
     offer_curve_types.jl      # Parameter/variable/constraint types for offer curves
