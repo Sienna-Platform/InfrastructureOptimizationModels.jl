@@ -35,6 +35,21 @@ config that participates in composition overrides this.
 """
 sidedness(::Type{<:QuadraticApproxConfig}) = TwoSided()
 
+"""
+    _assert_one_sided_over(sidedness(Q), Q)
+
+Throw an `ArgumentError` unless the inner quad `Q`'s sidedness is one-sided-over. Dispatches on
+the trait *instance* returned by `sidedness(Q)` so callers never branch on the trait type. Used by
+the separable methods (HybS, Bin2) that require `z ≥ x²` at every feasible point.
+"""
+_assert_one_sided_over(::OneSidedOver, ::Type) = nothing
+_assert_one_sided_over(s::ApproxSidedness, Q::Type) = throw(
+    ArgumentError(
+        "requires a one-sided-over inner Q; got $(Q) with sidedness $(s). " *
+        "Only SawtoothQuadConfig and SOS2QuadConfig qualify.",
+    ),
+)
+
 # --- SOS2 backend tag types ---
 
 "Supertype for the adjacency-enforcement backend of the SOS2 quadratic approximation."
@@ -48,9 +63,12 @@ struct ManualBackend <: SOS2Backend end
 #
 # A `Tightener` is an optional relaxation strengthener attached to an approximation
 # config via its `tightener` field, replacing the previously inconsistent knobs
-# (`pwmcc_segments::Int`, `epigraph_depth::Int`, `add_mccormick::Bool`). Tighteners are
-# applied at config-specific points (post-hoc cuts for McCormick; structurally inline for
-# the epigraph), so there is no single apply entry point — each config reads its field.
+# (`pwmcc_segments::Int`, `epigraph_depth::Int`, `add_mccormick::Bool`). Post-hoc valid-inequality
+# tighteners (the McCormick family) are applied through the `apply_tightener!((tightener, config))`
+# dispatch below — `NoTightener` is a no-op, so call sites stay branch-free. Structural tighteners
+# (the epigraph, which reshapes the feasible set rather than cutting it) are applied through
+# config-specific dispatched builders instead (`_sawtooth_result!`, `_apply_lower_bound_tightener!`),
+# since they return/modify the result expression rather than only adding cuts.
 
 "Optional relaxation strengthener attached to an approximation config."
 abstract type Tightener end
@@ -122,6 +140,47 @@ constructor. `ApproxConfig` is the union of the quadratic and bilinear config su
 """
 supports_tightener(::Type{<:QuadraticApproxConfig}, ::Tightener) = false
 supports_tightener(::Type{<:QuadraticApproxConfig}, ::NoTightener) = true
+
+"""
+    apply_tightener!(tightener, config, container, C, names, time_steps, payload...)
+
+Apply a post-hoc valid-inequality tightener (the McCormick family) to a config's intermediate
+quantities. The single dispatch entry point for cut-based tighteners: each `(tightener, config)`
+pair has a method that calls the appropriate cut builder (`_add_reformulated_mccormick!`,
+`_add_mccormick_envelope!`, `_add_pwmcc_concave_cuts!`). `NoTightener` is a no-op, so call sites
+invoke this unconditionally instead of branching on the tightener type.
+
+Structural tighteners (the epigraph) are *not* routed here — they reshape the result expression and
+are handled by config-specific builders (`_sawtooth_result!`, `_apply_lower_bound_tightener!`).
+"""
+apply_tightener!(::NoTightener, args...) = nothing
+
+"""
+    _omit_lower_mccormick(tightener)::Bool
+
+Whether a tightener wants the McCormick *lower* envelopes omitted from the NMDT binary-continuous
+products (because it supplies a tighter epigraph lower bound instead). Dispatched on the tightener
+type so the NMDT builders never branch on it with `isa`.
+"""
+_omit_lower_mccormick(::Tightener) = false
+_omit_lower_mccormick(::EpigraphTightener) = true
+
+"""
+    _assert_partitions_divide_depth(tightener, depth)
+
+Validate that a `McCormickTightener`'s PWMCC `partitions` evenly divide `depth` (so PWMCC interval
+boundaries coincide with PWL breakpoints). A no-op for tighteners without partitions; dispatched so
+the SOS2 constructor does not branch on the tightener type.
+"""
+_assert_partitions_divide_depth(::Tightener, ::Int) = nothing
+_assert_partitions_divide_depth(t::McCormickTightener, depth::Int) =
+    depth % t.partitions == 0 || throw(
+        ArgumentError(
+            "SOS2QuadConfig requires McCormickTightener partitions to evenly divide " *
+            "depth so PWMCC boundaries coincide with PWL breakpoints " *
+            "(got partitions=$(t.partitions), depth=$(depth)).",
+        ),
+    )
 
 # --- NMDT discretization variants ---
 
@@ -238,16 +297,16 @@ function _normed_variable!(
         meta,
     )
 
+    jump_model = get_jump_model(container)
     for (i, name) in enumerate(names), t in time_steps
         b = bounds[i]
         IS.@assert_op b.max > b.min
         lx = b.max - b.min
-        result = result_expr[name, t] = JuMP.AffExpr(0.0)
-        # add_proportional + add_constant accept any AbstractJuMPScalar for x_var,
-        # so this works for both VariableRef and AffExpr inputs (the latter is
-        # used by Bin2 to normalize the (x+y) expression).
-        add_proportional_to_jump_expression!(result, x_var[name, t], 1.0 / lx)
-        add_constant_to_jump_expression!(result, -b.min / lx)
+        # `@expression` accepts any AbstractJuMPScalar for x_var, so this works for both
+        # VariableRef and AffExpr inputs (the latter is used by Bin2 to normalize the (x+y)
+        # expression): xh = (x − x_min) / lx.
+        result_expr[name, t] =
+            JuMP.@expression(jump_model, (x_var[name, t] - b.min) / lx)
     end
     return result_expr
 end

@@ -58,6 +58,40 @@ _pwmcc_selector_var!(::SolverBackend, jump_model, ::Type{C}, name, k, t) where {
     )
 
 """
+    _pwmcc_sos1_container!(backend, container, C, names, time_steps, meta)
+
+Create the SOS1 constraint container only for the `SolverBackend` (the `ManualBackend` enforces
+adjacency with the binary selectors and needs none). Dispatched on the backend so the caller does
+not branch on its type; returns `nothing` for the manual backend.
+"""
+_pwmcc_sos1_container!(::ManualBackend, args...) = nothing
+_pwmcc_sos1_container!(
+    ::SolverBackend,
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent} = add_constraints_container!(
+    container,
+    PiecewiseMcCormickSOS1,
+    C,
+    names,
+    time_steps;
+    meta,
+)
+
+"""
+    _pwmcc_add_sos1!(backend, jump_model, sos1_cons, name, t, delta, K)
+
+Add the solver-native `MOI.SOS1` interval-selection constraint for the `SolverBackend`; a no-op for
+the `ManualBackend`. Dispatched on the backend so the caller stays branch-free.
+"""
+_pwmcc_add_sos1!(::ManualBackend, args...) = nothing
+_pwmcc_add_sos1!(::SolverBackend, jump_model, sos1_cons, name, t, delta, K::Int) =
+    (sos1_cons[name, t] = JuMP.@constraint(jump_model, delta in MOI.SOS1(collect(1:K))))
+
+"""
     _add_pwmcc_concave_cuts!(container, C, names, time_steps, v_var, q_expr, bounds, K, meta)
 
 Add piecewise McCormick cuts on a concave term (-v^2) to tighten its SoS2 LP relaxation.
@@ -120,19 +154,7 @@ function _add_pwmcc_concave_cuts!(
         time_steps;
         meta,
     )
-    sos1_cons =
-        if backend isa SolverBackend
-            add_constraints_container!(
-            container,
-            PiecewiseMcCormickSOS1,
-            C,
-            names,
-            time_steps;
-            meta,
-        )
-        else
-            nothing
-        end
+    sos1_cons = _pwmcc_sos1_container!(backend, container, C, names, time_steps, meta)
     linking_cons = add_constraints_container!(
         container,
         PiecewiseMcCormickLinking,
@@ -216,21 +238,10 @@ function _add_pwmcc_concave_cuts!(
                 )
         end
 
-        sel_expr = JuMP.AffExpr(0.0)
-        for k in 1:K
-            JuMP.add_to_expression!(sel_expr, delta[k])
-        end
-        selector_cons[name, t] = JuMP.@constraint(jump_model, sel_expr == 1.0)
-        if backend isa SolverBackend
-            sos1_cons[name, t] =
-                JuMP.@constraint(jump_model, delta in MOI.SOS1(collect(1:K)))
-        end
+        selector_cons[name, t] = JuMP.@constraint(jump_model, sum(delta) == 1.0)
+        _pwmcc_add_sos1!(backend, jump_model, sos1_cons, name, t, delta, K)
 
-        link_expr = JuMP.AffExpr(0.0)
-        for k in 1:K
-            JuMP.add_to_expression!(link_expr, vd[k])
-        end
-        linking_cons[name, t] = JuMP.@constraint(jump_model, link_expr == v)
+        linking_cons[name, t] = JuMP.@constraint(jump_model, sum(vd) == v)
 
         # We copy v to whichever vd[k] is active, and the rest are all 0.
         # So when constructing the chords and tangents for "all" vd[k], we are
@@ -248,27 +259,20 @@ function _add_pwmcc_concave_cuts!(
 
         # Chord upper bound: prevents q from exceeding the local piecewise chord
         # of v^2 in the LP relaxation (tightens from global chord to piecewise).
-        chord_rhs = JuMP.AffExpr(0.0)
-        for k in 1:K
-            JuMP.add_to_expression!(chord_rhs, sum_brk[k], vd[k])
-            JuMP.add_to_expression!(chord_rhs, -prod_brk[k], delta[k])
-        end
-        chord_ub_cons[name, t] = JuMP.@constraint(jump_model, q <= chord_rhs)
+        chord_ub_cons[name, t] = JuMP.@constraint(
+            jump_model,
+            q <= sum(sum_brk[k] * vd[k] - prod_brk[k] * delta[k] for k in 1:K)
+        )
 
         # Tangent lower bounds from convexity of v^2 at interval endpoints.
-        tang_l_rhs = JuMP.AffExpr(0.0)
-        for k in 1:K
-            JuMP.add_to_expression!(tang_l_rhs, two_brk_l[k], vd[k])
-            JuMP.add_to_expression!(tang_l_rhs, -sq_brk_l[k], delta[k])
-        end
-        tangent_lb_l_cons[name, t] = JuMP.@constraint(jump_model, q >= tang_l_rhs)
-
-        tang_r_rhs = JuMP.AffExpr(0.0)
-        for k in 1:K
-            JuMP.add_to_expression!(tang_r_rhs, two_brk_r[k], vd[k])
-            JuMP.add_to_expression!(tang_r_rhs, -sq_brk_r[k], delta[k])
-        end
-        tangent_lb_r_cons[name, t] = JuMP.@constraint(jump_model, q >= tang_r_rhs)
+        tangent_lb_l_cons[name, t] = JuMP.@constraint(
+            jump_model,
+            q >= sum(two_brk_l[k] * vd[k] - sq_brk_l[k] * delta[k] for k in 1:K)
+        )
+        tangent_lb_r_cons[name, t] = JuMP.@constraint(
+            jump_model,
+            q >= sum(two_brk_r[k] * vd[k] - sq_brk_r[k] * delta[k] for k in 1:K)
+        )
     end
 
     return

@@ -223,17 +223,10 @@ function build_gen_bilinear(
         I_bounds,
         "gen_I_sq",
     )
-    z_gen = if bilinear_config isa IOM.Bin2Config
-        IOM._assemble_bin2!(
-            bilinear_config, container, MockNetworkNode, net.gen_nodes, time_steps,
-            V_sq, I_sq, V_container, I_container, V_bounds, I_bounds, "gen",
-        )
-    else
-        IOM._assemble_hybs!(
-            bilinear_config, container, MockNetworkNode, net.gen_nodes, time_steps,
-            V_sq, I_sq, V_container, I_container, V_bounds, I_bounds, "gen",
-        )
-    end
+    z_gen = IOM._assemble_separable!(
+        bilinear_config, container, MockNetworkNode, net.gen_nodes, time_steps,
+        V_sq, I_sq, V_container, I_container, V_bounds, I_bounds, "gen",
+    )
     return z_gen, I_sq
 end
 

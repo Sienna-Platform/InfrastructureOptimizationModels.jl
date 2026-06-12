@@ -107,28 +107,26 @@ function _discretize!(
     )
 
     for name in names, t in time_steps
-        disc = disc_expr[name, t] = JuMP.AffExpr(0.0)
         for i in 1:depth
-            beta =
-                beta_var[name, i, t] = JuMP.@variable(
-                    jump_model,
-                    base_name = "NMDTBinary_$(C)_{$(name), $(i), $(t)}",
-                    binary = true
-                )
-            add_proportional_to_jump_expression!(disc, beta, 2.0^(-i))
-        end
-        delta =
-            delta_var[name, t] = JuMP.@variable(
+            beta_var[name, i, t] = JuMP.@variable(
                 jump_model,
-                base_name = "NMDTResidual_$(C)_{$(name), $(t)}",
-                lower_bound = 0.0,
-                upper_bound = 2.0^(-depth)
+                base_name = "NMDTBinary_$(C)_{$(name), $(i), $(t)}",
+                binary = true
             )
-        add_proportional_to_jump_expression!(disc, delta, 1.0)
-        disc_cons[name, t] = JuMP.@constraint(
+        end
+        delta_var[name, t] = JuMP.@variable(
             jump_model,
-            xh_expr[name, t] == disc
+            base_name = "NMDTResidual_$(C)_{$(name), $(t)}",
+            lower_bound = 0.0,
+            upper_bound = 2.0^(-depth)
         )
+        # xh ≈ Σ_i 2^{-i}·β_i + δ
+        disc =
+            disc_expr[name, t] = JuMP.@expression(
+                jump_model,
+                sum(2.0^(-i) * beta_var[name, i, t] for i in 1:depth) + delta_var[name, t]
+            )
+        disc_cons[name, t] = JuMP.@constraint(jump_model, xh_expr[name, t] == disc)
     end
 
     return NMDTDiscretization(xh_expr, beta_var, delta_var)
@@ -200,7 +198,6 @@ function _binary_continuous_product!(
     )
 
     for name in names, t in time_steps
-        result = result_expr[name, t] = JuMP.AffExpr(0.0)
         for i in 1:depth
             u_i =
                 u_var[name, i, t] = JuMP.@variable(
@@ -209,14 +206,17 @@ function _binary_continuous_product!(
                     lower_bound = cont_min,
                     upper_bound = cont_max
                 )
-            _add_mccormick_envelope!(
+            # β_i is binary and `cont_var ∈ [cont_min, cont_max]` with cont_min ≥ 0, so the
+            # binary×continuous specialization is exact and drops the redundant `u_i ≥ cont_min·β_i`.
+            _add_binary_continuous_mccormick!(
                 jump_model, u_cons, (name, i, t),
                 cont_var[name, t], bin_disc.beta_var[name, i, t], u_i,
-                cont_min, cont_max, 0.0, 1.0;
+                cont_min, cont_max;
                 lower_bounds = !tighten,
             )
-            add_proportional_to_jump_expression!(result, u_i, 2.0^(-i))
         end
+        result_expr[name, t] =
+            JuMP.@expression(jump_model, sum(2.0^(-i) * u_var[name, i, t] for i in 1:depth))
     end
 
     return result_expr
@@ -286,6 +286,29 @@ function _tighten_lower_bounds!(
         end
     end
 end
+
+"""
+    _apply_lower_bound_tightener!(tightener, container, C, names, time_steps, result_expr, x_disc, bounds, meta)
+
+Apply the NMDT epigraph lower-bound tightening, dispatched on the tightener type. The default is a
+no-op; the `EpigraphTightener` method adds the epigraph cut via `_tighten_lower_bounds!` at the
+tightener's depth. Lets the NMDT builders invoke this unconditionally instead of branching on the
+tightener type.
+"""
+_apply_lower_bound_tightener!(::Tightener, args...) = nothing
+_apply_lower_bound_tightener!(
+    t::EpigraphTightener,
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    result_expr,
+    x_disc,
+    bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent} = _tighten_lower_bounds!(
+    container, C, names, time_steps, result_expr, x_disc, bounds, t.depth, meta,
+)
 
 """
     _residual_product!(container, C, names, time_steps, x_disc, y_var, y_max, meta; tighten)
@@ -401,6 +424,7 @@ function _assemble_product!(
         meta,
     )
 
+    jump_model = get_jump_model(container)
     for (i, name) in enumerate(names), t in time_steps
         xb = x_bounds[i]
         yb = y_bounds[i]
@@ -409,17 +433,17 @@ function _assemble_product!(
         lx = xb.max - xb.min
         ly = yb.max - yb.min
 
-        result = result_expr[name, t] = JuMP.AffExpr(0.0)
-        zh = JuMP.AffExpr(0.0)
-        for term in terms
-            add_proportional_to_jump_expression!(zh, term[name, t], 1.0)
-        end
-        add_proportional_to_jump_expression!(zh, dz_var[name, t], 1.0)
-
-        add_proportional_to_jump_expression!(result, zh, lx * ly)
-        add_proportional_to_jump_expression!(result, xh_expr[name, t], lx * yb.min)
-        add_proportional_to_jump_expression!(result, yh_expr[name, t], ly * xb.min)
-        add_constant_to_jump_expression!(result, xb.min * yb.min)
+        # zh = Σ_terms + δ·y residual; result unnormalizes to original units:
+        # x·y = lx·ly·zh + lx·y_min·xh + ly·x_min·yh + x_min·y_min
+        zh = JuMP.@expression(
+            jump_model,
+            sum(term[name, t] for term in terms) + dz_var[name, t]
+        )
+        result_expr[name, t] = JuMP.@expression(
+            jump_model,
+            lx * ly * zh + lx * yb.min * xh_expr[name, t] +
+            ly * xb.min * yh_expr[name, t] + xb.min * yb.min
+        )
     end
 
     return result_expr
@@ -529,6 +553,7 @@ function _assemble_dnmdt!(
     result_type::Type = NMDTResultExpression,
     tighten::Bool = false,
 ) where {C <: IS.InfrastructureSystemsComponent}
+    jump_model = get_jump_model(container)
     result_expr = add_expression_container!(
         container,
         result_type,
@@ -557,9 +582,10 @@ function _assemble_dnmdt!(
     )
 
     for name in names, t in time_steps
-        result = result_expr[name, t] = JuMP.AffExpr(0.0)
-        add_proportional_to_jump_expression!(result, z1_expr[name, t], lambda)
-        add_proportional_to_jump_expression!(result, z2_expr[name, t], 1.0 - lambda)
+        result_expr[name, t] = JuMP.@expression(
+            jump_model,
+            lambda * z1_expr[name, t] + (1.0 - lambda) * z2_expr[name, t],
+        )
     end
 
     return result_expr

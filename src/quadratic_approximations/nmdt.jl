@@ -126,7 +126,7 @@ function _quadratic_from_discretization!(
     bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    tighten = config.tightener isa EpigraphTightener
+    tighten = _omit_lower_mccormick(config.tightener)
     bx_xh_expr = _binary_continuous_product!(
         container, C, names, time_steps,
         x_disc, x_disc.norm_expr, 0.0, 1.0,
@@ -146,12 +146,9 @@ function _quadratic_from_discretization!(
         result_type = QuadraticExpression,
     )
 
-    if tighten
-        _tighten_lower_bounds!(
-            container, C, names, time_steps,
-            result_expr, x_disc, bounds, config.tightener.depth, meta,
-        )
-    end
+    _apply_lower_bound_tightener!(
+        config.tightener, container, C, names, time_steps, result_expr, x_disc, bounds, meta,
+    )
 
     return result_expr
 end
@@ -203,7 +200,7 @@ function _quadratic_from_discretization!(
     bounds::Vector{MinMax},
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
-    tighten = config.tightener isa EpigraphTightener
+    tighten = _omit_lower_mccormick(config.tightener)
     bx_y_expr = _binary_continuous_product!(
         container, C, names, time_steps,
         x_disc, x_disc.norm_expr, 0.0, 1.0,
@@ -222,12 +219,9 @@ function _quadratic_from_discretization!(
         meta; result_type = QuadraticExpression,
     )
 
-    if tighten
-        _tighten_lower_bounds!(
-            container, C, names, time_steps,
-            result_expr, x_disc, bounds, config.tightener.depth, meta,
-        )
-    end
+    _apply_lower_bound_tightener!(
+        config.tightener, container, C, names, time_steps, result_expr, x_disc, bounds, meta,
+    )
 
     return result_expr
 end

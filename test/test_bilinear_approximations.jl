@@ -554,4 +554,88 @@ const BILINEAR_META = "BilinearTest"
             end
         end
     end
+
+    @testset "McCormick-only bilinear config" begin
+        @testset "Exact at box corners (max over the envelope)" begin
+            setup = _setup_bilinear_test(["dev1"], 1:1)
+            x = setup.x_var_container["dev1", 1]
+            y = setup.y_var_container["dev1", 1]
+            JuMP.set_lower_bound(x, 0.0)
+            JuMP.set_upper_bound(x, 4.0)
+            JuMP.set_lower_bound(y, 0.0)
+            JuMP.set_upper_bound(y, 4.0)
+
+            z_expr =
+                IOM.add_bilinear_approx!(
+                    IOM.McCormickBilinearConfig(),
+                    setup.container,
+                    MockThermalGen,
+                    ["dev1"],
+                    1:1,
+                    setup.x_var_container,
+                    setup.y_var_container,
+                    [(min = 0.0, max = 4.0)],
+                    [(min = 0.0, max = 4.0)],
+                    BILINEAR_META,
+                )[
+                    "dev1",
+                    1,
+                ]
+
+            # Result is published in a BilinearProductExpression container.
+            @test IOM.get_expression(
+                setup.container,
+                IOM.BilinearProductExpression,
+                MockThermalGen,
+                BILINEAR_META,
+            )[
+                "dev1",
+                1,
+            ] == z_expr
+
+            # The McCormick envelope's maximum is attained at the corner x=y=4 where z = x·y = 16.
+            JuMP.@objective(setup.jump_model, Max, z_expr)
+            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+            JuMP.set_silent(setup.jump_model)
+            JuMP.optimize!(setup.jump_model)
+            @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+            @test JuMP.objective_value(setup.jump_model) ≈ 16.0 atol = 1e-6
+        end
+    end
+
+    @testset "Binary×continuous McCormick exactness" begin
+        # `_add_binary_continuous_mccormick!` drops the lower inequality made redundant by the
+        # auxiliary variable's lower bound. With β ∈ {0,1} the linearization must remain exact:
+        # z = β·x at both the min and max of z, for every fixed (β, x).
+        for beta_fixed in (0.0, 1.0), x_fixed in (0.0, 1.5, 4.0)
+            setup = _setup_bilinear_test(["d"], 1:1)
+            x = setup.x_var_container["d", 1]
+            beta = setup.y_var_container["d", 1]
+            JuMP.fix(x, x_fixed; force = true)
+            JuMP.fix(beta, beta_fixed; force = true)
+            z = JuMP.@variable(setup.jump_model, lower_bound = 0.0, upper_bound = 4.0)
+            cons = IOM.add_constraints_container!(
+                setup.container,
+                IOM.McCormickConstraint,
+                MockThermalGen,
+                ["d"],
+                1:4,
+                1:1;
+                sparse = true,
+                meta = "bc",
+            )
+            IOM._add_binary_continuous_mccormick!(
+                setup.jump_model, cons, ("d", 1), x, beta, z, 0.0, 4.0,
+            )
+            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+            JuMP.set_silent(setup.jump_model)
+            expected = beta_fixed * x_fixed
+            for sense in (JuMP.MAX_SENSE, JuMP.MIN_SENSE)
+                JuMP.@objective(setup.jump_model, sense, z)
+                JuMP.optimize!(setup.jump_model)
+                @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+                @test JuMP.objective_value(setup.jump_model) ≈ expected atol = 1e-6
+            end
+        end
+    end
 end

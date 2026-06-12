@@ -81,6 +81,51 @@ function _add_mccormick_envelope!(
 end
 
 """
+    _add_binary_continuous_mccormick!(jump_model, cons, index, x, β, z, x_min, x_max; lower_bounds=true)
+
+McCormick linearization of `z = x·β` where `β ∈ {0,1}` is **binary** and `x ∈ [x_min, x_max]` is
+continuous with `x_min ≥ 0`. Exact at every binary `β`.
+
+Emits three of the four envelope inequalities (slots 2–4 of the `cons` container, matching the
+generic `_add_mccormick_envelope!` numbering):
+
+```
+2 (lower):  z ≥ x − x_max·(1 − β)
+3 (upper):  z ≤ x_max·β
+4 (upper):  z ≤ x − x_min·(1 − β)
+```
+
+The remaining lower inequality `z ≥ x_min·β` (slot 1) is **omitted**: since `x_min ≥ 0` and `β ≤ 1`,
+`x_min·β ≤ x_min`, so it is already implied by the auxiliary variable's own lower bound `z ≥ x_min`
+(the caller must create `z` with `lower_bound = x_min`). Slot 2 is gated by `lower_bounds` (the NMDT
+tighten path drops it in favor of a tighter epigraph lower bound).
+"""
+function _add_binary_continuous_mccormick!(
+    jump_model::JuMP.Model,
+    cons,
+    index,
+    x::JuMP.AbstractJuMPScalar,
+    β::JuMP.AbstractJuMPScalar,
+    z::JuMP.AbstractJuMPScalar,
+    x_min::Float64,
+    x_max::Float64;
+    lower_bounds::Bool = true,
+)
+    IS.@assert_op x_min >= 0.0
+    if lower_bounds
+        _mc_setindex!(
+            cons,
+            index,
+            2,
+            JuMP.@constraint(jump_model, z >= x - x_max * (1 - β))
+        )
+    end
+    _mc_setindex!(cons, index, 3, JuMP.@constraint(jump_model, z <= x_max * β))
+    _mc_setindex!(cons, index, 4, JuMP.@constraint(jump_model, z <= x - x_min * (1 - β)))
+    return
+end
+
+"""
     _add_mccormick_envelope!(container, C, names, time_steps, x_var, y_var, z_var, x_min, x_max, y_min, y_max, meta)
 
 Add McCormick envelope constraints for the bilinear product z ≈ x·y.
@@ -255,6 +300,70 @@ function _add_mccormick_envelope!(
         meta; lower_bounds,
     )
     return
+end
+
+# --- McCormick-only bilinear config ---
+
+"""
+Config for a McCormick-only bilinear approximation of `z = x·y`.
+
+Creates a fresh auxiliary product variable per `(name, t)`, bounded by the four product corners, and
+adds the standard McCormick envelope inequalities via `_add_mccormick_envelope!`. Exact when one
+factor is binary; otherwise it is the standard convex/concave envelope. Publishes the result in a
+`BilinearProductExpression` container so downstream code fetches it like any other bilinear config.
+Carries no inner quadratic and no tightener — the config *is* the envelope.
+"""
+struct McCormickBilinearConfig <: BilinearApproxConfig end
+
+"""
+    add_bilinear_approx!(::McCormickBilinearConfig, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
+
+Linearize `z = x·y` with a fresh `BilinearProductVariable` per `(name, t)` and the four McCormick
+envelope inequalities (in `McCormickConstraint`), returning the `BilinearProductExpression` holding z.
+"""
+function add_bilinear_approx!(
+    ::McCormickBilinearConfig,
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    x_var,
+    y_var,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    jump_model = get_jump_model(container)
+
+    z_var = add_variable_container!(
+        container, BilinearProductVariable, C, names, time_steps; meta,
+    )
+    for (i, name) in enumerate(names)
+        xb, yb = x_bounds[i], y_bounds[i]
+        corners = (xb.min * yb.min, xb.min * yb.max, xb.max * yb.min, xb.max * yb.max)
+        for t in time_steps
+            z_var[name, t] = JuMP.@variable(
+                jump_model,
+                base_name = "BilinearProductVariable_$(C)_{$(meta), $(name), $(t)}",
+                lower_bound = minimum(corners),
+                upper_bound = maximum(corners),
+            )
+        end
+    end
+
+    _add_mccormick_envelope!(
+        container, C, names, time_steps,
+        x_var, y_var, z_var,
+        x_bounds, y_bounds, meta,
+    )
+
+    result_expr = add_expression_container!(
+        container, BilinearProductExpression, C, names, time_steps; meta,
+    )
+    for name in names, t in time_steps
+        result_expr[name, t] = JuMP.@expression(jump_model, 1.0 * z_var[name, t])
+    end
+    return result_expr
 end
 
 function _add_mccormick_envelope!(

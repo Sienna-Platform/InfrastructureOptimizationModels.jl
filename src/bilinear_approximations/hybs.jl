@@ -56,12 +56,7 @@ struct HybSConfig{Q <: QuadraticApproxConfig} <: SeparableConfig
         cross_term_depth::Int,
         tightener::Tightener = NoTightener(),
     ) where {Q <: QuadraticApproxConfig}
-        sidedness(Q) isa OneSidedOver || throw(
-            ArgumentError(
-                "HybSConfig requires a one-sided-over inner Q; got $(Q) with sidedness " *
-                "$(sidedness(Q)). Only SawtoothQuadConfig and SOS2QuadConfig qualify.",
-            ),
-        )
+        _assert_one_sided_over(sidedness(Q), Q)
         supports_tightener(HybSConfig, tightener) || throw(
             ArgumentError("HybSConfig does not support tightener $(typeof(tightener))"),
         )
@@ -120,12 +115,7 @@ function tolerance_depth(
     max_delta_x::Float64,
     max_delta_y::Float64,
 ) where {Q <: QuadraticApproxConfig}
-    sidedness(Q) isa OneSidedOver || throw(
-        ArgumentError(
-            "HybSConfig requires a one-sided-over inner Q; got $(Q) with sidedness " *
-            "$(sidedness(Q)).",
-        ),
-    )
+    _assert_one_sided_over(sidedness(Q), Q)
     return tolerance_depth(Q;
         tolerance = tolerance / 2,
         max_delta = max(max_delta_x, max_delta_y),
@@ -149,12 +139,7 @@ function tolerance_epigraph_depth(
     max_delta_x::Float64,
     max_delta_y::Float64,
 ) where {Q <: QuadraticApproxConfig}
-    sidedness(Q) isa OneSidedOver || throw(
-        ArgumentError(
-            "HybSConfig requires a one-sided-over inner Q; got $(Q) with sidedness " *
-            "$(sidedness(Q)).",
-        ),
-    )
+    _assert_one_sided_over(sidedness(Q), Q)
     return tolerance_depth(EpigraphQuadConfig;
         tolerance = tolerance,
         max_delta = max_delta_x + max_delta_y,
@@ -192,7 +177,7 @@ function add_bilinear_approx!(
         config.quad_config, container, C, names, time_steps,
         y_var, y_bounds, meta * "_y",
     )
-    return _assemble_hybs!(
+    return _assemble_separable!(
         config, container, C, names, time_steps,
         xsq, ysq, x_var, y_var,
         x_bounds, y_bounds, meta,
@@ -200,9 +185,12 @@ function add_bilinear_approx!(
 end
 
 """
-    _assemble_hybs!(config::HybSConfig, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
+    _assemble_separable!(config::HybSConfig, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
 
 HybS bilinear approximation with pre-computed quadratic approximations for x² and y².
+
+Shares the `_assemble_separable!` staged-assembly interface with `Bin2Config`; callers dispatch on
+the config type instead of branching on it.
 
 Combines Bin2 and Bin3 separable identities:
 - Bin2 lower bound: z ≥ ½(z_p1 − z_x − z_y) where z_p1 lower-bounds (x+y)²
@@ -214,7 +202,7 @@ The cross-terms (x+y)² and (x−y)² always use epigraph Q^{L1} (pure LP).
 - `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
 - `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
-function _assemble_hybs!(
+function _assemble_separable!(
     config::HybSConfig,
     container::OptimizationContainer,
     ::Type{C},
@@ -268,16 +256,8 @@ function _assemble_hybs!(
     for name in names, t in time_steps
         x = x_var[name, t]
         y = y_var[name, t]
-
-        # p1 = x + y
-        p1 = p1_expr[name, t] = JuMP.AffExpr(0.0)
-        add_proportional_to_jump_expression!(p1, x, 1.0)
-        add_proportional_to_jump_expression!(p1, y, 1.0)
-
-        # p2 = x − y
-        p2 = p2_expr[name, t] = JuMP.AffExpr(0.0)
-        add_proportional_to_jump_expression!(p2, x, 1.0)
-        add_proportional_to_jump_expression!(p2, y, -1.0)
+        p1_expr[name, t] = JuMP.@expression(jump_model, x + y)   # p1 = x + y
+        p2_expr[name, t] = JuMP.@expression(jump_model, x - y)   # p2 = x − y
     end
 
     # --- Epigraph Q^{L1} lower bound for (x+y)² and (x−y)² (no binaries) ---
@@ -358,14 +338,34 @@ function _assemble_hybs!(
         result_expr[name, t] = JuMP.AffExpr(0.0, z => 1.0)
     end
 
-    # --- Standard McCormick envelope cuts on the product variable ---
-    if config.tightener isa McCormickTightener
-        _add_mccormick_envelope!(
-            container, C, names, time_steps,
-            x_var, y_var, z_var,
-            x_bounds, y_bounds, meta,
-        )
-    end
+    # --- Standard McCormick envelope cuts on the product variable (via tightener dispatch) ---
+    apply_tightener!(
+        config.tightener, config, container, C, names, time_steps,
+        x_var, y_var, z_var, x_bounds, y_bounds, meta,
+    )
 
     return result_expr
+end
+
+"Apply standard McCormick envelope cuts on the HybS product variable (valid inequality)."
+function apply_tightener!(
+    ::McCormickTightener,
+    ::HybSConfig,
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    x_var,
+    y_var,
+    z_var,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    _add_mccormick_envelope!(
+        container, C, names, time_steps,
+        x_var, y_var, z_var,
+        x_bounds, y_bounds, meta,
+    )
+    return
 end

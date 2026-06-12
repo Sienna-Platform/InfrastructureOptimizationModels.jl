@@ -639,8 +639,10 @@ include("quadratic_approximations/nmdt.jl")
 include("quadratic_approximations/pwmcc_cuts.jl")
 
 # Bilinear approximations (x·y via Bin2/HybS decomposition)
-include("bilinear_approximations/mccormick.jl")
+# bin2.jl declares the BilinearApproxConfig hierarchy + product containers, so it loads before
+# mccormick.jl (which defines McCormickBilinearConfig <: BilinearApproxConfig).
 include("bilinear_approximations/bin2.jl")
+include("bilinear_approximations/mccormick.jl")
 include("bilinear_approximations/no_approx.jl")
 include("bilinear_approximations/hybs.jl")
 include("bilinear_approximations/nmdt.jl")

@@ -262,86 +262,111 @@ function add_quadratic_approx!(
     meta::String,
 ) where {C <: IS.InfrastructureSystemsComponent}
     IS.@assert_op config.depth >= 1
-    jump_model = get_jump_model(container)
-    alpha_levels = 1:(config.depth)
 
     # Shared sawtooth ladder: g_0,…,g_L + α binaries + 4-row MIP tooth constraints + linking.
     g_var = _sawtooth_ladder!(
         container, C, names, time_steps, x_var, bounds, config.depth, meta; mip = true,
     )
 
-    result_expr = add_expression_container!(
-        container,
-        QuadraticExpression,
-        C,
-        names,
-        time_steps;
+    # The tightener decides how the result is assembled from the PWL ladder (plain PWL vs.
+    # epigraph-sandwiched), dispatched on its type — see `_sawtooth_result!`.
+    return _sawtooth_result!(
+        config.tightener, config, container, C, names, time_steps, x_var, g_var, bounds,
         meta,
     )
+end
 
-    if config.tightener isa EpigraphTightener
-        lp_expr = add_quadratic_approx!(
-            EpigraphQuadConfig(; depth = config.tightener.depth),
-            container, C, names, time_steps,
-            x_var, bounds, meta * "_lb",
-        )
-        z_var = add_variable_container!(
-            container,
-            SawtoothTightenedVariable,
-            C,
-            names,
-            time_steps;
-            meta,
-        )
-        tight_cons = add_constraints_container!(
-            container,
-            SawtoothTightenedConstraint,
-            C,
-            names,
-            1:2,
-            time_steps;
-            meta,
-        )
-    end
+"""
+    _sawtooth_pwl_expr(jump_model, g_var, b, name, t, depth)
 
+The sawtooth PWL approximation of `x²` at `(name, t)`:
+`x_min² + (2·x_min·Δ + Δ²)·g_0 − Σ_{j=1}^L Δ²·2^{-2j}·g_j`, where `Δ = x_max − x_min`.
+"""
+function _sawtooth_pwl_expr(jump_model, g_var, b::MinMax, name, t, depth::Int)
+    delta = b.max - b.min
+    return JuMP.@expression(
+        jump_model,
+        b.min * b.min + (2.0 * b.min * delta + delta * delta) * g_var[name, 0, t] -
+        sum(delta * delta * 2.0^(-2 * j) * g_var[name, j, t] for j in 1:depth)
+    )
+end
+
+"""
+    _sawtooth_result!(tightener, config, container, C, names, time_steps, x_var, g_var, bounds, meta)
+
+Assemble the sawtooth `QuadraticExpression` result from the PWL ladder `g_var`, dispatched on the
+tightener type. The default (no tightener) publishes the plain PWL expression; the
+`EpigraphTightener` method sandwiches a free result variable between an epigraph lower bound and the
+sawtooth upper bound.
+"""
+function _sawtooth_result!(
+    ::Tightener,
+    config::SawtoothQuadConfig,
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    x_var,
+    g_var,
+    bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    jump_model = get_jump_model(container)
+    result_expr = add_expression_container!(
+        container, QuadraticExpression, C, names, time_steps; meta,
+    )
     for (i, name) in enumerate(names), t in time_steps
         b = bounds[i]
         IS.@assert_op b.max > b.min
-        delta = b.max - b.min
-        saw_coeffs = [delta * delta * (2.0^(-2 * j)) for j in alpha_levels]
+        result_expr[name, t] =
+            _sawtooth_pwl_expr(jump_model, g_var, b, name, t, config.depth)
+    end
+    return result_expr
+end
+
+function _sawtooth_result!(
+    tightener::EpigraphTightener,
+    config::SawtoothQuadConfig,
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    x_var,
+    g_var,
+    bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    jump_model = get_jump_model(container)
+    lp_expr = add_quadratic_approx!(
+        EpigraphQuadConfig(; depth = tightener.depth),
+        container, C, names, time_steps,
+        x_var, bounds, meta * "_lb",
+    )
+    z_var = add_variable_container!(
+        container, SawtoothTightenedVariable, C, names, time_steps; meta,
+    )
+    tight_cons = add_constraints_container!(
+        container, SawtoothTightenedConstraint, C, names, 1:2, time_steps; meta,
+    )
+    result_expr = add_expression_container!(
+        container, QuadraticExpression, C, names, time_steps; meta,
+    )
+    for (i, name) in enumerate(names), t in time_steps
+        b = bounds[i]
+        IS.@assert_op b.max > b.min
         z_min = (b.min <= 0.0 <= b.max) ? 0.0 : min(b.min * b.min, b.max * b.max)
         z_max = max(b.min * b.min, b.max * b.max)
-
-        # Build x² ≈ x_min² + (2 x_min Δ + Δ²) g_0 - Σ_{j=1}^L Δ² 2^{-2j} g_j
-        x_sq_approx = JuMP.AffExpr(b.min * b.min)
-        add_proportional_to_jump_expression!(
-            x_sq_approx,
-            g_var[name, 0, t],
-            2.0 * b.min * delta + delta * delta,
-        )
-        for j in alpha_levels
-            add_proportional_to_jump_expression!(
-                x_sq_approx,
-                g_var[name, j, t],
-                -saw_coeffs[j],
+        x_sq_approx = _sawtooth_pwl_expr(jump_model, g_var, b, name, t, config.depth)
+        z =
+            z_var[name, t] = JuMP.@variable(
+                jump_model,
+                base_name = "TightenedSawtooth_$(C)_{$(name), $(t)}",
+                lower_bound = z_min,
+                upper_bound = z_max
             )
-        end
-
-        if config.tightener isa EpigraphTightener
-            z =
-                z_var[name, t] = JuMP.@variable(
-                    jump_model,
-                    base_name = "TightenedSawtooth_$(C)_{$(name), $(t)}",
-                    lower_bound = z_min,
-                    upper_bound = z_max
-                )
-            tight_cons[name, 1, t] = JuMP.@constraint(jump_model, z <= x_sq_approx)
-            tight_cons[name, 2, t] = JuMP.@constraint(jump_model, z >= lp_expr[name, t])
-            result_expr[name, t] = JuMP.AffExpr(0.0, z => 1.0)
-        else
-            result_expr[name, t] = x_sq_approx
-        end
+        tight_cons[name, 1, t] = JuMP.@constraint(jump_model, z <= x_sq_approx)
+        tight_cons[name, 2, t] = JuMP.@constraint(jump_model, z >= lp_expr[name, t])
+        result_expr[name, t] = JuMP.AffExpr(0.0, z => 1.0)
     end
-
     return result_expr
 end

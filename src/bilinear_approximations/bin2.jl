@@ -163,32 +163,57 @@ function tolerance_depth(
     max_delta_x::Float64,
     max_delta_y::Float64,
 ) where {Q <: QuadraticApproxConfig}
-    max_delta = max_delta_x + max_delta_y
-    s = sidedness(Q)
-    if s isa OneSidedOver
-        return tolerance_depth(Q; tolerance = 2 * tolerance, max_delta = max_delta)
-    elseif s isa TwoSided
-        sum_sq = max_delta_x^2 + max_delta_y^2 + max_delta_x * max_delta_y
-        return tolerance_depth(Q;
-            tolerance = max_delta^2 * tolerance / sum_sq,
-            max_delta = max_delta,
-        )
-    else
-        throw(
-            ArgumentError(
-                "Bin2Config requires a one-sided-over or two-sided inner Q; got $(Q) " *
-                "with sidedness $(s), which has no finite Bin2 tolerance bound.",
-            ),
-        )
-    end
+    return _bin2_tolerance_depth(sidedness(Q), Q; tolerance, max_delta_x, max_delta_y)
 end
+
+# Bin2 tolerance depth, dispatched on the inner quad's sidedness trait (see the derivation block
+# above). One-sided-over and two-sided have finite bounds; other sidednesses do not.
+function _bin2_tolerance_depth(
+    ::OneSidedOver,
+    ::Type{Q};
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+) where {Q <: QuadraticApproxConfig}
+    return tolerance_depth(
+        Q;
+        tolerance = 2 * tolerance,
+        max_delta = max_delta_x + max_delta_y,
+    )
+end
+
+function _bin2_tolerance_depth(
+    ::TwoSided,
+    ::Type{Q};
+    tolerance::Float64,
+    max_delta_x::Float64,
+    max_delta_y::Float64,
+) where {Q <: QuadraticApproxConfig}
+    max_delta = max_delta_x + max_delta_y
+    sum_sq = max_delta_x^2 + max_delta_y^2 + max_delta_x * max_delta_y
+    return tolerance_depth(Q;
+        tolerance = max_delta^2 * tolerance / sum_sq,
+        max_delta = max_delta,
+    )
+end
+
+_bin2_tolerance_depth(
+    s::ApproxSidedness,
+    ::Type{Q};
+    kwargs...,
+) where {Q <: QuadraticApproxConfig} = throw(
+    ArgumentError(
+        "Bin2Config requires a one-sided-over or two-sided inner Q; got $(Q) " *
+        "with sidedness $(s), which has no finite Bin2 tolerance bound.",
+    ),
+)
 
 # --- Unified bilinear approximation dispatch ---
 
 """
     add_bilinear_approx!(config::Bin2Config, container, C, names, time_steps, x_var, y_var, x_bounds, y_bounds, meta)
 
-Standard form: compute x² and y² quadratic approximations, then delegate to `_assemble_bin2!`.
+Standard form: compute x² and y² quadratic approximations, then delegate to `_assemble_separable!`.
 
 # Arguments
 - `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
@@ -214,7 +239,7 @@ function add_bilinear_approx!(
         config.quad_config, container, C, names, time_steps,
         y_var, y_bounds, meta * "_y",
     )
-    return _assemble_bin2!(
+    return _assemble_separable!(
         config, container, C, names, time_steps,
         xsq, ysq, x_var, y_var,
         x_bounds, y_bounds, meta,
@@ -222,16 +247,19 @@ function add_bilinear_approx!(
 end
 
 """
-    _assemble_bin2!(config::Bin2Config, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
+    _assemble_separable!(config::Bin2Config, container, C, names, time_steps, xsq, ysq, x_var, y_var, x_bounds, y_bounds, meta)
 
-Precomputed form: Bin2 identity z = ½((x+y)² − x² − y²) with optional PWMCC concave cuts.
+Precomputed form: Bin2 identity z = ½((x+y)² − x² − y²) with optional reformulated McCormick cuts.
 Accepts pre-computed quadratic approximations `xsq` ≈ x² and `ysq` ≈ y².
+
+`_assemble_separable!` is the shared staged-assembly interface for `SeparableConfig` methods (Bin2
+and HybS); callers dispatch on the config type instead of branching on it.
 
 # Arguments
 - `x_bounds::Vector{MinMax}`: per-name lower and upper bounds of x
 - `y_bounds::Vector{MinMax}`: per-name lower and upper bounds of y
 """
-function _assemble_bin2!(
+function _assemble_separable!(
     config::Bin2Config,
     container::OptimizationContainer,
     ::Type{C},
@@ -265,11 +293,9 @@ function _assemble_bin2!(
         time_steps;
         meta = meta_plus,
     )
+    jump_model = get_jump_model(container)
     for name in names, t in time_steps
-        p = JuMP.AffExpr(0.0)
-        add_proportional_to_jump_expression!(p, x_var[name, t], 1.0)
-        add_proportional_to_jump_expression!(p, y_var[name, t], 1.0)
-        p_expr[name, t] = p
+        p_expr[name, t] = JuMP.@expression(jump_model, x_var[name, t] + y_var[name, t])
     end
 
     # Approximate p² = (x+y)² using the provided quadratic config
@@ -289,20 +315,42 @@ function _assemble_bin2!(
 
     for name in names, t in time_steps
         # z = (1/2) * (p² − x² − y²)
-        result = result_expr[name, t] = JuMP.AffExpr(0.0)
-        add_proportional_to_jump_expression!(result, psq[name, t], 0.5)
-        add_proportional_to_jump_expression!(result, xsq[name, t], -0.5)
-        add_proportional_to_jump_expression!(result, ysq[name, t], -0.5)
-    end
-
-    # --- Reformulated McCormick cuts (optional) ---
-    if config.tightener isa McCormickTightener
-        _add_reformulated_mccormick!(
-            container, C, names, time_steps,
-            x_var, y_var, psq, xsq, ysq,
-            x_bounds, y_bounds, meta,
+        result_expr[name, t] = JuMP.@expression(
+            jump_model,
+            0.5 * psq[name, t] - 0.5 * xsq[name, t] - 0.5 * ysq[name, t],
         )
     end
 
+    # --- Reformulated McCormick cuts (optional, via tightener dispatch) ---
+    apply_tightener!(
+        config.tightener, config, container, C, names, time_steps,
+        x_var, y_var, psq, xsq, ysq, x_bounds, y_bounds, meta,
+    )
+
     return result_expr
+end
+
+"Apply reformulated McCormick cuts on the Bin2 separable variables (valid inequality)."
+function apply_tightener!(
+    ::McCormickTightener,
+    ::Bin2Config,
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    x_var,
+    y_var,
+    psq,
+    xsq,
+    ysq,
+    x_bounds::Vector{MinMax},
+    y_bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    _add_reformulated_mccormick!(
+        container, C, names, time_steps,
+        x_var, y_var, psq, xsq, ysq,
+        x_bounds, y_bounds, meta,
+    )
+    return
 end

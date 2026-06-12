@@ -62,15 +62,7 @@ struct SOS2QuadConfig{B <: SOS2Backend} <: QuadraticApproxConfig
         supports_tightener(SOS2QuadConfig{B}, tightener) || throw(
             ArgumentError("SOS2QuadConfig does not support tightener $(typeof(tightener))"),
         )
-        if tightener isa McCormickTightener && depth % tightener.partitions != 0
-            throw(
-                ArgumentError(
-                    "SOS2QuadConfig requires McCormickTightener partitions to evenly divide " *
-                    "depth so PWMCC boundaries coincide with PWL breakpoints " *
-                    "(got partitions=$(tightener.partitions), depth=$(depth)).",
-                ),
-            )
-        end
+        _assert_partitions_divide_depth(tightener, depth)
         return new{B}(depth, tightener)
     end
 end
@@ -215,10 +207,7 @@ function _sos2_adjacency!(
     end
 
     # Σ z_j = 1 (segment selection)
-    seg = conts.seg_expr[name, t] = JuMP.AffExpr(0.0)
-    for z in z_vars
-        add_proportional_to_jump_expression!(seg, z, 1.0)
-    end
+    seg = conts.seg_expr[name, t] = JuMP.@expression(jump_model, sum(z_vars))
     conts.seg_cons[name, t] = JuMP.@constraint(jump_model, seg == 1)
 
     # Adjacency constraints: λ_i ≤ z_{i-1} + z_i (with boundary cases)
@@ -347,42 +336,54 @@ function add_quadratic_approx!(
         end
 
         # x = Σ λ_i * x_i
-        link = link_expr[name, t] = JuMP.AffExpr(0.0)
-        for k in eachindex(x_bkpts)
-            add_proportional_to_jump_expression!(link, lambda[k], x_bkpts[k])
-        end
+        link =
+            link_expr[name, t] =
+                JuMP.@expression(
+                    jump_model,
+                    sum(x_bkpts[k] * lambda[k] for k in eachindex(x_bkpts))
+                )
         link_cons[name, t] = JuMP.@constraint(jump_model, (x - b.min) / lx == link)
 
         # Σ λ_i = 1
-        norm = norm_expr[name, t] = JuMP.AffExpr(0.0)
-        for l in lambda
-            add_proportional_to_jump_expression!(norm, l, 1.0)
-        end
+        norm = norm_expr[name, t] = JuMP.@expression(jump_model, sum(lambda))
         norm_cons[name, t] = JuMP.@constraint(jump_model, norm == 1.0)
 
         # Backend-specific adjacency enforcement
         _sos2_adjacency!(B(), jump_model, adj, C, name, t, lambda, n_points)
 
-        # Build x̂² = Σ λ_i * x_i² as an affine expression
-        x_hat_sq = JuMP.AffExpr(0.0)
-        for k in 1:n_points
-            add_proportional_to_jump_expression!(x_hat_sq, lambda[k], x_sq_bkpts[k])
-        end
-        x_sq = JuMP.AffExpr(0.0)
-        add_proportional_to_jump_expression!(x_sq, x_hat_sq, lx * lx)
-        add_proportional_to_jump_expression!(x_sq, x, 2 * b.min)
-        add_constant_to_jump_expression!(x_sq, -b.min * b.min)
-        result_expr[name, t] = x_sq
+        # Build x̂² = Σ λ_i * x_i², then unnormalize: x² = lx²·x̂² + 2·x_min·x − x_min²
+        x_hat_sq =
+            JuMP.@expression(jump_model, sum(x_sq_bkpts[k] * lambda[k] for k in 1:n_points))
+        result_expr[name, t] =
+            JuMP.@expression(jump_model, lx * lx * x_hat_sq + 2 * b.min * x - b.min * b.min)
     end
 
-    if config.tightener isa McCormickTightener
-        _add_pwmcc_concave_cuts!(
-            container, C, names, time_steps,
-            x_var, result_expr, bounds,
-            config.tightener.partitions, meta * "_pwmcc";
-            backend = config.tightener.backend,
-        )
-    end
+    apply_tightener!(
+        config.tightener, config, container, C, names, time_steps,
+        x_var, result_expr, bounds, meta,
+    )
 
     return result_expr
+end
+
+"Apply PWMCC concave cuts on the SOS2 `−v²` term (valid inequality, preserves the MIP optimum)."
+function apply_tightener!(
+    t::McCormickTightener,
+    ::SOS2QuadConfig,
+    container::OptimizationContainer,
+    ::Type{C},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+    x_var,
+    result_expr,
+    bounds::Vector{MinMax},
+    meta::String,
+) where {C <: IS.InfrastructureSystemsComponent}
+    _add_pwmcc_concave_cuts!(
+        container, C, names, time_steps,
+        x_var, result_expr, bounds,
+        t.partitions, meta * "_pwmcc";
+        backend = t.backend,
+    )
+    return
 end
