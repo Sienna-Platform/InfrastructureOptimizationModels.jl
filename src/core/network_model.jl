@@ -170,6 +170,7 @@ end
 requires_all_branch_models(::Type{<:AbstractPowerModel}) = true
 supports_branch_filtering(::Type{<:AbstractPowerModel}) = false
 ignores_branch_filtering(::Type{<:AbstractPowerModel}) = false
+branches_modeled(::Type{<:AbstractPowerModel}) = true
 
 function _check_branch_network_compatibility(
     ::NetworkModel{T},

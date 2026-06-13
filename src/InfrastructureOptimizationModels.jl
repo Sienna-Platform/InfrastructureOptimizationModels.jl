@@ -172,7 +172,8 @@ export get_outages
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, has_subnetworks, get_subsystem
 export set_subsystem!, add_dual!
-export requires_all_branch_models, supports_branch_filtering, ignores_branch_filtering
+export requires_all_branch_models,
+    supports_branch_filtering, ignores_branch_filtering, branches_modeled
 export supports_outages
 export validate_network_model
 export AbstractBranchReductionTracker
@@ -374,6 +375,7 @@ export OptimizationContainer, AbstractOptimizationModel
 export ArgumentConstructStage, ModelConstructStage
 export EmulationModelStore, DeviceModelForBranches
 export SOSStatusVariable
+export OptimizationModelExportFormat
 # Parameter types
 export FuelCostParameter, VariableValueParameter, FixValueParameter
 # Offer curve types (parameter, variable, constraint)
@@ -416,6 +418,7 @@ export get_services, get_contributing_devices, get_contributing_devices_map
 export set_resolution!, finalize_template!
 # JuMP access
 export get_jump_model
+export wait_for_serialization!
 export _get_breakpoints_for_pwl_function, _add_generic_incremental_interpolation_constraint!
 # Cost utilities
 export get_proportional_cost_per_system_unit
