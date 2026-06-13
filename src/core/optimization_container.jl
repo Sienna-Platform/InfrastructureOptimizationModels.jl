@@ -93,6 +93,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     # series types and duck-typed mocks alike.
     default_time_series_type::DataType
     evaluations::EvaluationContainer
+    serialization_task::Union{Nothing, Task}
 end
 
 function OptimizationContainer(
@@ -140,6 +141,7 @@ function OptimizationContainer(
         OptimizationContainerMetadata(),
         T,
         EvaluationContainer(),
+        nothing,
     )
 end
 
@@ -186,6 +188,21 @@ get_variables(container::OptimizationContainer) = container.variables
 set_initial_conditions_data!(container::OptimizationContainer, data) =
     container.initial_conditions_data = data
 get_objective_expression(container::OptimizationContainer) = container.objective_function
+
+get_serialization_task(container::OptimizationContainer) = container.serialization_task
+
+function set_serialization_task!(container::OptimizationContainer, task::Task)
+    container.serialization_task = task
+    return
+end
+
+function wait_for_serialization!(container::OptimizationContainer)
+    task = container.serialization_task
+    task === nothing && return
+    wait(task)
+    container.serialization_task = nothing
+    return
+end
 is_synchronized(container::OptimizationContainer) =
     container.objective_function.synchronized
 set_time_steps!(container::OptimizationContainer, time_steps::UnitRange{Int64}) =

@@ -142,16 +142,15 @@ function solve_model!(model::AbstractOptimizationModel)
     ts = get_current_timestamp(model)
     output_dir = get_output_dir(model)
 
-    if get_export_optimization_model(get_settings(model))
+    fmt = get_export_optimization_model(get_settings(model))
+    if fmt != OptimizationModelExportFormat.NONE
         model_output_dir = joinpath(output_dir, "optimization_model_exports")
         mkpath(model_output_dir)
         tss = replace("$(ts)", ":" => "_")
-        model_export_path = joinpath(model_output_dir, "exported_$(model_name)_$(tss).json")
-        serialize_optimization_model(container, model_export_path)
-        write_lp_file(
-            get_jump_model(container),
-            replace(model_export_path, ".json" => ".lp"),
-        )
+        ext = fmt == OptimizationModelExportFormat.LP ? "lp" : "json"
+        model_export_path =
+            joinpath(model_output_dir, "exported_$(model_name)_$(tss).$(ext)")
+        serialize_optimization_model(model, model_export_path, fmt)
     end
 
     status = execute_optimizer!(container, get_system(model))
@@ -361,5 +360,25 @@ function serialize_optimization_model(model::AbstractOptimizationModel, save_pat
         get_jump_model(get_optimization_container(model)),
         save_path,
     )
+    return
+end
+
+wait_for_serialization!(model::AbstractOptimizationModel) =
+    wait_for_serialization!(get_optimization_container(model))
+
+function serialize_optimization_model(
+    model::AbstractOptimizationModel,
+    save_path::String,
+    fmt::OptimizationModelExportFormat,
+)
+    container = get_optimization_container(model)
+    dest = _copy_jump_model_for_export(get_jump_model(container), fmt)
+    if Threads.nthreads() > 1
+        wait_for_serialization!(container)
+        task = Threads.@spawn _write_export_model(dest, save_path)
+        set_serialization_task!(container, task)
+    else
+        _write_export_model(dest, save_path)
+    end
     return
 end

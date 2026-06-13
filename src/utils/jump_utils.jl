@@ -597,20 +597,39 @@ function write_optimizer_stats!(optimizer_stats::OptimizerStats, jump_model::JuM
     return
 end
 
+function _copy_jump_model_for_export(
+    jump_model::JuMP.Model,
+    fmt::OptimizationModelExportFormat,
+)
+    file_format =
+        if fmt == OptimizationModelExportFormat.LP
+            MOI.FileFormats.FORMAT_LP
+        else
+            MOI.FileFormats.FORMAT_MOF
+        end
+    dest = MOPFM(; format = file_format)
+    MOI.copy_to(dest, JuMP.backend(jump_model))
+    return dest
+end
+
+_write_export_model(dest, save_path::String) = MOI.write_to_file(dest, save_path)
+
 """
 Exports the JuMP object in MathOptFormat
 """
 function serialize_jump_optimization_model(jump_model::JuMP.Model, save_path::String)
-    MOF_model = MOPFM(; format = MOI.FileFormats.FORMAT_MOF)
-    MOI.copy_to(MOF_model, JuMP.backend(jump_model))
-    MOI.write_to_file(MOF_model, save_path)
+    _write_export_model(
+        _copy_jump_model_for_export(jump_model, OptimizationModelExportFormat.MOF),
+        save_path,
+    )
     return
 end
 
 function write_lp_file(jump_model::JuMP.Model, save_path::String)
-    MOF_model = MOPFM(; format = MOI.FileFormats.FORMAT_LP)
-    MOI.copy_to(MOF_model, JuMP.backend(jump_model))
-    MOI.write_to_file(MOF_model, save_path)
+    _write_export_model(
+        _copy_jump_model_for_export(jump_model, OptimizationModelExportFormat.LP),
+        save_path,
+    )
     return
 end
 
