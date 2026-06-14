@@ -159,7 +159,7 @@ function set_model!(
 ) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
     key = nameof(D)
     if haskey(dict, key)
-        @warn "Overwriting $(D) existing model"
+        @warn "Overwriting $(nameof(D)) existing model"
     end
     dict[key] = model
     return
