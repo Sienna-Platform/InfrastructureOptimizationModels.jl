@@ -355,3 +355,73 @@ function _fill_pwl_data_from_arrays!(
     copyto!(breakpoints, converted_bp)
     return
 end
+
+#################################################################################
+# Section 6: Tranche-axis helpers for time-varying PWL parameters (PSY-free)
+#
+# Time-varying piecewise-linear cost curves are stored in 3-D parameter arrays
+# `(component, tranche, time)`. These helpers size the tranche axis to the global
+# maximum across all time steps and unwrap each time-series element (an
+# `IS.PiecewiseStepData`) into the per-tranche slope/breakpoint vector that fills
+# one column of the array. PSY-touching orchestration (`get_max_tranches`,
+# `calc_additional_axes`) lives in the downstream package (POM) and calls down
+# into these.
+#################################################################################
+
+# It's nice for debugging to have meaningful labels on the tranche axis. These
+# labels are never relied upon numerically.
+make_tranche_axis(n_tranches) = "tranche_" .* string.(1:n_tranches)
+
+"""
+Given a parameter array, return any additional axes, i.e. those that aren't the
+first (component) or the last (time).
+"""
+lookup_additional_axes(parameter_array) = axes(parameter_array)[2:(end - 1)]
+
+# Maximum number of tranches (segments) across a piecewise time series.
+_get_max_tranches(data::Vector{IS.PiecewiseStepData}) = maximum(length.(data))
+_get_max_tranches(data::TS.TimeArray) = _get_max_tranches(TS.values(data))
+_get_max_tranches(data::AbstractDict) = maximum(_get_max_tranches.(values(data)))
+
+# Layer of indirection so that parameters whose time series represents multiple
+# things (e.g. both slopes and breakpoints come from the same `PiecewiseStepData`
+# series) can unwrap each element into the per-tranche vector that fills the
+# parameter array. The default is the identity used by scalar time-series
+# parameters.
+_unwrap_for_param(::ParameterType, ts_elem, expected_axs) = ts_elem
+
+# For piecewise data the number of tranches can vary over time, so the parameter
+# container is sized for the maximum number of tranches and shorter curves are
+# padded. We pad with "degenerate" tranches at the top end of the curve with
+# dx = 0 so their dispatch variables are constrained to 0. The slope of those
+# segments shouldn't matter; we use slope = 0 so the term drops trivially from
+# the objective.
+function _unwrap_for_param(
+    ::AbstractPiecewiseLinearSlopeParameter,
+    ts_elem::IS.PiecewiseStepData,
+    expected_axs,
+)
+    max_len = length(only(expected_axs))
+    y_coords = IS.get_y_coords(ts_elem)
+    length(y_coords) <= max_len || error(
+        "PiecewiseStepData y-coords ($(length(y_coords))) exceed expected axis length " *
+        "($max_len) for slope parameter",
+    )
+    fill_value = 0.0  # pad with slope = 0 if necessary (see above)
+    return vcat(y_coords, fill(fill_value, max_len - length(y_coords)))
+end
+
+function _unwrap_for_param(
+    ::AbstractPiecewiseLinearBreakpointParameter,
+    ts_elem::IS.PiecewiseStepData,
+    expected_axs,
+)
+    max_len = length(only(expected_axs))
+    x_coords = IS.get_x_coords(ts_elem)
+    length(x_coords) <= max_len || error(
+        "PiecewiseStepData x-coords ($(length(x_coords))) exceed expected axis length " *
+        "($max_len) for breakpoint parameter",
+    )
+    fill_value = x_coords[end]  # repeat the last breakpoint so dx = 0 (see above)
+    return vcat(x_coords, fill(fill_value, max_len - length(x_coords)))
+end
