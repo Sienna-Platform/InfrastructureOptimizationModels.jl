@@ -345,6 +345,7 @@ export JuMPOrFloat
 export add_range_constraints!, add_parameterized_upper_bound_range_constraints
 export add_reserve_bound_range_constraints!, add_commitment_bound_range_constraints!
 export add_semicontinuous_range_constraints!, add_semicontinuous_ramp_constraints!
+export add_slacked_range_constraints!, fill_slacked_range_constraints!
 # Cost helpers
 export add_shut_down_cost!, add_start_up_cost!
 export add_pwl_term_delta!, add_pwl_constraint_delta!

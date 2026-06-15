@@ -110,6 +110,96 @@ function _add_bound_range_constraints_impl!(
 end
 
 @doc raw"""
+Constructs a min/max range constraint from a device variable with OPTIONAL slack variables.
+
+This is the slack-aware sibling of [`add_range_constraints!`](@ref). It emits the same
+`lb <= var <= ub` pair (keyed with the usual "lb"/"ub" meta), but when slack containers are
+supplied it relaxes the bounds:
+
+``` var[name, t] - slack_ub[name, t] <= limits.max ```
+``` var[name, t] + slack_lb[name, t] >= limits.min ```
+
+The slack is subtracted on the upper bound and added on the lower bound. Passing `nothing`
+for either slack array recovers the plain bound for that direction.
+
+Because the slack VARIABLE TYPES are owned downstream (e.g. POM), the caller passes the
+already-built JuMP slack containers (`DenseAxisArray`s) directly rather than a variable type.
+The `array` (the variable being constrained) and the `devices` to iterate are also passed in,
+so callers can route a subset of devices through this helper (e.g. only the static-rated
+branches, leaving a parameterized-RHS path elsewhere).
+
+# Arguments
+- `array`: the JuMP container of the variable being bounded (e.g. `FlowActivePowerVariable`).
+- `slack_ub` / `slack_lb`: JuMP slack containers, or `nothing` to omit slack in that direction.
+"""
+function add_slacked_range_constraints!(
+    container::OptimizationContainer,
+    ::Type{T},
+    array,
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
+    model::DeviceModel{V, W},
+    slack_ub,
+    slack_lb;
+    constraint_names = IS.get_name.(devices),
+) where {
+    T <: ConstraintType,
+    V <: IS.InfrastructureSystemsComponent,
+    W <: AbstractDeviceFormulation,
+}
+    time_steps = get_time_steps(container)
+    con_lb = add_constraints_container!(
+        container, T, V, constraint_names, time_steps;
+        meta = constraint_meta(LowerBound()))
+    con_ub = add_constraints_container!(
+        container, T, V, constraint_names, time_steps;
+        meta = constraint_meta(UpperBound()))
+    fill_slacked_range_constraints!(
+        container, con_ub, con_lb, T, array, devices, model, slack_ub, slack_lb)
+    return
+end
+
+"""
+Fill pre-created upper/lower bound constraint containers with slack-aware range constraints
+for `devices`. Use this (rather than [`add_slacked_range_constraints!`](@ref)) when the
+constraint containers must span a wider axis than `devices` — e.g. when another code path
+fills the remaining entries of the same `(T, V)` containers (such as a parameterized-RHS
+rating path). See `add_slacked_range_constraints!` for the slack convention.
+"""
+function fill_slacked_range_constraints!(
+    container::OptimizationContainer,
+    con_ub,
+    con_lb,
+    ::Type{T},
+    array,
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
+    ::DeviceModel{V, W},
+    slack_ub,
+    slack_lb,
+) where {
+    T <: ConstraintType,
+    V <: IS.InfrastructureSystemsComponent,
+    W <: AbstractDeviceFormulation,
+}
+    time_steps = get_time_steps(container)
+    jump_model = get_jump_model(container)
+    for device in devices
+        name = IS.get_name(device)
+        limits = get_min_max_limits(device, T, W)
+        for t in time_steps
+            ub_lhs =
+                isnothing(slack_ub) ? array[name, t] : array[name, t] - slack_ub[name, t]
+            lb_lhs =
+                isnothing(slack_lb) ? array[name, t] : array[name, t] + slack_lb[name, t]
+            con_ub[name, t] =
+                _make_bound_constraint(UpperBound(), jump_model, ub_lhs, limits.max)
+            con_lb[name, t] =
+                _make_bound_constraint(LowerBound(), jump_model, lb_lhs, limits.min)
+        end
+    end
+    return
+end
+
+@doc raw"""
 Constructs min/max range constraint from device variable and on/off decision variable.
 
 
