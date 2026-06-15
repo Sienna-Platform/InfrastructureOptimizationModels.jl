@@ -153,21 +153,32 @@ const IGNORABLE_FILES = [
 const OUTPUTS_DIR = "outputs"
 
 # Enums
-ModelBuildStatus = ISOPT.ModelBuildStatus
-SimulationBuildStatus = IS.Simulation.SimulationBuildStatus
+const ModelBuildStatus = ISOPT.ModelBuildStatus
+const SimulationBuildStatus = IS.Simulation.SimulationBuildStatus
 
-RunStatus = IS.Simulation.RunStatus
+const RunStatus = IS.Simulation.RunStatus
 
 IS.@scoped_enum(SOSStatusVariable, NO_VARIABLE = 1, PARAMETER = 2, VARIABLE = 3,)
 
 IS.@scoped_enum(COMPACT_PWL_STATUS, VALID = 1, INVALID = 2, UNDETERMINED = 3)
 
+IS.@scoped_enum(OptimizationModelExportFormat, NONE = 0, LP = 1, MOF = 2,)
+
+@doc """
+Format used to export the optimization model to disk on each solve.
+
+# Values
+- `NONE`: Do not export the model.
+- `LP`: Export to the LP file format (`.lp`).
+- `MOF`: Export to MathOptFormat (`.json`).
+""" OptimizationModelExportFormat
+
 const ENUMS = (ModelBuildStatus, SimulationBuildStatus, RunStatus, SOSStatusVariable)
 
-const ENUM_MAPPINGS = Dict()
+const ENUM_MAPPINGS = Dict{DataType, Dict{String, Any}}()
 
 for enum in ENUMS
-    ENUM_MAPPINGS[enum] = Dict()
+    ENUM_MAPPINGS[enum] = Dict{String, Any}()
     for value in instances(enum)
         ENUM_MAPPINGS[enum][lowercase(string(value))] = value
     end

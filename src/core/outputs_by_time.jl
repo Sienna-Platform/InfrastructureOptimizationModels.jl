@@ -1,18 +1,19 @@
 mutable struct OutputsByTime{T, N}
     key::OptimizationContainerKey
     data::SortedDict{Dates.DateTime, T}
-    resolution::Dates.Period
+    # Concrete field; everything upstream already works in Millisecond.
+    resolution::Dates.Millisecond
     column_names::NTuple{N, Vector{String}}
-end
 
-function OutputsByTime(
-    key::OptimizationContainerKey,
-    data::SortedDict{Dates.DateTime, T},
-    resolution::Dates.Period,
-    column_names,
-) where {T}
-    _check_column_consistency(data, column_names)
-    OutputsByTime(key, data, resolution, column_names)
+    function OutputsByTime(
+        key::OptimizationContainerKey,
+        data::SortedDict{Dates.DateTime, T},
+        resolution::Dates.Period,
+        column_names::NTuple{N, Vector{String}},
+    ) where {T, N}
+        _check_column_consistency(data, column_names)
+        return new{T, N}(key, data, Dates.Millisecond(resolution), column_names)
+    end
 end
 
 function _check_column_consistency(
@@ -96,7 +97,7 @@ function _add_timestamps!(
 end
 
 function _get_timestamps(outputs::OutputsByTime, timestamp::Dates.DateTime, len::Int)
-    if outputs.resolution == Dates.Period(Dates.Millisecond(0))
+    if outputs.resolution == Dates.Millisecond(0)
         return
     end
     return range(timestamp; length = len, step = outputs.resolution)
@@ -129,7 +130,7 @@ function make_dataframe(
     table_format::TableFormat = TableFormat.LONG,
 )
     array = outputs.data[timestamp]
-    df_wide = DataFrames.DataFrame(array, outputs.column_names)
+    df_wide = DataFrames.DataFrame(array, outputs.column_names[1])
     _add_timestamps!(df_wide, outputs, timestamp, array)
     return if table_format == TableFormat.LONG
         measure_vars = [x for x in names(df_wide) if x != "DateTime"]
@@ -146,7 +147,10 @@ function make_dataframe(
     end
 end
 
-function make_dataframes(outputs::OutputsByTime; table_format::TableFormat = table_format)
+function make_dataframes(
+    outputs::OutputsByTime;
+    table_format::TableFormat = TableFormat.LONG,
+)
     return SortedDict(
         k => make_dataframe(outputs, k; table_format = table_format) for
         k in keys(outputs.data)

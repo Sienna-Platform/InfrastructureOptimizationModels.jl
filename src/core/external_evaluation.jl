@@ -33,13 +33,13 @@ parallel keyed dictionaries so that `evaluation_data[T]` is the runtime state
 produced from `evaluators[T]`.
 """
 mutable struct EvaluationContainer
-    evaluators::Dict{DataType, Any}
+    evaluators::Dict{DataType, AbstractEvaluator}
     evaluation_data::Dict{DataType, AbstractEvaluationData}
 end
 
 function EvaluationContainer()
     return EvaluationContainer(
-        Dict{DataType, Any}(),
+        Dict{DataType, AbstractEvaluator}(),
         Dict{DataType, AbstractEvaluationData}(),
     )
 end
@@ -50,13 +50,18 @@ get_evaluation_data(ec::EvaluationContainer) = ec.evaluation_data
 get_evaluator(ec::EvaluationContainer, T::DataType) = ec.evaluators[T]
 get_evaluation_data(ec::EvaluationContainer, T::DataType) = ec.evaluation_data[T]
 
-add_evaluator!(ec::EvaluationContainer, T::DataType, ev) =
-    (ec.evaluators[T] = ev)
-add_evaluation_data!(
+function add_evaluator!(ec::EvaluationContainer, T::DataType, ev::AbstractEvaluator)
+    ec.evaluators[T] = ev
+    return
+end
+function add_evaluation_data!(
     ec::EvaluationContainer,
     T::DataType,
     d::AbstractEvaluationData,
-) = (ec.evaluation_data[T] = d)
+)
+    ec.evaluation_data[T] = d
+    return
+end
 
 Base.isempty(ec::EvaluationContainer) = isempty(ec.evaluators)
 Base.length(ec::EvaluationContainer) = length(ec.evaluators)

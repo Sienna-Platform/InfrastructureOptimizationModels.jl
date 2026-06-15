@@ -73,12 +73,18 @@ _existing_constraint_keys(
     get_constraint_keys(container),
 )
 
-_validate_keys(keys) =
+function _validate_keys(
+    keys::Vector{<:ConstraintKey},
+    ::Type{T},
+    ::Type{D},
+) where {T, D}
     isempty(keys) && throw(
         IS.InvalidValue(
-            "No constraint of type $constraint_type for $D is stored; cannot assign a dual variable.",
+            "No constraint of type $T for $D is stored; cannot assign a dual variable.",
         ),
     )
+    return
+end
 
 # device formulation
 function assign_dual_variable!(
@@ -92,7 +98,7 @@ function assign_dual_variable!(
     @assert !isempty(devices)
     time_steps = get_time_steps(container)
     constraint_keys = _existing_constraint_keys(container, constraint_type, D)
-    _validate_keys(constraint_keys)
+    _validate_keys(constraint_keys, constraint_type, D)
     for key in constraint_keys
         existing = get_constraint(container, key)
         _assign_dual_from_existing!(container, key, existing, D, time_steps)
@@ -112,7 +118,7 @@ function assign_dual_variable!(
     IS.@assert_op !isempty(devices)
     time_steps = get_time_steps(container)
     constraint_keys = _existing_constraint_keys(container, constraint_type, D)
-    _validate_keys(constraint_keys)
+    _validate_keys(constraint_keys, constraint_type, D)
     for key in constraint_keys
         existing = get_constraint(container, key)
         _assign_dual_from_existing!(container, key, existing, D, time_steps)
@@ -151,12 +157,16 @@ function _assign_dual_from_existing!(
     ::Type{D},
     time_steps,
 ) where {D}
-    add_dual_container!(
-        container,
-        get_entry_type(key),
-        D,
-        keys(existing.data);
-        sparse = true,
+    # The dual must mirror the constraint's sparse keys exactly. Routing through
+    # `add_dual_container!`'s `sparse_container_spec(Float64, axs...)` would feed
+    # the key collection to `Iterators.product`, wrapping each n-tuple key in an
+    # extra 1-tuple (`Tuple{Tuple{String, String, Int}}`) and breaking the
+    # per-key copy in `_copy_dual_values!`. Build the dual dict directly from the
+    # existing keys so the dual and constraint share the same key type.
+    dual_container = SparseAxisArray(
+        Dict(k => zero(Float64) for k in keys(existing.data)),
     )
+    const_key = ConstraintKey(get_entry_type(key), D, key.meta)
+    _assign_container!(container.duals, const_key, dual_container)
     return
 end

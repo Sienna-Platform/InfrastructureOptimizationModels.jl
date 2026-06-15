@@ -34,13 +34,14 @@ function EmulationModel{M}(
     elseif name isa String
         name = Symbol(name)
     end
-    finalize_template!(template, sys)
+    template_ = _deepcopy_template(template)
+    finalize_template!(template_, sys)
     internal = ModelInternal(
         OptimizationContainer(sys, settings, jump_model, IS.SingleTimeSeries),
     )
     model = EmulationModel{M}(
         name,
-        template,
+        template_,
         sys,
         internal,
         SimulationInfo(),

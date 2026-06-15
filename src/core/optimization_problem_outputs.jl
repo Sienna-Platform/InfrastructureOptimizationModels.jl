@@ -340,7 +340,7 @@ function set_source_data!(
     if source_uuid != res.source_data_uuid
         throw(
             InvalidValue(
-                "System mismatch. $sys_uuid does not match the stored value of $(res.source_uuid)",
+                "System mismatch. $source_uuid does not match the stored value of $(res.source_data_uuid)",
             ),
         )
     end
@@ -442,9 +442,7 @@ function _read_outputs(
         if num_rows_per_component == length(time_ids) == length(timestamps)
             tmp_df = innerjoin(df, df_timestamps; on = :time_index)
             if DataFrames.nrow(tmp_df) != DataFrames.nrow(df)
-                error(
-                    "Bug: Unexpectedly dropped rows: df2 = $tmp_df orig = $(outputs[key])",
-                )
+                error("Bug: Unexpectedly dropped rows: df2 = $tmp_df orig = $df")
             end
             outputs[key] = select(tmp_df, [:DateTime, Symbol.(component_cols)..., :value])
         else
@@ -486,16 +484,19 @@ function _process_timestamps(
         throw(InvalidValue("start_time not in output timestamps"))
     end
 
-    if startswith(res.model_type, "EmulationModel{")
-        def_len = DataFrames.nrow(get_optimizer_stats(res))
-        requested_range =
-            collect(findfirst(x -> x >= start_time, get_timestamps(res)):def_len)
-        timestamps = repeat(get_timestamps(res), def_len)
-    else
-        timestamps = get_timestamps(res)
-        requested_range = findall(x -> x >= start_time, timestamps)
-        def_len = length(requested_range)
+    timestamps = get_timestamps(res)
+    if startswith(res.model_type, "EmulationModel{") &&
+       length(timestamps) < DataFrames.nrow(get_optimizer_stats(res))
+        throw(
+            InvalidValue(
+                "Emulation output timestamps ($(length(timestamps))) are shorter than the " *
+                "number of solved executions ($(DataFrames.nrow(get_optimizer_stats(res)))); " *
+                "the output store timestamps were not constructed correctly.",
+            ),
+        )
     end
+    requested_range = findall(x -> x >= start_time, timestamps)
+    def_len = length(requested_range)
     actual_len = if len === nothing
         def_len
     elseif len < 0
@@ -970,7 +971,7 @@ end
 Return the values for all expressions.
 """
 function read_expressions(res::Outputs; kwargs...)
-    return Dict(x => read_expression(res, x) for x in list_expression_names(res))
+    return Dict(x => read_expression(res, x; kwargs...) for x in list_expression_names(res))
 end
 
 function read_outputs_with_keys(
@@ -1064,7 +1065,11 @@ function export_optimizer_stats(
     if uppercase(format) == "CSV"
         CSV.write(joinpath(directory, "optimizer_stats.csv"), data)
     elseif uppercase(format) == "JSON"
-        JSON.write(joinpath(directory, "optimizer_stats.json"), JSON.json(to_dict(data)))
+        # `data` is a DataFrame; serialize it as an array of row objects. `JSON`
+        # was never imported (only `JSON3`), so the documented json path crashed.
+        open(joinpath(directory, "optimizer_stats.json"), "w") do io
+            JSON3.write(io, [NamedTuple(row) for row in DataFrames.eachrow(data)])
+        end
     else
         throw(error("writing optimizer stats only supports csv or json formats"))
     end

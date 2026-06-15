@@ -30,18 +30,25 @@ end
 get_invariant_terms(v::ObjectiveFunction) = v.invariant_terms
 get_variant_terms(v::ObjectiveFunction) = v.variant_terms
 function get_objective_expression(v::ObjectiveFunction)
+    # Local binding lets inference narrow the 2-member union after the isa check
+    # (a re-read of the mutable field would not be narrowed).
+    invariant = v.invariant_terms
     if iszero(v.variant_terms)
-        return v.invariant_terms
+        return invariant
     else
         # JuMP doesn't support expression conversion from Affn to QuadExpressions
-        if isa(v.invariant_terms, JuMP.GenericQuadExpr)
+        if isa(invariant, JuMP.GenericQuadExpr)
             # Avoid mutation of invariant term
             temp_expr = JuMP.QuadExpr()
-            JuMP.add_to_expression!(temp_expr, v.invariant_terms)
+            JuMP.add_to_expression!(temp_expr, invariant)
             return JuMP.add_to_expression!(temp_expr, v.variant_terms)
         else
-            # This will mutate the variant terms, but these are reseted at each step.
-            return JuMP.add_to_expression!(v.variant_terms, v.invariant_terms)
+            # Build a fresh expression so the getter is idempotent — mutating
+            # variant_terms here would double-count the invariant terms on a
+            # second call between variant resets.
+            temp_expr = JuMP.AffExpr()
+            JuMP.add_to_expression!(temp_expr, v.variant_terms)
+            return JuMP.add_to_expression!(temp_expr, invariant)
         end
     end
 end
@@ -82,8 +89,11 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     evaluator_aux_var_keys::Vector{AuxVarKey}
     standalone_aux_var_keys::Vector{AuxVarKey}
     metadata::OptimizationContainerMetadata
-    default_time_series_type::Type
+    # DataType (concrete) — the constructor rejects abstract types; covers IS time
+    # series types and duck-typed mocks alike.
+    default_time_series_type::DataType
     evaluations::EvaluationContainer
+    serialization_task::Union{Nothing, Task}
 end
 
 function OptimizationContainer(
@@ -116,7 +126,10 @@ function OptimizationContainer(
         OrderedDict{ExpressionKey, JuMPArray}(),
         OrderedDict{ParameterKey, ParameterContainer}(),
         PrimalValuesCache(),
-        OrderedDict{InitialConditionKey, Vector{InitialCondition}}(),
+        # Match the field's exact type (UnionAll value): stored IC vectors are
+        # concretely union-typed and must be kept by reference (callers fill them
+        # after assignment), so the value type cannot be narrowed.
+        OrderedDict{InitialConditionKey, Vector{<:InitialCondition}}(),
         InitialConditionsData(),
         Dict{Symbol, Array}(),
         nothing,
@@ -128,6 +141,7 @@ function OptimizationContainer(
         OptimizationContainerMetadata(),
         T,
         EvaluationContainer(),
+        nothing,
     )
 end
 
@@ -174,6 +188,21 @@ get_variables(container::OptimizationContainer) = container.variables
 set_initial_conditions_data!(container::OptimizationContainer, data) =
     container.initial_conditions_data = data
 get_objective_expression(container::OptimizationContainer) = container.objective_function
+
+get_serialization_task(container::OptimizationContainer) = container.serialization_task
+
+function set_serialization_task!(container::OptimizationContainer, task::Task)
+    container.serialization_task = task
+    return
+end
+
+function wait_for_serialization!(container::OptimizationContainer)
+    task = container.serialization_task
+    task === nothing && return
+    wait(task)
+    container.serialization_task = nothing
+    return
+end
 is_synchronized(container::OptimizationContainer) =
     container.objective_function.synchronized
 set_time_steps!(container::OptimizationContainer, time_steps::UnitRange{Int64}) =
@@ -203,16 +232,11 @@ end
 
 function is_milp(container::OptimizationContainer)::Bool
     !supports_milp(container) && return false
-    if !isempty(
-        JuMP.all_constraints(
-            get_jump_model(container),
-            JuMP.VariableRef,
-            JuMP.MOI.ZeroOne,
-        ),
-    )
-        return true
-    end
-    return false
+    # `num_constraints` just reads a count; `all_constraints` materializes the full
+    # index vector on every call (also invoked per `add_dual_container!`).
+    jump_model = get_jump_model(container)
+    return JuMP.num_constraints(jump_model, JuMP.VariableRef, JuMP.MOI.ZeroOne) > 0 ||
+           JuMP.num_constraints(jump_model, JuMP.VariableRef, JuMP.MOI.Integer) > 0
 end
 
 function supports_milp(container::OptimizationContainer)
@@ -358,11 +382,11 @@ function reset_optimization_model!(container::OptimizationContainer)
 end
 
 function check_parameter_multiplier_values(multiplier_array::DenseAxisArray)
-    return !all(isnan.(multiplier_array.data))
+    return !all(isnan, multiplier_array.data)
 end
 
 function check_parameter_multiplier_values(multiplier_array::SparseAxisArray)
-    return !all(isnan.(values(multiplier_array.data)))
+    return !all(isnan, values(multiplier_array.data))
 end
 
 function check_optimization_container(container::OptimizationContainer)
@@ -1186,13 +1210,22 @@ function get_initial_conditions_parameter(
     return get_initial_conditions_parameter(get_initial_conditions_data(container), type, T)
 end
 
-# When adding a QuadExpr to an AffExpr, += is needed because the AffExpr must be
-# promoted to QuadExpr (reallocation). add_to_expression! cannot promote in-place.
+# Promote the union-typed invariant field to QuadExpr once, then accumulate in place.
+# The old `+=` copied the whole accumulated expression per call (O(N²) build). The `isa`
+# guards a one-time promotion of a 2-member concrete union (compile-time union split).
 function add_to_objective_invariant_expression!(
     container::OptimizationContainer,
     cost_expr::JuMP.GenericQuadExpr,
 )
-    container.objective_function.invariant_terms += cost_expr
+    obj = container.objective_function
+    invariant = obj.invariant_terms
+    if invariant isa JuMP.GenericAffExpr
+        promoted = JuMP.GenericQuadExpr{Float64, JuMP.VariableRef}()
+        JuMP.add_to_expression!(promoted, invariant)
+        obj.invariant_terms = promoted
+        invariant = promoted
+    end
+    JuMP.add_to_expression!(invariant, cost_expr)
     return
 end
 

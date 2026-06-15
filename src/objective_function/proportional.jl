@@ -20,12 +20,15 @@ function add_proportional_cost!(
     V <: AbstractDeviceFormulation,
 }
     multiplier = objective_function_multiplier(U, V)
+    # Scale by the timestep to match variable/VOM cost dt-scaling (else sub-hourly
+    # resolutions over-weight proportional costs).
+    dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
     for d in devices
         op_cost_data = get_operation_cost(d)
         cost_term = proportional_cost(op_cost_data, U, d, V)
         iszero(cost_term) && continue
         name = get_name(d)
-        rate = cost_term * multiplier
+        rate = cost_term * multiplier * dt
         skip = skip_proportional_cost(d)
         for t in get_time_steps(container)
             if skip
@@ -60,6 +63,8 @@ function add_proportional_cost_maybe_time_variant!(
     V <: AbstractDeviceFormulation,
 }
     multiplier = objective_function_multiplier(U, V)
+    # Same dt scaling as the time-invariant proportional path above.
+    dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
     for d in devices
         op_cost_data = get_operation_cost(d)
         name = get_name(d)
@@ -69,7 +74,7 @@ function add_proportional_cost_maybe_time_variant!(
         for t in get_time_steps(container)
             cost_term = proportional_cost(container, op_cost_data, U, d, V, t)
             iszero(cost_term) && continue
-            rate = cost_term * multiplier
+            rate = cost_term * multiplier * dt
 
             if skip
                 # Only add to expression, not objective

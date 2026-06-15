@@ -176,7 +176,15 @@ function is_nontrivial_offer(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve})
     xs = IS.get_x_coords(IS.get_function_data(IS.get_value_curve(curve)))
     return last(xs) > first(xs)
 end
-is_nontrivial_offer(::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve}) = false
+# A TS-backed offer side is the absent/placeholder side of a one-sided participant
+# (a load with no supply offer, or a generator with no demand offer) when it carries a
+# reserved empty time-series key name. Any non-empty key references a real forecast, so
+# it is a genuine offer. This mirrors the static `ZERO_OFFER_CURVE` placeholder check
+# above (which inspects the curve's x-range) for the time-series-backed case, where the
+# curve data lives in a forecast and cannot be inspected at build time.
+function is_nontrivial_offer(curve::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve})
+    return !isempty(IS.get_name(IS.get_time_series_key(curve)))
+end
 
 #################################################################################
 # Section 5: TimeSeriesValueCurve Objective Formulation (PSY-free)

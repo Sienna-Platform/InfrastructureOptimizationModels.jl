@@ -21,51 +21,52 @@ end
 function process_duals(container::OptimizationContainer, lp_optimizer)
     var_container = get_variables(container)
     for (k, v) in var_container
-        if isa(v, JuMP.Containers.SparseAxisArray)
-            container.primal_values_cache.variables_cache[k] = jump_value.(v)
-            for idx in eachindex(v)
-                container.primal_values_cache.variables_cache[k][idx] = jump_value(v[idx])
-            end
-        else
-            container.primal_values_cache.variables_cache[k] = jump_value.(v)
-        end
+        container.primal_values_cache.variables_cache[k] = jump_value.(v)
     end
 
     for (k, v) in get_expressions(container)
         container.primal_values_cache.expressions_cache[k] = jump_value.(v)
     end
     var_cache = container.primal_values_cache.variables_cache
-    cache = sizehint!(Dict{VariableKey, Dict}(), length(var_container))
+    cache = sizehint!(Dict{VariableKey, Dict{Symbol, Any}}(), length(var_container))
     for (key, variable) in get_variables(container)
-        is_integer_flag = false
-        is_binary_flag = false
         if isa(variable, JuMP.Containers.SparseAxisArray)
+            if any(
+                v -> v isa JuMP.VariableRef && (JuMP.is_binary(v) || JuMP.is_integer(v)),
+                values(variable.data),
+            )
+                @warn "Sparse variable container $(key) holds binary/integer variables " *
+                      "that process_duals does not relax; duals may be unavailable or stale." maxlog =
+                    1
+            end
             continue
-        else
-            if JuMP.is_binary(first(variable))
-                JuMP.unset_binary.(variable)
-                is_binary_flag = true
-            elseif JuMP.is_integer(first(variable))
-                JuMP.unset_integer.(variable)
-                is_integer_flag = true
-            else
-                continue
-            end
-            cache[key] = Dict{Symbol, Any}()
-            if JuMP.has_lower_bound(first(variable))
-                cache[key][:lb] = JuMP.lower_bound.(variable)
-            end
-            if JuMP.has_upper_bound(first(variable))
-                cache[key][:ub] = JuMP.upper_bound.(variable)
-            end
-            if JuMP.is_fixed(first(variable)) && is_integer_flag
-                cache[key][:fixed_int_value] = jump_value.(v)
-            end
-            cache[key][:integer] = is_integer_flag
-            JuMP.fix.(variable, var_cache[key]; force = true)
         end
+        if JuMP.is_binary(first(variable))
+            JuMP.unset_binary.(variable)
+            is_integer_flag = false
+        elseif JuMP.is_integer(first(variable))
+            JuMP.unset_integer.(variable)
+            is_integer_flag = true
+        else
+            continue
+        end
+        # Bounds and fixed status are per element: bounds come from per-device hooks,
+        # so a container can mix bounded and unbounded variables. Cache before fix!
+        # (force = true deletes bounds).
+        cache[key] = Dict{Symbol, Any}(
+            :integer => is_integer_flag,
+            :lb => _lower_bound_or_nothing.(variable),
+            :ub => _upper_bound_or_nothing.(variable),
+            :fixed => JuMP.is_fixed.(variable),
+        )
+        JuMP.fix.(variable, var_cache[key]; force = true)
     end
-    @assert !isempty(cache)
+    if isempty(cache)
+        error(
+            "process_duals found no dense binary/integer variable containers to relax; " *
+            "cannot compute duals for this MILP.",
+        )
+    end
     jump_model = get_jump_model(container)
 
     if JuMP.mode(jump_model) != JuMP.DIRECT
@@ -93,33 +94,28 @@ function process_duals(container::OptimizationContainer, lp_optimizer)
     end
 
     for (key, variable) in get_variables(container)
-        if !haskey(cache, key)
-            continue
-        end
-        if isa(variable, JuMP.Containers.SparseAxisArray)
-            continue
+        entry = get(cache, key, nothing)
+        entry === nothing && continue
+        JuMP.unfix.(variable)
+        _restore_lower_bound!.(variable, entry[:lb])
+        _restore_upper_bound!.(variable, entry[:ub])
+        if entry[:integer]
+            JuMP.set_integer.(variable)
         else
-            JuMP.unfix.(variable)
             JuMP.set_binary.(variable)
-            if haskey(cache[key], :fixed_int_value)
-                JuMP.fix.(variable, cache[key][:fixed_int_value])
-            end
-            #= Needed if a model has integer variables
-            if haskey(cache[key], :lb) && JuMP.has_lower_bound(first(variable))
-                JuMP.set_lower_bound.(variable, cache[key][:lb])
-            end
-
-            if haskey(cache[key], :ub) && JuMP.has_upper_bound(first(variable))
-                JuMP.set_upper_bound.(variable, cache[key][:ub])
-            end
-
-            if cache[key][:integer]
-                JuMP.set_integer.(variable)
-            else
-                JuMP.set_binary.(variable)
-            end
-            =#
         end
+        _refix!.(variable, entry[:fixed], var_cache[key])
     end
     return RunStatus.SUCCESSFULLY_FINALIZED
 end
+
+_lower_bound_or_nothing(v::JuMP.VariableRef) =
+    JuMP.has_lower_bound(v) ? JuMP.lower_bound(v) : nothing
+_upper_bound_or_nothing(v::JuMP.VariableRef) =
+    JuMP.has_upper_bound(v) ? JuMP.upper_bound(v) : nothing
+_restore_lower_bound!(::JuMP.VariableRef, ::Nothing) = nothing
+_restore_lower_bound!(v::JuMP.VariableRef, lb::Float64) = JuMP.set_lower_bound(v, lb)
+_restore_upper_bound!(::JuMP.VariableRef, ::Nothing) = nothing
+_restore_upper_bound!(v::JuMP.VariableRef, ub::Float64) = JuMP.set_upper_bound(v, ub)
+_refix!(v::JuMP.VariableRef, was_fixed::Bool, val::Float64) =
+    was_fixed ? JuMP.fix(v, val; force = true) : nothing

@@ -183,6 +183,14 @@ function add_linear_ramp_constraints!(
     return _add_linear_ramp_constraints_impl!(container, T, U, devices, model)
 end
 
+# Initial on/off status (1.0 = on) relaxing the t = 1 ramp big-M, mirroring the t ≥ 2
+# `2 - yprev - ycur` gating. Non-recurrent builds have an exact Float64 power IC; recurrent
+# builds have a parameter VariableRef of unknown build-time value, so treat the prior status
+# as off — this fully relaxes t = 1 (never makes a start-up infeasible) and the per-step IC
+# update enforces the ramp on re-solve.
+_initial_on_status(ic_power::Float64) = ic_power > ABSOLUTE_TOLERANCE ? 1.0 : 0.0
+_initial_on_status(::JuMP.VariableRef) = 0.0
+
 # TODO thermal-specific: move to POM?
 abstract type AbstractThermalDispatchFormulation <: AbstractThermalFormulation end
 abstract type AbstractThermalUnitCommitment <: AbstractThermalFormulation end
@@ -229,7 +237,10 @@ function add_linear_ramp_constraints!(
         ic_power = ic_power_by_name[name]
         ycur = on_status[name, 1]
         slack = _get_ramp_slack_vars(container, model, name, 1)
-        big_m = power_limits.max * (1 - ycur)
+        # Gate by the initial status as the "previous" status; the old `1 - ycur` gave
+        # big_m = 0 for a unit started at t = 1 from off, infeasible when `Pmin > r_up·dt`.
+        y_init = _initial_on_status(ic_power)
+        big_m = power_limits.max * (2 - y_init - ycur)
         startstop = (up = big_m, down = big_m)
         cur = (up = variable[name, 1], down = variable[name, 1])
         add_ramp_constraint_startstop_pair!(

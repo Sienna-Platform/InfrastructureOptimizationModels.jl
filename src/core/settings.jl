@@ -17,7 +17,7 @@ struct Settings
     export_pwl_vars::Bool
     allow_fails::Bool
     rebuild_model::Bool
-    export_optimization_model::Bool
+    export_optimization_model::OptimizationModelExportFormat
     store_variable_names::Bool
     check_numerical_bounds::Bool
     ext::Dict{String, Any}
@@ -30,6 +30,32 @@ function _wrap_optimizer(opt)
     throw(
         ArgumentError(
             "optimizer must be nothing, a DataType, or MOI.OptimizerWithAttributes; got $(typeof(opt))",
+        ),
+    )
+end
+
+_validate_export_optimization_model(value::OptimizationModelExportFormat) = value
+
+function _validate_export_optimization_model(value::AbstractString)
+    name = uppercase(strip(value))
+    isempty(name) && return OptimizationModelExportFormat.NONE
+    for fmt in instances(OptimizationModelExportFormat)
+        string(fmt) == name && return fmt
+    end
+    throw(
+        IS.ConflictingInputsError(
+            "export_optimization_model must be one of " *
+            join(string.(instances(OptimizationModelExportFormat)), ", ") *
+            "; got \"$(value)\".",
+        ),
+    )
+end
+
+function _validate_export_optimization_model(value)
+    throw(
+        IS.ConflictingInputsError(
+            "export_optimization_model must be an OptimizationModelExportFormat or a " *
+            "matching string. The boolean form is no longer accepted.",
         ),
     )
 end
@@ -55,7 +81,7 @@ function Settings(
     allow_fails::Bool = false,
     check_numerical_bounds = true,
     rebuild_model = false,
-    export_optimization_model = false,
+    export_optimization_model = OptimizationModelExportFormat.NONE,
     store_variable_names = false,
     ext = Dict{String, Any}(),
 )
@@ -65,6 +91,8 @@ function Settings(
     end
 
     optimizer_ = _wrap_optimizer(optimizer)
+    export_optimization_model_ =
+        _validate_export_optimization_model(export_optimization_model)
 
     return Settings(
         Ref(IS.time_period_conversion(horizon)),
@@ -85,7 +113,7 @@ function Settings(
         export_pwl_vars,
         allow_fails,
         rebuild_model,
-        export_optimization_model,
+        export_optimization_model_,
         store_variable_names,
         check_numerical_bounds,
         ext,

@@ -9,18 +9,21 @@ mutable struct ModelInternal{T <: AbstractOptimizationContainer}
     executions::Int
     execution_count::Int
     output_dir::Union{Nothing, String}
-    time_series_cache::Dict{TimeSeriesCacheKey, <:TimeSeriesCache}
+    # Concrete value type (not `<:TimeSeriesCache`, a UnionAll field) — matches what
+    # the constructor builds; reads happen per parameter per solve step.
+    time_series_cache::Dict{TimeSeriesCacheKey, TimeSeriesCache}
     recorders::Vector{Symbol}
     console_level::Base.CoreLogging.LogLevel
     file_level::Base.CoreLogging.LogLevel
-    store_params::Union{Nothing, AbstractModelStoreParams}
+    # ModelStoreParams is the only concrete subtype; feeds get_interval per solve.
+    store_params::Union{Nothing, ModelStoreParams}
     ext::Dict{String, Any}
 end
 
 function ModelInternal(
     container::T;
     ext = Dict{String, Any}(),
-    recorders = [],
+    recorders = Symbol[],
 ) where {T <: AbstractOptimizationContainer}
     return ModelInternal{T}(
         container,
@@ -58,8 +61,6 @@ get_output_dir(internal::ModelInternal) = internal.output_dir
 get_time_series_cache(internal::ModelInternal) = internal.time_series_cache
 
 set_container!(internal::ModelInternal, val) = internal.container = val
-set_store_params!(internal::ModelInternal, store_params) =
-    internal.store_params = store_params
 set_console_level!(internal::ModelInternal, val) = internal.console_level = val
 set_file_level!(internal::ModelInternal, val) = internal.file_level = val
 
@@ -80,8 +81,10 @@ function set_status!(internal::ModelInternal, status::ModelBuildStatus)
 end
 
 set_output_dir!(internal::ModelInternal, path::AbstractString) = internal.output_dir = path
-set_store_params!(internal::ModelInternal, store_params::AbstractModelStoreParams) =
+function set_store_params!(internal::ModelInternal, store_params::ModelStoreParams)
     internal.store_params = store_params
+    return
+end
 
 function configure_logging(internal::ModelInternal, file_name, file_mode)
     return configure_logging(;

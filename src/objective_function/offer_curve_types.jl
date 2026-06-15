@@ -34,8 +34,10 @@ struct DecrementalPiecewiseLinearSlopeParameter <: AbstractPiecewiseLinearSlopeP
 # Parameter types: piecewise linear breakpoints
 #################################################################################
 
+# ObjectiveFunctionParameter (not TimeSeriesParameter) so storage is Float64, matching the
+# slope twin and every reader; under TimeSeriesParameter recurrent builds stored VariableRefs.
 "Parameters to define the breakpoints of a piecewise linear function"
-abstract type AbstractPiecewiseLinearBreakpointParameter <: TimeSeriesParameter end
+abstract type AbstractPiecewiseLinearBreakpointParameter <: ObjectiveFunctionParameter end
 
 "[`AbstractPiecewiseLinearBreakpointParameter`](@ref) for the incremental case (power source)"
 struct IncrementalPiecewiseLinearBreakpointParameter <:

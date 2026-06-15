@@ -89,7 +89,7 @@ end
 Construct OptimizerStats from a vector that was serialized.
 """
 function OptimizerStats(data::Vector{Float64})
-    vals = Vector(undef, length(data))
+    vals = Vector{Union{Float64, Missing}}(undef, length(data))
     to_missing = Set((
         :objective_bound,
         :dual_objective_value,
@@ -127,7 +127,7 @@ function to_dataframe(stats::OptimizerStats)
 end
 
 function to_dict(stats::OptimizerStats)
-    data = Dict()
+    data = Dict{String, Any}()
     for field in fieldnames(typeof(stats))
         data[String(field)] = getproperty(stats, field)
     end

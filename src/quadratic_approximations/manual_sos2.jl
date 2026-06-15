@@ -22,25 +22,24 @@ an LP-relaxation tightener (adds piecewise-McCormick cuts on the concave
 relaxation surface); it does **not** change the MIP-optimal worst-case error,
 only the LP relaxation given to branch-and-bound.
 
-**Constraint:** `pwmcc_segments ≤ depth`. The PWMCC chord cuts treat `q` as if
-`q = x²`, but with SoS2 PWL `q` is the coarse-PWL-chord-of-x² which over-estimates
-x². When PWMCC sub-segments are finer than PWL segments, the PWMCC chord (on a
-fine sub-segment) is smaller than the PWL chord (on the wider segment), and the
-cut chops off MIP-feasible solutions — the model goes infeasible. The constructor
-enforces this. See `tolerance_depth(::Type{ManualSOS2QuadConfig}; …)` to derive
-`depth` from a target tolerance.
+**Constraint:** `pwmcc_segments` must evenly divide `depth` (enforced by the constructor).
+The PWMCC chord upper bound is valid for the PWL value `q` only when every PWMCC boundary
+coincides with a PWL breakpoint, which on a uniform grid holds iff `pwmcc_segments` divides
+`depth`; otherwise a chord straddling a breakpoint cuts off MIP-feasible solutions (e.g.
+`depth=3, pwmcc_segments=2` makes `v ∈ (4/9, 5/9)` infeasible). See
+`tolerance_depth(::Type{ManualSOS2QuadConfig}; …)` to derive `depth` from a target tolerance.
 """
 struct ManualSOS2QuadConfig <: QuadraticApproxConfig
     depth::Int
     pwmcc_segments::Int
 
     function ManualSOS2QuadConfig(; depth::Int, pwmcc_segments::Int = 0)
-        if pwmcc_segments > depth
+        if pwmcc_segments != 0 && depth % pwmcc_segments != 0
             throw(
                 ArgumentError(
-                    "ManualSOS2QuadConfig requires pwmcc_segments ≤ depth " *
-                    "(got pwmcc_segments=$(pwmcc_segments), depth=$(depth)); " *
-                    "finer PWMCC sub-segments chop off MIP-feasible PWL solutions.",
+                    "ManualSOS2QuadConfig requires pwmcc_segments to evenly divide depth " *
+                    "so PWMCC boundaries coincide with PWL breakpoints " *
+                    "(got pwmcc_segments=$(pwmcc_segments), depth=$(depth)).",
                 ),
             )
         end
@@ -79,7 +78,7 @@ and stores affine expressions approximating x² in a `QuadraticExpression`
 expression container.
 
 # Arguments
-- `config::ManualSOS2QuadConfig`: configuration with `depth` (number of PWL segments) and `pwmcc_segments` (PWMCC cut partitions; 0 to disable, default 4)
+- `config::ManualSOS2QuadConfig`: configuration with `depth` (number of PWL segments) and `pwmcc_segments` (PWMCC cut partitions; 0 to disable, default 0)
 - `container::OptimizationContainer`: the optimization container
 - `::Type{C}`: component type
 - `names::Vector{String}`: component names
@@ -249,7 +248,7 @@ function _add_quadratic_approx!(
         adj_cons[name, 1, t] = JuMP.@constraint(jump_model, lambda[1] <= z_vars[1])
         # λ_i ≤ z_{i-1} + z_i for i = 2..n-1
         for i in 2:(n_points - 1)
-            adj_cons[name, i + 1, t] =
+            adj_cons[name, i, t] =
                 JuMP.@constraint(jump_model, lambda[i] <= z_vars[i - 1] + z_vars[i])
         end
         # λ_n ≤ z_{n-1}

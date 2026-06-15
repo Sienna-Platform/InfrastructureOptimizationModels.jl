@@ -13,10 +13,10 @@ function _check_service_formulation(::Type{D}) where {D}
 end
 
 """
-Establishes the model for a particular services specified by type. Uses the keyword argument
-`use_service_name` to assign the model to a service with the same name as the name in the
-template. Uses the keyword argument feedforward to enable passing values between operation
-model at simulation time
+Establishes the model for a particular service specified by type. The optional
+`service_name` positional argument assigns the model to a service with that name in the
+template. Uses the keyword argument `feedforwards` to enable passing values between
+operation models at simulation time.
 
 # Arguments
 
@@ -25,15 +25,15 @@ model at simulation time
 
 # Accepted Key Words
 
-  - `feedforward::Array{<:AbstractAffectFeedforward}` : use to pass parameters between models
-  - `use_service_name::Bool` : use the name as the name for the service
+  - `feedforwards::Vector{<:AbstractAffectFeedforward}` : use to pass parameters between models
 
 # Example
 
 reserves = ServiceModel(PSY.VariableReserve{PSY.ReserveUp}, RangeReserve)
 """
 mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
-    feedforwards::Vector{<:AbstractAffectFeedforward}
+    # Heterogeneous by design: concrete Vector of the abstract type, not a UnionAll field.
+    feedforwards::Vector{AbstractAffectFeedforward}
     service_name::String
     use_slacks::Bool
     duals::Vector{DataType}
@@ -66,7 +66,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
         _check_service_formulation(D)
         _check_service_formulation(B)
         new{D, B}(
-            feedforwards,
+            convert(Vector{AbstractAffectFeedforward}, feedforwards),
             service_name,
             use_slacks,
             duals,

@@ -118,6 +118,7 @@ function _add_quadratic_approx!(
         SawtoothLPConstraint,
         C,
         names,
+        1:(config.depth),
         1:2,
         time_steps;
         meta,
@@ -187,9 +188,9 @@ function _add_quadratic_approx!(
             g_curr = g_var[name, j, t]
 
             # g_j ≤ 2 g_{j-1}
-            lp_cons[name, 1, t] = JuMP.@constraint(jump_model, g_curr <= 2.0 * g_prev)
+            lp_cons[name, j, 1, t] = JuMP.@constraint(jump_model, g_curr <= 2.0 * g_prev)
             # g_j ≤ 2(1 - g_{j-1})
-            lp_cons[name, 2, t] =
+            lp_cons[name, j, 2, t] =
                 JuMP.@constraint(jump_model, g_curr <= 2.0 * (1.0 - g_prev))
         end
 

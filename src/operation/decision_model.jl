@@ -107,7 +107,7 @@ function DecisionModel{M}(
     direct_mode_optimizer = false,
     store_variable_names = false,
     rebuild_model = false,
-    export_optimization_model = false,
+    export_optimization_model = OptimizationModelExportFormat.NONE,
     check_numerical_bounds = true,
     initial_time = UNSET_INI_TIME,
     time_series_cache_size::Int = IS.TIME_SERIES_CACHE_SIZE_BYTES,

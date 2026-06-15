@@ -142,16 +142,15 @@ function solve_model!(model::AbstractOptimizationModel)
     ts = get_current_timestamp(model)
     output_dir = get_output_dir(model)
 
-    if get_export_optimization_model(get_settings(model))
+    fmt = get_export_optimization_model(get_settings(model))
+    if fmt != OptimizationModelExportFormat.NONE
         model_output_dir = joinpath(output_dir, "optimization_model_exports")
         mkpath(model_output_dir)
         tss = replace("$(ts)", ":" => "_")
-        model_export_path = joinpath(model_output_dir, "exported_$(model_name)_$(tss).json")
-        serialize_optimization_model(container, model_export_path)
-        write_lp_file(
-            get_jump_model(container),
-            replace(model_export_path, ".json" => ".lp"),
-        )
+        ext = fmt == OptimizationModelExportFormat.LP ? "lp" : "json"
+        model_export_path =
+            joinpath(model_output_dir, "exported_$(model_name)_$(tss).$(ext)")
+        serialize_optimization_model(model, model_export_path, fmt)
     end
 
     status = execute_optimizer!(container, get_system(model))
@@ -187,7 +186,10 @@ end
 set_initial_time!(model::AbstractOptimizationModel, val::Dates.DateTime) =
     set_initial_time!(get_settings(model), val)
 
-get_simulation_info(model::AbstractOptimizationModel, val) = model.simulation_info = val
+function set_simulation_info!(model::AbstractOptimizationModel, val)
+    model.simulation_info = val
+    return
+end
 
 function set_status!(model::AbstractOptimizationModel, status::ModelBuildStatus)
     set_status!(get_internal(model), status)
@@ -209,8 +211,8 @@ function _check_numerical_bounds(model::AbstractOptimizationModel)
     variable_bounds = get_variable_numerical_bounds(model)
     if variable_bounds.bounds.max - variable_bounds.bounds.min > 1e9
         @warn "Variable bounds range is $(variable_bounds.bounds.max - variable_bounds.bounds.min) and can result in numerical problems for the solver. \\
-        max_bound_variable = $(encode_key_as_string(variable_bounds.bounds.max_index)) \\
-        min_bound_variable = $(encode_key_as_string(variable_bounds.bounds.min_index)) \\
+        max_bound_variable = $(_bound_index_string(variable_bounds.bounds.max_index)) \\
+        min_bound_variable = $(_bound_index_string(variable_bounds.bounds.min_index)) \\
         Run get_detailed_variable_numerical_bounds on the model for a deeper analysis"
     else
         @info "Variable bounds range is [$(variable_bounds.bounds.min) $(variable_bounds.bounds.max)]"
@@ -219,8 +221,8 @@ function _check_numerical_bounds(model::AbstractOptimizationModel)
     constraint_bounds = get_constraint_numerical_bounds(model)
     if constraint_bounds.coefficient.max - constraint_bounds.coefficient.min > 1e9
         @warn "Constraint coefficient bounds range is $(constraint_bounds.coefficient.max - constraint_bounds.coefficient.min) and can result in numerical problems for the solver. \\
-        max_bound_constraint = $(encode_key_as_string(constraint_bounds.coefficient.max_index)) \\
-        min_bound_constraint = $(encode_key_as_string(constraint_bounds.coefficient.min_index)) \\
+        max_bound_constraint = $(_bound_index_string(constraint_bounds.coefficient.max_index)) \\
+        min_bound_constraint = $(_bound_index_string(constraint_bounds.coefficient.min_index)) \\
         Run get_detailed_constraint_numerical_bounds on the model for a deeper analysis"
     else
         @info "Constraint coefficient bounds range is [$(constraint_bounds.coefficient.min) $(constraint_bounds.coefficient.max)]"
@@ -228,8 +230,8 @@ function _check_numerical_bounds(model::AbstractOptimizationModel)
 
     if constraint_bounds.rhs.max - constraint_bounds.rhs.min > 1e9
         @warn "Constraint right-hand-side bounds range is $(constraint_bounds.rhs.max - constraint_bounds.rhs.min) and can result in numerical problems for the solver. \\
-        max_bound_constraint = $(encode_key_as_string(constraint_bounds.rhs.max_index)) \\
-        min_bound_constraint = $(encode_key_as_string(constraint_bounds.rhs.min_index)) \\
+        max_bound_constraint = $(_bound_index_string(constraint_bounds.rhs.max_index)) \\
+        min_bound_constraint = $(_bound_index_string(constraint_bounds.rhs.min_index)) \\
         Run get_detailed_constraint_numerical_bounds on the model for a deeper analysis"
     else
         @info "Constraint right-hand-side bounds [$(constraint_bounds.rhs.min) $(constraint_bounds.rhs.max)]"
@@ -358,5 +360,25 @@ function serialize_optimization_model(model::AbstractOptimizationModel, save_pat
         get_jump_model(get_optimization_container(model)),
         save_path,
     )
+    return
+end
+
+wait_for_serialization!(model::AbstractOptimizationModel) =
+    wait_for_serialization!(get_optimization_container(model))
+
+function serialize_optimization_model(
+    model::AbstractOptimizationModel,
+    save_path::String,
+    fmt::OptimizationModelExportFormat,
+)
+    container = get_optimization_container(model)
+    dest = _copy_jump_model_for_export(get_jump_model(container), fmt)
+    if Threads.nthreads() > 1
+        wait_for_serialization!(container)
+        task = Threads.@spawn _write_export_model(dest, save_path)
+        set_serialization_task!(container, task)
+    else
+        _write_export_model(dest, save_path)
+    end
     return
 end
