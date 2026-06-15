@@ -128,6 +128,7 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_quadratic_curve.jl"))
                     include(joinpath(TEST_DIR, "test_start_up_shut_down.jl"))
                     include(joinpath(TEST_DIR, "test_ts_value_curve_objective.jl"))
+                    include(joinpath(TEST_DIR, "test_tranche_axis_helpers.jl"))
 
                     # --- common_models/, utils/, initial_conditions/ ---
                     # TODO tests?
