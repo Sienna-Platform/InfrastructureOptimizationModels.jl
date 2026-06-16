@@ -30,6 +30,7 @@ UnoSolver = "1baa60ac-02f7-4b39-a7a8-2f4f58486b05"
 
 [sources]
 InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "IS4"}
+InfrastructureOptimizationModels = {path = ".."}
 
 [compat]
 HiGHS = "1"

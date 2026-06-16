@@ -379,7 +379,7 @@ first (component) or the last (time).
 lookup_additional_axes(parameter_array) = axes(parameter_array)[2:(end - 1)]
 
 # Maximum number of tranches (segments) across a piecewise time series.
-get_max_tranches(data::Vector{IS.PiecewiseStepData}) = maximum(length.(data))
+get_max_tranches(data::Vector{IS.PiecewiseStepData}) = maximum(length, data)
 get_max_tranches(data::TS.TimeArray) = get_max_tranches(TS.values(data))
 get_max_tranches(data::AbstractDict) = maximum(get_max_tranches.(values(data)))
 
@@ -399,7 +399,7 @@ unwrap_for_param(::ParameterType, ts_elem, expected_axs) = ts_elem
 function unwrap_for_param(
     ::AbstractPiecewiseLinearSlopeParameter,
     ts_elem::IS.PiecewiseStepData,
-    expected_axs,
+    expected_axs::Tuple{AbstractVector},
 )
     max_len = length(only(expected_axs))
     y_coords = IS.get_y_coords(ts_elem)
@@ -408,13 +408,16 @@ function unwrap_for_param(
         "($max_len) for slope parameter",
     )
     fill_value = 0.0  # pad with slope = 0 if necessary (see above)
-    return vcat(y_coords, fill(fill_value, max_len - length(y_coords)))
+    out = Vector{Float64}(undef, max_len)
+    copyto!(out, y_coords)
+    fill!(view(out, (length(y_coords) + 1):max_len), fill_value)
+    return out
 end
 
 function unwrap_for_param(
     ::AbstractPiecewiseLinearBreakpointParameter,
     ts_elem::IS.PiecewiseStepData,
-    expected_axs,
+    expected_axs::Tuple{AbstractVector},
 )
     max_len = length(only(expected_axs))
     x_coords = IS.get_x_coords(ts_elem)
@@ -423,5 +426,8 @@ function unwrap_for_param(
         "($max_len) for breakpoint parameter",
     )
     fill_value = x_coords[end]  # repeat the last breakpoint so dx = 0 (see above)
-    return vcat(x_coords, fill(fill_value, max_len - length(x_coords)))
+    out = Vector{Float64}(undef, max_len)
+    copyto!(out, x_coords)
+    fill!(view(out, (length(x_coords) + 1):max_len), fill_value)
+    return out
 end
