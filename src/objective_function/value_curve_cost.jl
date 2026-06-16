@@ -202,11 +202,12 @@ function _get_raw_pwl_data(
     ::Type{T},
     name::String,
     cost_data::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve},
-    time::Int,
+    time::Int;
+    meta = CONTAINER_KEY_EMPTY_META,
 ) where {T <: IS.InfrastructureSystemsComponent}
     SlopeParam = _slope_param(dir)
-    slope_arr = get_parameter_array(container, SlopeParam, T)
-    slope_mult = get_parameter_multiplier_array(container, SlopeParam, T)
+    slope_arr = get_parameter_array(container, SlopeParam, T, meta)
+    slope_mult = get_parameter_multiplier_array(container, SlopeParam, T, meta)
     @assert size(slope_arr) == size(slope_mult)
     seg_axis = axes(slope_arr)[2]
     slope_cost_component = Vector{Float64}(undef, length(seg_axis))
@@ -215,8 +216,8 @@ function _get_raw_pwl_data(
     end
 
     BreakpointParam = _breakpoint_param(dir)
-    bp_arr = get_parameter_array(container, BreakpointParam, T)
-    bp_mult = get_parameter_multiplier_array(container, BreakpointParam, T)
+    bp_arr = get_parameter_array(container, BreakpointParam, T, meta)
+    bp_mult = get_parameter_multiplier_array(container, BreakpointParam, T, meta)
     @assert size(bp_arr) == size(bp_mult)
     point_axis = axes(bp_arr)[2]
     breakpoint_cost_component = Vector{Float64}(undef, length(point_axis))
