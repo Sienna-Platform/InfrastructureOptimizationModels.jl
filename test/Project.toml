@@ -29,8 +29,8 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 UnoSolver = "1baa60ac-02f7-4b39-a7a8-2f4f58486b05"
 
 [sources]
+InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "IS4"}
 InfrastructureOptimizationModels = {path = ".."}
-InfrastructureSystems = {path = "../../InfrastructureSystems.jl"}
 
 [compat]
 HiGHS = "1"

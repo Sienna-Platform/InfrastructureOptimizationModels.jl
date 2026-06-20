@@ -39,7 +39,8 @@ end
         @test PSI.get_export_pwl_vars(settings) == false
         @test PSI.get_allow_fails(settings) == false
         @test PSI.get_rebuild_model(settings) == false
-        @test PSI.get_export_optimization_model(settings) == false
+        @test PSI.get_export_optimization_model(settings) ==
+              PSI.OptimizationModelExportFormat.NONE
         @test PSI.get_store_variable_names(settings) == false
         @test PSI.get_check_numerical_bounds(settings) == true
         @test PSI.get_ext(settings) isa Dict{String, Any}
