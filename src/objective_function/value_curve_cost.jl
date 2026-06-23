@@ -391,6 +391,17 @@ get_max_tranches(data::AbstractDict) = maximum(get_max_tranches.(values(data)))
 # parameters.
 unwrap_for_param(::ParameterType, ts_elem, expected_axs) = ts_elem
 
+# Scalar-linear cost time series (shut-down / no-load and other scalar cost fields
+# of a time-series offer cost, incremental or decremental): the resolved per-hour
+# element is an `IS.LinearFunctionData` whose proportional term carries the scalar
+# cost. This mirrors the static path's `_shutdown_cost_value(::IS.LinearCurve)`
+# extraction. Return the scalar so the parameter container is filled with a
+# `Float64` (its `size` is `()`, matching the empty additional-axes of a scalar
+# parameter). Without this method the element falls through the identity above and
+# `_size_wrapper` then calls `size(::LinearFunctionData)`, which has no method.
+unwrap_for_param(::ParameterType, ts_elem::IS.LinearFunctionData, expected_axs) =
+    IS.get_proportional_term(ts_elem)
+
 # For piecewise data the number of tranches can vary over time, so the parameter
 # container is sized for the maximum number of tranches and shorter curves are
 # padded. We pad with "degenerate" tranches at the top end of the curve with
