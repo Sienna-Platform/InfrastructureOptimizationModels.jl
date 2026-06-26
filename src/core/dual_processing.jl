@@ -1,3 +1,11 @@
+# Round cached integer/binary values to the nearest integer before re-fixing.
+# MIP solver tolerances leave values like 0.9999997 instead of 1.0; fixing an
+# integer variable to such a value makes the relaxed problem infeasible.
+function _round_cache_values!(cache::DenseAxisArray)
+    cache.data .= round.(cache.data)
+    return
+end
+
 # DenseAxisArray duals broadcast over the backing array. Post-contingency
 # duals are SparseAxisArray (Dict-backed), where `.data .= …` is undefined, so
 # copy per key instead.
@@ -59,6 +67,7 @@ function process_duals(container::OptimizationContainer, lp_optimizer)
             :ub => _upper_bound_or_nothing.(variable),
             :fixed => JuMP.is_fixed.(variable),
         )
+        _round_cache_values!(var_cache[key])
         JuMP.fix.(variable, var_cache[key]; force = true)
     end
     if isempty(cache)
