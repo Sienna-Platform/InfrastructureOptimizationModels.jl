@@ -537,6 +537,20 @@ function sparse_container_spec(::Type{T}, axs::Vararg{Any, N}) where {T <: Numbe
     return SparseAxisArray(contents)
 end
 
+"""
+Sparse container holding a fresh `zero(T)` for each index tuple in `index_keys`.
+Use when the populated keys are genuinely irregular — not a full cartesian product
+of axes (e.g. per-outage monitored-component sets). Each entry gets its own
+`zero(T)` so mutating one does not alias the others.
+"""
+function sparse_container_spec(
+    ::Type{T},
+    index_keys::AbstractVector{<:Tuple},
+) where {T <: JuMP.GenericAffExpr}
+    contents = Dict{eltype(index_keys), T}(k => zero(T) for k in index_keys)
+    return SparseAxisArray(contents)
+end
+
 function remove_undef!(expression_array::AbstractArray)
     # iteration is deliberately unsupported for CartesianIndex
     # Makes this code a bit hacky to be able to use isassigned with an array of arbitrary size.
