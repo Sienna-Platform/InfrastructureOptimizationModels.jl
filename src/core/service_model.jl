@@ -44,6 +44,10 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
         Vector{<:IS.InfrastructureSystemsComponent},
     }
     subsystem::Union{Nothing, String}
+    # Keyed by outage UUID; mirrors `DeviceModel.outages`. Populated by template
+    # validation (`_build_service_model_outages!`) for security-constrained
+    # reserve formulations, not at construction.
+    outages::Dict{Base.UUID, Dict{DataType, Set{String}}}
     function ServiceModel(
         ::Type{D},
         ::Type{B},
@@ -74,6 +78,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
             attributes_for_model,
             contributing_devices_map,
             nothing,
+            Dict{Base.UUID, Dict{DataType, Set{String}}}(),
         )
     end
 end
@@ -97,6 +102,7 @@ get_contributing_devices_map(m::ServiceModel, key) =
 get_contributing_devices(m::ServiceModel) =
     [z for x in values(m.contributing_devices_map) for z in x]
 get_subsystem(m::ServiceModel) = m.subsystem
+get_outages(m::ServiceModel) = m.outages
 
 set_subsystem!(m::ServiceModel, id::String) = m.subsystem = id
 
