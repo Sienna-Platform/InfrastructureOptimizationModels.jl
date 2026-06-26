@@ -290,6 +290,33 @@ function to_outputs_dataframe(
     )
 end
 
+# Time-only (1-D) variables — e.g. `ReserveRequirementSlack` — are indexed by the
+# time axis alone. The name column is a constant placeholder so the frame layout
+# matches the name-indexed variants.
+function to_outputs_dataframe(
+    array::DenseAxisArray{Float64, 1, <:Tuple{IntegerAxis}},
+    timestamps,
+    ::Val{TableFormat.LONG},
+)
+    return DataFrames.DataFrame(
+        :DateTime => _collect_timestamps(timestamps),
+        :name => fill("Result", length(array)),
+        :value => array.data,
+    )
+end
+
+function to_outputs_dataframe(
+    array::DenseAxisArray{Float64, 1, <:Tuple{IntegerAxis}},
+    ::Nothing,
+    ::Val{TableFormat.LONG},
+)
+    return DataFrames.DataFrame(
+        :time_index => collect(axes(array, 1)),
+        :name => fill("Result", length(array)),
+        :value => array.data,
+    )
+end
+
 function to_outputs_dataframe(
     array::DenseAxisArray{Float64, 2, <:Tuple{Vector{String}, IntegerAxis}},
     timestamps,
