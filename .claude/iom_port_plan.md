@@ -87,3 +87,48 @@ For reviewer confidence; these PSI changes are confirmed present in IOM:
 1. **#1585** — coordinate with the in-flight `dual_processing.jl` rework, then land the rounding fix.
 2. **DLR IOM portion** — only after confirming DLR's param-type home is IOM (else it's all POM).
 3. **#1539 residuals** — optional; do only if a failure implicates the 1-D/3D `write_result!` paths.
+
+---
+
+## Execution log (2026-06-26, verified against local PSI clone)
+
+### 1. PR #1585 — **PORTED** (branch `ac/port-psi-1585-dual-mip-rounding`)
+Did NOT blind-port PSI's `VarRestoreInfo` struct refactor. IOM's `dual_processing.jl` has
+intentionally diverged and is *ahead* of PSI: it adds the `axes(dual) == axes(constraint)`
+assertion in `_copy_dual_values!`, a sparse binary/integer relaxation warning, a detailed
+`error` instead of `@assert !isempty(cache)`, and re-fixes fixed *binary* vars (not just
+integer) via `_refix!`. Porting the struct would have undone those.
+
+The actual bug #1585 fixes is **MIP-tolerance rounding** (a solver returns `0.9999997`
+instead of `1.0`; fixing an integer var to that makes the relaxation infeasible). Landed the
+functional fix only:
+- Added `_round_cache_values!(cache::DenseAxisArray)` — only the dense method, because IOM
+  `continue`s past `SparseAxisArray` containers before any fixing, so a sparse method would
+  be dead code.
+- Call it on `var_cache[key]` immediately before `JuMP.fix.(...)`. IOM's restore path already
+  reuses `var_cache[key]` through `_refix!`, so rounding once also covers the integer-restore
+  path PSI patched separately.
+- Added a regression test (`_round_cache_values! snaps MIP-tolerance values to integers`).
+
+Full suite green: 1330/1330 unit + 10/10 Aqua.
+
+### 2. DLR IOM portion — **NO IOM WORK** (home confirmed = POM)
+The DLR time-series rating parameter types live entirely in POM, not IOM:
+`AbstractBranchRatingTimeSeriesParameter`, `BranchRatingTimeSeriesParameter`,
+`PostContingencyBranchRatingTimeSeriesParameter` are defined in POM
+`src/core/parameters.jl` and exported from `PowerOperationsModels.jl` (≈ lines 918–919).
+They are referenced only by POM branch/network formulations
+(`template_validation.jl`, `instantiate_network_model.jl`, `add_parameters.jl`, the AC-branch
+device models) and build on IOM's existing generic `TimeSeriesParameter` + `add_param_container!`
+machinery. IOM's `core/time_series_parameter_types.jl` deliberately keeps only the small
+domain-agnostic set (`ActivePower*`, `ReactivePower*`, `Requirement*`). So the "confirm the
+intended home" question resolves to POM — nothing to add in IOM.
+
+### 3. PR #1539 residuals — **NO ACTION** (stale symbol refs; core already present)
+The residuals cite `write_result!` in `src/operation/decision_model_store.jl`, but that symbol
+does not exist in IOM under that name — IOM restructured the store layer to `write_output!`
+(the plan itself notes the param-update path was restructured). The genuine #1539
+generalizations are present and verified: `expand_ixs`, `assign_maybe_broadcast!`,
+`fix_maybe_broadcast!` in `src/utils/indexing.jl`. Per the plan these residuals are
+"low-value unless a concrete failure points at them"; no current failure implicates the
+1-D/3D paths, so left as-is.
