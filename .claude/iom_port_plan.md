@@ -124,11 +124,18 @@ machinery. IOM's `core/time_series_parameter_types.jl` deliberately keeps only t
 domain-agnostic set (`ActivePower*`, `ReactivePower*`, `Requirement*`). So the "confirm the
 intended home" question resolves to POM — nothing to add in IOM.
 
-### 3. PR #1539 residuals — **NO ACTION** (stale symbol refs; core already present)
-The residuals cite `write_result!` in `src/operation/decision_model_store.jl`, but that symbol
-does not exist in IOM under that name — IOM restructured the store layer to `write_output!`
-(the plan itself notes the param-update path was restructured). The genuine #1539
-generalizations are present and verified: `expand_ixs`, `assign_maybe_broadcast!`,
-`fix_maybe_broadcast!` in `src/utils/indexing.jl`. Per the plan these residuals are
-"low-value unless a concrete failure points at them"; no current failure implicates the
-1-D/3D paths, so left as-is.
+### 3. PR #1539 residuals — **1-D `UnitRange` `write_output!` PORTED**; 3-D already present
+IOM renamed PSI's `write_result!` to `write_output!` in `src/operation/decision_model_store.jl`.
+The genuine #1539 broadcast generalizations are present and verified: `expand_ixs`,
+`assign_maybe_broadcast!`, `fix_maybe_broadcast!` in `src/utils/indexing.jl`.
+
+Re-checking the store dispatch by symbol (not by name) found a real gap, not a stale ref:
+`initialize_storage!` allocates a time-only result (empty `column_names`) as a 1-D `UnitRange`
+`DenseAxisArray`, but `write_output!` had no `DenseAxisArray{T, 1, <:Tuple{UnitRange}}` method —
+only the 1-D `Vector{String}` one — so writing such a result would `MethodError`. This is exactly
+PSI's #1506 system-slack method consolidated by #1539. **Ported** the 4-line method (mirrors the
+existing 1-D `Vector{String}` method) plus a `DecisionModelStore` write/read round-trip test in
+`test/test_model_store.jl`. The 3-D paths were already covered (IOM carries two 3-D methods, one
+more than PSI). The EmulationModel store already handled 1-D generically
+(`DenseAxisArray{Float64, 1}`), so only the decision store needed the fix. "No failures" reflected
+that no current IOM/POM formulation builds a time-only result, not robustness.

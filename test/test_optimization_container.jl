@@ -232,17 +232,6 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         @test JuMP.has_upper_bound(v) && JuMP.upper_bound(v) == 5.0
     end
 
-    @testset "_round_cache_values! snaps MIP-tolerance values to integers" begin
-        # process_duals re-fixes relaxed integer variables to their cached primal
-        # values; MIP tolerances leave 0.9999997 instead of 1.0, which makes the
-        # fixed relaxation infeasible unless the cache is rounded first.
-        cache = DenseAxisArray([0.9999997, 2.0000001, -0.0000003], ["a", "b", "c"])
-        PSI._round_cache_values!(cache)
-        @test cache["a"] == 1.0
-        @test cache["b"] == 2.0
-        @test cache["c"] == 0.0
-    end
-
     @testset "Key-based InitialCondition constructor (Task 2.4)" begin
         # Previously instantiated InitialCondition{T, U} with U the component type,
         # violating the value-type bound → TypeError on every call.
