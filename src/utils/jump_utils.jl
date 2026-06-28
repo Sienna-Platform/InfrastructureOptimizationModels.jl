@@ -298,6 +298,13 @@ function to_outputs_dataframe(
     timestamps,
     ::Val{TableFormat.LONG},
 )
+    if length(timestamps) != length(array)
+        error(
+            "The number of timestamps must match the number of rows. " *
+            "timestamps = $(length(timestamps)) " *
+            "num_rows = $(length(array))",
+        )
+    end
     return DataFrames.DataFrame(
         :DateTime => _collect_timestamps(timestamps),
         :name => fill("Result", length(array)),
