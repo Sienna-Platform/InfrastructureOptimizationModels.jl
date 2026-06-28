@@ -737,6 +737,28 @@ function add_variable_container!(
     return container.variables[var_key]
 end
 
+"""
+Register a pre-built sparse `value` container on `container.variables` under
+`VariableKey(T, U; meta)`. Use when the sparse entries are produced incrementally
+(e.g. per-outage slacks built inside the constraint loop) so the container cannot
+be specified up front through the `axs...` overload. Keeps key creation inside
+this package — callers must never build keys directly.
+"""
+function add_variable_container!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    value::SparseAxisArray;
+    meta = CONTAINER_KEY_EMPTY_META,
+) where {
+    T <: VariableType,
+    U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
+}
+    var_key = VariableKey(T, U, meta)
+    _assign_container!(container.variables, var_key, value)
+    return value
+end
+
 function get_variable_keys(container::OptimizationContainer)
     return collect(keys(container.variables))
 end
@@ -818,6 +840,27 @@ add_constraints_container!(
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
 } = _add_container!(container, T, U, JuMP.ConstraintRef, sparse, axs...; meta = meta)
+
+"""
+Register a pre-built sparse `value` container on `container.constraints` under
+`ConstraintKey(T, U; meta)`. Companion to the `add_variable_container!` overload
+for post-contingency-style constraints whose sparse entries are filled in during
+the constraint loop. Keeps key creation inside this package.
+"""
+function add_constraints_container!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    value::SparseAxisArray;
+    meta = CONTAINER_KEY_EMPTY_META,
+) where {
+    T <: ConstraintType,
+    U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
+}
+    const_key = ConstraintKey(T, U, meta)
+    _assign_container!(container.constraints, const_key, value)
+    return value
+end
 
 function get_constraint_keys(container::OptimizationContainer)
     return collect(keys(container.constraints))

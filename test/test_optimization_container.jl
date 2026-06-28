@@ -152,6 +152,69 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         @test haskey(PSI.get_expressions(container), expr_key)
     end
 
+    @testset "add_variable_container! - prebuilt SparseAxisArray" begin
+        mock_sys = MockSystem(100.0)
+        settings = PSI.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        container = PSI.OptimizationContainer(
+            mock_sys,
+            settings,
+            JuMP.Model(),
+            MockDeterministic,
+        )
+        PSI.set_time_steps!(container, 1:1)
+        model = PSI.get_jump_model(container)
+
+        # Genuinely irregular per-outage keys (not a cartesian product), built
+        # incrementally the way the post-contingency models do.
+        idx_keys = [("outage1", "b1", 1), ("outage1", "b2", 1), ("outage2", "b1", 1)]
+        sa = SparseAxisArray(Dict(k => JuMP.@variable(model) for k in idx_keys))
+
+        result = PSI.add_variable_container!(
+            container, TestVariableType, MockComponentType, sa; meta = "svc",
+        )
+
+        @test result === sa
+        var_key = PSI.VariableKey(TestVariableType, MockComponentType, "svc")
+        @test haskey(PSI.get_variables(container), var_key)
+        @test PSI.get_variables(container)[var_key] === sa
+    end
+
+    @testset "add_constraints_container! - prebuilt SparseAxisArray" begin
+        mock_sys = MockSystem(100.0)
+        settings = PSI.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        container = PSI.OptimizationContainer(
+            mock_sys,
+            settings,
+            JuMP.Model(),
+            MockDeterministic,
+        )
+        PSI.set_time_steps!(container, 1:1)
+        model = PSI.get_jump_model(container)
+        x = JuMP.@variable(model)
+
+        idx_keys = [("outage1", "b1", 1), ("outage2", "b1", 1)]
+        sa = SparseAxisArray(Dict(k => JuMP.@constraint(model, x <= 1.0) for k in idx_keys))
+
+        result = PSI.add_constraints_container!(
+            container, MockConstraintType, MockComponentType, sa; meta = "lb",
+        )
+
+        @test result === sa
+        cons_key = PSI.ConstraintKey(MockConstraintType, MockComponentType, "lb")
+        @test haskey(PSI.get_constraints(container), cons_key)
+        @test PSI.get_constraints(container)[cons_key] === sa
+    end
+
     @testset "Parameter multiplier applied exactly once" begin
         # Regression for the double-multiply bug: the generic get_parameter_values
         # previously multiplied by the multiplier, and calculate_parameter_values
