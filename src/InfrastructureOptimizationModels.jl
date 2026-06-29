@@ -186,6 +186,8 @@ export DeviceModel
 export ServiceModel
 export FixedOutput
 export get_device_cache
+export AbstractEventModel, AbstractEventKey
+export get_events, set_event_model!
 
 # Parameter Container Infrastructure
 export ParameterContainer

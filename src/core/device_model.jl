@@ -3,6 +3,21 @@ Formulation type to augment the power balance constraint expression with a time 
 """
 struct FixedOutput <: AbstractDeviceFormulation end
 
+"""
+Domain-neutral supertype for the per-device contingency-event model. The concrete,
+PowerSystems-specific `EventModel{<:Contingency, <:AbstractEventCondition}` lives in
+`PowerOperationsModels`; IOM only needs the abstract to type the `DeviceModel.events`
+field (mirroring how `AbstractAffectFeedforward` types the `feedforwards` field).
+"""
+abstract type AbstractEventModel end
+
+"""
+Domain-neutral supertype for the key under which an `AbstractEventModel` is stored in a
+`DeviceModel`. The concrete `EventKey{<:Contingency, <:Component}` lives in
+`PowerOperationsModels`.
+"""
+abstract type AbstractEventKey end
+
 function _check_device_formulation(
     ::Type{D},
 ) where {D <: Union{AbstractDeviceFormulation, IS.InfrastructureSystemsComponent}}
@@ -66,6 +81,9 @@ mutable struct DeviceModel{
     time_series_names::Dict{Type{<:ParameterType}, String}
     attributes::Dict{String, Any}
     subsystem::Union{Nothing, String}
+    # Contingency-event models keyed by an `AbstractEventKey`. Concrete key/value types
+    # are power-specific and live in POM; stored abstractly here like `feedforwards`.
+    events::Dict{AbstractEventKey, AbstractEventModel}
     # Keyed by UUID to match PNM's `get_registered_contingencies(::VirtualMODF) ::
     # Dict{UUID, ContingencySpec}` so the consolidation step in network_model.jl can
     # set-diff directly. UUIDs are also stable across (de)serialization in a way that
@@ -99,6 +117,7 @@ mutable struct DeviceModel{
             time_series_names,
             attributes_,
             nothing,
+            Dict{AbstractEventKey, AbstractEventModel}(),
             outages_field,
             Vector{D}(),
         )
@@ -148,10 +167,30 @@ get_attributes(m::DeviceModel) = m.attributes
 get_attribute(::Nothing, ::String) = nothing
 get_attribute(m::DeviceModel, key::String) = get(m.attributes, key, nothing)
 get_subsystem(m::DeviceModel) = m.subsystem
+get_events(m::DeviceModel) = m.events
 get_outages(m::DeviceModel) = m.outages
 get_device_cache(m::DeviceModel) = m.device_cache
 
 set_subsystem!(m::DeviceModel, id::String) = m.subsystem = id
+
+"""
+    set_event_model!(model::DeviceModel, key::AbstractEventKey, event_model::AbstractEventModel)
+
+Attach an event (contingency) model to `model` under `key`. Errors if `key` is already
+present. The concrete `EventKey`/`EventModel` types and the convenience method that derives
+the key from the event model live in `PowerOperationsModels`.
+"""
+function set_event_model!(
+    model::DeviceModel{D, B},
+    key::AbstractEventKey,
+    event_model::AbstractEventModel,
+) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
+    if haskey(model.events, key)
+        error("EventModel $key already exists in model for device $D")
+    end
+    model.events[key] = event_model
+    return
+end
 
 function set_model!(
     dict::Dict,
