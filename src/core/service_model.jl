@@ -44,9 +44,6 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
         Vector{<:IS.InfrastructureSystemsComponent},
     }
     subsystem::Union{Nothing, String}
-    # Keyed by outage UUID. Populated downstream (e.g. PowerOperationsModels'
-    # `_build_service_model_outages!`) for security-constrained reserve
-    # formulations during template validation, not at construction.
     outages::Dict{Base.UUID, Dict{DataType, Set{String}}}
     function ServiceModel(
         ::Type{D},
