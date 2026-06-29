@@ -152,7 +152,7 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         @test haskey(PSI.get_expressions(container), expr_key)
     end
 
-    @testset "add_variable_container! - sparse_keys" begin
+    @testset "add_variable_container! - sparse starts empty, filled by assignment" begin
         mock_sys = MockSystem(100.0)
         settings = PSI.Settings(
             mock_sys;
@@ -169,26 +169,27 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         PSI.set_time_steps!(container, 1:1)
         model = PSI.get_jump_model(container)
 
-        # Genuinely irregular per-outage keys (not a cartesian product); IOM
-        # prefills the keys with `nothing`, the caller fills them in the loop.
-        idx_keys = [("outage1", "b1", 1), ("outage1", "b2", 1), ("outage2", "b1", 1)]
+        # The (outage, name, t) key set is ragged; the axes only fix the key
+        # tuple type. The container starts empty and the caller fills it.
         result = PSI.add_variable_container!(
-            container, TestVariableType, MockComponentType; sparse_keys = idx_keys,
-            meta = "svc",
+            container, TestVariableType, MockComponentType, String[], String[], 1:1;
+            sparse = true, meta = "svc",
         )
 
         @test result isa SparseAxisArray
-        @test issetequal(keys(result.data), idx_keys)
-        @test all(isnothing, values(result.data))
+        @test isempty(result.data)
+        @test keytype(result.data) == Tuple{String, String, Int}
+        idx_keys = [("outage1", "b1", 1), ("outage1", "b2", 1), ("outage2", "b1", 1)]
         for k in idx_keys
             result[k...] = JuMP.@variable(model)
         end
+        @test issetequal(keys(result.data), idx_keys)
         var_key = PSI.VariableKey(TestVariableType, MockComponentType, "svc")
         @test haskey(PSI.get_variables(container), var_key)
         @test PSI.get_variables(container)[var_key] === result
     end
 
-    @testset "add_constraints_container! - sparse_keys" begin
+    @testset "add_constraints_container! - sparse starts empty, filled by assignment" begin
         mock_sys = MockSystem(100.0)
         settings = PSI.Settings(
             mock_sys;
@@ -206,23 +207,25 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         model = PSI.get_jump_model(container)
         x = JuMP.@variable(model)
 
-        idx_keys = [("outage1", "b1", 1), ("outage2", "b1", 1)]
         result = PSI.add_constraints_container!(
-            container, MockConstraintType, MockComponentType; sparse_keys = idx_keys,
-            meta = "lb",
+            container, MockConstraintType, MockComponentType, String[], String[], 1:1;
+            sparse = true, meta = "lb",
         )
 
         @test result isa SparseAxisArray
-        @test issetequal(keys(result.data), idx_keys)
+        @test isempty(result.data)
+        @test keytype(result.data) == Tuple{String, String, Int}
+        idx_keys = [("outage1", "b1", 1), ("outage2", "b1", 1)]
         for k in idx_keys
             result[k...] = JuMP.@constraint(model, x <= 1.0)
         end
+        @test issetequal(keys(result.data), idx_keys)
         cons_key = PSI.ConstraintKey(MockConstraintType, MockComponentType, "lb")
         @test haskey(PSI.get_constraints(container), cons_key)
         @test PSI.get_constraints(container)[cons_key] === result
     end
 
-    @testset "add_expression_container! - sparse_keys prefills zeros" begin
+    @testset "add_expression_container! - sparse starts empty, filled by assignment" begin
         mock_sys = MockSystem(100.0)
         settings = PSI.Settings(
             mock_sys;
@@ -237,16 +240,22 @@ struct MockExpressionType <: ISOPT.ExpressionType end
             MockDeterministic,
         )
         PSI.set_time_steps!(container, 1:1)
+        model = PSI.get_jump_model(container)
 
-        idx_keys = [("outage1", "b1", 1), ("outage2", "b1", 1)]
         result = PSI.add_expression_container!(
-            container, MockExpressionType, MockComponentType; sparse_keys = idx_keys,
-            meta = "svc",
+            container, MockExpressionType, MockComponentType, String[], String[], 1:1;
+            sparse = true, meta = "svc",
         )
 
         @test result isa SparseAxisArray
+        @test isempty(result.data)
+        @test keytype(result.data) == Tuple{String, String, Int}
+        x = JuMP.@variable(model)
+        idx_keys = [("outage1", "b1", 1), ("outage2", "b1", 1)]
+        for k in idx_keys
+            result[k...] = 2.0 * x
+        end
         @test issetequal(keys(result.data), idx_keys)
-        @test all(iszero, values(result.data))
         expr_key = PSI.ExpressionKey(MockExpressionType, MockComponentType, "svc")
         @test haskey(PSI.get_expressions(container), expr_key)
         @test PSI.get_expressions(container)[expr_key] === result

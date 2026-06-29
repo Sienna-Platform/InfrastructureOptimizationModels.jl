@@ -696,17 +696,12 @@ end
 ####################################### Variable Container #################################
 function add_variable_container!(
     container::OptimizationContainer, ::Type{T}, ::Type{U}, axs::Vararg{Any, N};
-    sparse = false, sparse_keys = nothing, meta = CONTAINER_KEY_EMPTY_META,
+    sparse = false, meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: VariableType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
 }
-    if sparse_keys !== nothing
-        value = sparse_container_spec(JuMP.VariableRef, sparse_keys)
-        _assign_container!(container.variables, VariableKey(T, U, meta), value)
-        return value
-    end
     return _add_container!(container, T, U, JuMP.VariableRef, sparse, axs...; meta = meta)
 end
 
@@ -819,17 +814,12 @@ end
 ##################################### Constraint Container #################################
 function add_constraints_container!(
     container::OptimizationContainer, ::Type{T}, ::Type{U}, axs::Vararg{Any, N};
-    sparse = false, sparse_keys = nothing, meta = CONTAINER_KEY_EMPTY_META,
+    sparse = false, meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: ConstraintType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
 }
-    if sparse_keys !== nothing
-        value = sparse_container_spec(JuMP.ConstraintRef, sparse_keys)
-        _assign_container!(container.constraints, ConstraintKey(T, U, meta), value)
-        return value
-    end
     return _add_container!(container, T, U, JuMP.ConstraintRef, sparse, axs...; meta = meta)
 end
 
@@ -1080,18 +1070,12 @@ function add_expression_container!(
     axs::Vararg{Any, N};
     expr_type = GAE,
     sparse = false,
-    sparse_keys = nothing,
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: ExpressionType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
 }
-    if sparse_keys !== nothing
-        value = sparse_container_spec(expr_type, sparse_keys)
-        _assign_container!(container.expressions, ExpressionKey(T, U, meta), value)
-        return value
-    end
     expr_container =
         _add_container!(container, T, U, expr_type, sparse, axs...; meta = meta)
     remove_undef!(expr_container)

@@ -181,10 +181,15 @@ struct MockVariableType <: ISOPT.VariableType end
         @test size(cont2) == (2, 2)
     end
 
-    @testset "sparse_container_spec - Number" begin
+    @testset "sparse_container_spec - empty, type-inferred from axes" begin
         sparse = IOM.sparse_container_spec(Float64, ["a", "b"], 1:2)
-        @test length(sparse.data) == 4
-        @test all(v == 0.0 for v in values(sparse.data))
+        @test isempty(sparse.data)
+        @test keytype(sparse.data) == Tuple{String, Int}
+        @test valtype(sparse.data) == Float64
+        # No prefill: keys appear only once assigned.
+        sparse["a", 1] = 5.0
+        @test sparse["a", 1] == 5.0
+        @test length(sparse.data) == 1
     end
 
     @testset "remove_undef!" begin
@@ -334,6 +339,31 @@ struct MockVariableType <: ISOPT.VariableType end
         @test nrow(df2) == 3
         @test all(df2.DateTime .== DateTime(2024, 1, 1))
         @test df2.name == ["g1", "g2", "g3"]
+    end
+
+    @testset "to_outputs_dataframe - 1D time-only LONG" begin
+        # Time-only (1-D integer-indexed) array, e.g. ReserveRequirementSlack.
+        data = DenseAxisArray([10.0, 20.0, 30.0], 1:3)
+        # Without timestamps: time_index column carries the integer axis.
+        df = IOM.to_outputs_dataframe(data, nothing, Val(IOM.TableFormat.LONG))
+        @test nrow(df) == 3
+        @test :time_index in propertynames(df)
+        @test df.time_index == [1, 2, 3]
+        @test df.name == fill("Result", 3)
+        @test df.value == [10.0, 20.0, 30.0]
+        # With timestamps: DateTime column filled, constant name placeholder.
+        ts = [DateTime(2024, 1, 1, h) for h in 0:2]
+        df2 = IOM.to_outputs_dataframe(data, ts, Val(IOM.TableFormat.LONG))
+        @test nrow(df2) == 3
+        @test df2.DateTime == ts
+        @test df2.name == fill("Result", 3)
+        @test df2.value == [10.0, 20.0, 30.0]
+        # Mismatched timestamp length must error.
+        @test_throws ErrorException IOM.to_outputs_dataframe(
+            data,
+            [DateTime(2024, 1, 1)],
+            Val(IOM.TableFormat.LONG),
+        )
     end
 
     @testset "to_outputs_dataframe - 2D LONG offset time axis (Task 2.2)" begin

@@ -509,69 +509,12 @@ end
 """
 Returns the correct container specification for the selected type of JuMP Model
 """
-function sparse_container_spec(
-    ::Type{T},
-    axs::Vararg{Any, N},
-) where {T <: JuMP.AbstractJuMPScalar, N}
-    indexes = Base.Iterators.product(axs...)
-    # Build a fresh zero(T) per key — `indexes .=> zero(T)` aliases one mutable
-    # zero (e.g. an AffExpr) across every entry, so mutating one corrupts all.
-    contents = Dict{eltype(indexes), T}(k => zero(T) for k in indexes)
-    return SparseAxisArray(contents)
-end
-
-function sparse_container_spec(
-    ::Type{T},
-    axs::Vararg{Any, N},
-) where {T <: JuMP.VariableRef, N}
-    indexes = Base.Iterators.product(axs...)
-    contents = Dict{eltype(indexes), Union{Nothing, T}}(indexes .=> nothing)
-    return SparseAxisArray(contents)
-end
-
-function sparse_container_spec(
-    ::Type{T},
-    axs::Vararg{Any, N},
-) where {T <: JuMP.ConstraintRef, N}
-    indexes = Base.Iterators.product(axs...)
-    contents = Dict{eltype(indexes), Union{Nothing, T}}(indexes .=> nothing)
-    return SparseAxisArray(contents)
-end
-
-function sparse_container_spec(::Type{T}, axs::Vararg{Any, N}) where {T <: Number, N}
-    indexes = Base.Iterators.product(axs...)
-    contents = Dict{eltype(indexes), T}(indexes .=> zero(T))
-    return SparseAxisArray(contents)
-end
-
-# Build a sparse container over an explicit list of index tuples instead of a
-# cartesian product of axes. Use for genuinely irregular sparsity (e.g.
-# per-outage monitored-component sets) where the populated keys are not a full
-# product. Each entry gets a fresh `zero(T)` so mutating one does not alias the
-# others; an empty `index_keys` yields an empty container of the inferred key
-# type. Drive these through the `sparse_keys` kwarg on `add_*_container!`.
-function sparse_container_spec(
-    ::Type{T},
-    index_keys::AbstractVector{<:Tuple},
-) where {T <: JuMP.GenericAffExpr}
-    contents = Dict{eltype(index_keys), T}(k => zero(T) for k in index_keys)
-    return SparseAxisArray(contents)
-end
-
-function sparse_container_spec(
-    ::Type{T},
-    index_keys::AbstractVector{<:Tuple},
-) where {T <: JuMP.VariableRef}
-    contents = Dict{eltype(index_keys), Union{Nothing, T}}(k => nothing for k in index_keys)
-    return SparseAxisArray(contents)
-end
-
-function sparse_container_spec(
-    ::Type{T},
-    index_keys::AbstractVector{<:Tuple},
-) where {T <: JuMP.ConstraintRef}
-    contents = Dict{eltype(index_keys), Union{Nothing, T}}(k => nothing for k in index_keys)
-    return SparseAxisArray(contents)
+# Empty sparse container; the key tuple type is inferred from the axis types, so
+# the axes only have to carry the right element types — callers fill the
+# (possibly ragged) populated keys by assignment.
+function sparse_container_spec(::Type{T}, axs::Vararg{Any, N}) where {T, N}
+    K = eltype(Base.Iterators.product(axs...))
+    return SparseAxisArray(Dict{K, T}())
 end
 
 function remove_undef!(expression_array::AbstractArray)
