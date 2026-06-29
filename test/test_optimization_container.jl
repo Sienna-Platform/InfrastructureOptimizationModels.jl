@@ -152,7 +152,7 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         @test haskey(PSI.get_expressions(container), expr_key)
     end
 
-    @testset "add_variable_container! - prebuilt SparseAxisArray" begin
+    @testset "add_variable_container! - sparse_keys" begin
         mock_sys = MockSystem(100.0)
         settings = PSI.Settings(
             mock_sys;
@@ -169,22 +169,26 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         PSI.set_time_steps!(container, 1:1)
         model = PSI.get_jump_model(container)
 
-        # Genuinely irregular per-outage keys (not a cartesian product), built
-        # incrementally the way the post-contingency models do.
+        # Genuinely irregular per-outage keys (not a cartesian product); IOM
+        # prefills the keys with `nothing`, the caller fills them in the loop.
         idx_keys = [("outage1", "b1", 1), ("outage1", "b2", 1), ("outage2", "b1", 1)]
-        sa = SparseAxisArray(Dict(k => JuMP.@variable(model) for k in idx_keys))
-
         result = PSI.add_variable_container!(
-            container, TestVariableType, MockComponentType, sa; meta = "svc",
+            container, TestVariableType, MockComponentType; sparse_keys = idx_keys,
+            meta = "svc",
         )
 
-        @test result === sa
+        @test result isa SparseAxisArray
+        @test issetequal(keys(result.data), idx_keys)
+        @test all(isnothing, values(result.data))
+        for k in idx_keys
+            result[k...] = JuMP.@variable(model)
+        end
         var_key = PSI.VariableKey(TestVariableType, MockComponentType, "svc")
         @test haskey(PSI.get_variables(container), var_key)
-        @test PSI.get_variables(container)[var_key] === sa
+        @test PSI.get_variables(container)[var_key] === result
     end
 
-    @testset "add_constraints_container! - prebuilt SparseAxisArray" begin
+    @testset "add_constraints_container! - sparse_keys" begin
         mock_sys = MockSystem(100.0)
         settings = PSI.Settings(
             mock_sys;
@@ -203,16 +207,49 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         x = JuMP.@variable(model)
 
         idx_keys = [("outage1", "b1", 1), ("outage2", "b1", 1)]
-        sa = SparseAxisArray(Dict(k => JuMP.@constraint(model, x <= 1.0) for k in idx_keys))
-
         result = PSI.add_constraints_container!(
-            container, MockConstraintType, MockComponentType, sa; meta = "lb",
+            container, MockConstraintType, MockComponentType; sparse_keys = idx_keys,
+            meta = "lb",
         )
 
-        @test result === sa
+        @test result isa SparseAxisArray
+        @test issetequal(keys(result.data), idx_keys)
+        for k in idx_keys
+            result[k...] = JuMP.@constraint(model, x <= 1.0)
+        end
         cons_key = PSI.ConstraintKey(MockConstraintType, MockComponentType, "lb")
         @test haskey(PSI.get_constraints(container), cons_key)
-        @test PSI.get_constraints(container)[cons_key] === sa
+        @test PSI.get_constraints(container)[cons_key] === result
+    end
+
+    @testset "add_expression_container! - sparse_keys prefills zeros" begin
+        mock_sys = MockSystem(100.0)
+        settings = PSI.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        container = PSI.OptimizationContainer(
+            mock_sys,
+            settings,
+            JuMP.Model(),
+            MockDeterministic,
+        )
+        PSI.set_time_steps!(container, 1:1)
+
+        idx_keys = [("outage1", "b1", 1), ("outage2", "b1", 1)]
+        result = PSI.add_expression_container!(
+            container, MockExpressionType, MockComponentType; sparse_keys = idx_keys,
+            meta = "svc",
+        )
+
+        @test result isa SparseAxisArray
+        @test issetequal(keys(result.data), idx_keys)
+        @test all(iszero, values(result.data))
+        expr_key = PSI.ExpressionKey(MockExpressionType, MockComponentType, "svc")
+        @test haskey(PSI.get_expressions(container), expr_key)
+        @test PSI.get_expressions(container)[expr_key] === result
     end
 
     @testset "Parameter multiplier applied exactly once" begin

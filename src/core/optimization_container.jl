@@ -694,14 +694,21 @@ Key-constructing overload: builds the key from (T, U, meta) then delegates.
 end
 
 ####################################### Variable Container #################################
-add_variable_container!(
+function add_variable_container!(
     container::OptimizationContainer, ::Type{T}, ::Type{U}, axs::Vararg{Any, N};
-    sparse = false, meta = CONTAINER_KEY_EMPTY_META,
+    sparse = false, sparse_keys = nothing, meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: VariableType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
-} = _add_container!(container, T, U, JuMP.VariableRef, sparse, axs...; meta = meta)
+}
+    if sparse_keys !== nothing
+        value = sparse_container_spec(JuMP.VariableRef, sparse_keys)
+        _assign_container!(container.variables, VariableKey(T, U, meta), value)
+        return value
+    end
+    return _add_container!(container, T, U, JuMP.VariableRef, sparse, axs...; meta = meta)
+end
 
 function add_variable_container!(
     container::OptimizationContainer,
@@ -735,28 +742,6 @@ function add_variable_container!(
     var_key = VariableKey(T, U, meta)
     _assign_container!(container.variables, var_key, _get_pwl_variables_container())
     return container.variables[var_key]
-end
-
-"""
-Register a pre-built sparse `value` container on `container.variables` under
-`VariableKey(T, U; meta)`. Use when the sparse entries are produced incrementally
-(e.g. per-outage slacks built inside the constraint loop) so the container cannot
-be specified up front through the `axs...` overload. Keeps key creation inside
-this package — callers must never build keys directly.
-"""
-function add_variable_container!(
-    container::OptimizationContainer,
-    ::Type{T},
-    ::Type{U},
-    value::SparseAxisArray;
-    meta = CONTAINER_KEY_EMPTY_META,
-) where {
-    T <: VariableType,
-    U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
-}
-    var_key = VariableKey(T, U, meta)
-    _assign_container!(container.variables, var_key, value)
-    return value
 end
 
 function get_variable_keys(container::OptimizationContainer)
@@ -832,34 +817,20 @@ function get_dual_keys(container::OptimizationContainer)
 end
 
 ##################################### Constraint Container #################################
-add_constraints_container!(
+function add_constraints_container!(
     container::OptimizationContainer, ::Type{T}, ::Type{U}, axs::Vararg{Any, N};
-    sparse = false, meta = CONTAINER_KEY_EMPTY_META,
+    sparse = false, sparse_keys = nothing, meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: ConstraintType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
-} = _add_container!(container, T, U, JuMP.ConstraintRef, sparse, axs...; meta = meta)
-
-"""
-Register a pre-built sparse `value` container on `container.constraints` under
-`ConstraintKey(T, U; meta)`. Companion to the `add_variable_container!` overload
-for post-contingency-style constraints whose sparse entries are filled in during
-the constraint loop. Keeps key creation inside this package.
-"""
-function add_constraints_container!(
-    container::OptimizationContainer,
-    ::Type{T},
-    ::Type{U},
-    value::SparseAxisArray;
-    meta = CONTAINER_KEY_EMPTY_META,
-) where {
-    T <: ConstraintType,
-    U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
 }
-    const_key = ConstraintKey(T, U, meta)
-    _assign_container!(container.constraints, const_key, value)
-    return value
+    if sparse_keys !== nothing
+        value = sparse_container_spec(JuMP.ConstraintRef, sparse_keys)
+        _assign_container!(container.constraints, ConstraintKey(T, U, meta), value)
+        return value
+    end
+    return _add_container!(container, T, U, JuMP.ConstraintRef, sparse, axs...; meta = meta)
 end
 
 function get_constraint_keys(container::OptimizationContainer)
@@ -1109,12 +1080,18 @@ function add_expression_container!(
     axs::Vararg{Any, N};
     expr_type = GAE,
     sparse = false,
+    sparse_keys = nothing,
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: ExpressionType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
 }
+    if sparse_keys !== nothing
+        value = sparse_container_spec(expr_type, sparse_keys)
+        _assign_container!(container.expressions, ExpressionKey(T, U, meta), value)
+        return value
+    end
     expr_container =
         _add_container!(container, T, U, expr_type, sparse, axs...; meta = meta)
     remove_undef!(expr_container)
