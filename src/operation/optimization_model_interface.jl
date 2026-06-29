@@ -382,3 +382,250 @@ function serialize_optimization_model(
     end
     return
 end
+
+#################################################################################
+# Generic build/solve/run lifecycle (domain-neutral; dispatched on the wrapper).
+# The two `DecisionModel`/`EmulationModel` behavioral differences are factored into
+# the `_mark_recurrent_solves!`, `_apply_build_executions!`, and `reset_time_series_type`
+# hooks (defined per-wrapper in decision_model.jl / emulation_model.jl). Power-specific
+# steps go through the `build_problem!`/`build_initial_conditions!` extension points.
+
+# EmulationModels always solve recurrently; DecisionModels leave the container flag as-is
+# (so a DecisionModel built inside a simulation keeps its externally-set value).
+_mark_recurrent_solves!(::AbstractOptimizationModel) = nothing
+
+# Standalone `build!` only applies an execution count for models that solve recurrently.
+_apply_build_executions!(::AbstractOptimizationModel, executions) = nothing
+
+function build_pre_step!(model::AbstractOptimizationModel)
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Build pre-step" begin
+        validate_template(model)
+        if !isempty(model)
+            @info "OptimizationProblem status not ModelBuildStatus.EMPTY. Resetting"
+            reset!(model)
+        end
+        _mark_recurrent_solves!(model)
+        @info "Initializing Optimization Container"
+        init_optimization_container!(
+            get_optimization_container(model),
+            get_network_model(get_template(model)),
+            get_system(model),
+        )
+        @info "Initializing ModelStoreParams"
+        init_model_store_params!(model)
+        set_status!(model, ModelBuildStatus.IN_PROGRESS)
+    end
+    return
+end
+
+# Called `build_impl!(model)` in PSI.
+function build_model!(model::AbstractOptimizationModel)
+    build_pre_step!(model)
+    @info "Instantiating Network Model"
+    instantiate_network_model!(model)
+    handle_initial_conditions!(model)
+    build_problem!(
+        get_optimization_container(model),
+        get_template(model),
+        get_system(model),
+    )
+    serialize_metadata!(get_optimization_container(model), get_output_dir(model))
+    log_values(get_settings(model))
+    return
+end
+
+function handle_initial_conditions!(model::AbstractOptimizationModel)
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Model Initialization" begin
+        if isempty(get_template(model))
+            return
+        end
+        settings = get_settings(model)
+        initialize_model = get_initialize_model(settings)
+        deserialize_initial_conditions = get_deserialize_initial_conditions(settings)
+        serialized_initial_conditions_file = get_initial_conditions_file(model)
+        custom_init_file = get_initialization_file(settings)
+
+        if !initialize_model && deserialize_initial_conditions
+            throw(
+                IS.ConflictingInputsError(
+                    "!initialize_model && deserialize_initial_conditions",
+                ),
+            )
+        elseif !initialize_model && !isempty(custom_init_file)
+            throw(IS.ConflictingInputsError("!initialize_model && initialization_file"))
+        end
+
+        if !initialize_model
+            @info "Skip build of initial conditions"
+            return
+        end
+
+        if !isempty(custom_init_file)
+            if !isfile(custom_init_file)
+                error("initialization_file = $custom_init_file does not exist")
+            end
+            if abspath(custom_init_file) != abspath(serialized_initial_conditions_file)
+                cp(custom_init_file, serialized_initial_conditions_file; force = true)
+            end
+        end
+
+        if deserialize_initial_conditions && isfile(serialized_initial_conditions_file)
+            set_initial_conditions_data!(
+                get_optimization_container(model),
+                Serialization.deserialize(serialized_initial_conditions_file),
+            )
+            @info "Deserialized initial_conditions_data"
+        else
+            @info "Make Initial Conditions Model"
+            build_initial_conditions!(model)
+            solve_and_write_initial_conditions!(model)
+        end
+        set_initial_conditions_model_container!(get_internal(model), nothing)
+    end
+    return
+end
+
+function reset!(model::AbstractOptimizationModel)
+    was_built_for_recurrent_solves = built_for_recurrent_solves(model)
+    if was_built_for_recurrent_solves
+        set_execution_count!(model, 0)
+    end
+    set_container!(
+        get_internal(model),
+        OptimizationContainer(
+            get_system(model),
+            get_settings(model),
+            nothing,
+            reset_time_series_type(model),
+        ),
+    )
+    get_optimization_container(model).built_for_recurrent_solves =
+        was_built_for_recurrent_solves
+    set_initial_conditions_model_container!(get_internal(model), nothing)
+    empty_time_series_cache!(model)
+    empty!(get_store(model))
+    set_status!(model, ModelBuildStatus.EMPTY)
+    return
+end
+
+"""
+Build an operation model. `executions` is honored only by models that solve
+recurrently (`EmulationModel`).
+
+# Arguments
+
+  - `model::AbstractOptimizationModel`: the operation model
+  - `output_dir::String`: Output directory for results
+  - `recorders::Vector{Symbol} = []`: recorder names to register
+  - `console_level = Logging.Error`
+  - `file_level = Logging.Info`
+  - `disable_timer_outputs = false`: Enable/Disable timing outputs
+  - `store_system_in_results::Bool = true`: store the system as JSON in the results HDF5 file
+"""
+function build!(
+    model::AbstractOptimizationModel;
+    executions = 1,
+    output_dir::String,
+    recorders = [],
+    console_level = Logging.Error,
+    file_level = Logging.Info,
+    disable_timer_outputs = false,
+    store_system_in_results = true,
+)
+    mkpath(output_dir)
+    set_output_dir!(model, output_dir)
+    set_console_level!(model, console_level)
+    set_file_level!(model, file_level)
+    TimerOutputs.reset_timer!(BUILD_PROBLEMS_TIMER)
+    disable_timer_outputs && TimerOutputs.disable_timer!(BUILD_PROBLEMS_TIMER)
+    file_mode = "w"
+    add_recorders!(model, recorders)
+    register_recorders!(model, file_mode)
+    logger = configure_logging(get_internal(model), PROBLEM_LOG_FILENAME, file_mode)
+    if store_system_in_results
+        @warn "store_system_in_results is set to true. This will do nothing unless a Simulation is being built."
+    end
+    try
+        Logging.with_logger(logger) do
+            try
+                _apply_build_executions!(model, executions)
+                TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Problem $(get_name(model))" begin
+                    build_model!(model)
+                end
+                set_status!(model, ModelBuildStatus.BUILT)
+                @info "\n$(BUILD_PROBLEMS_TIMER)\n"
+            catch e
+                set_status!(model, ModelBuildStatus.FAILED)
+                bt = catch_backtrace()
+                @error "$(nameof(typeof(model))) Build Failed" exception = e, bt
+            end
+        end
+    finally
+        unregister_recorders!(model)
+        close(logger)
+    end
+    return get_status(model)
+end
+
+function build_if_not_already_built!(model::AbstractOptimizationModel; kwargs...)
+    status = get_status(model)
+    if status == ModelBuildStatus.EMPTY
+        if !haskey(kwargs, :output_dir)
+            error(
+                "'output_dir' must be provided as a kwarg if the model build status is $status",
+            )
+        else
+            new_kwargs = Dict(k => v for (k, v) in kwargs if k != :optimizer)
+            status = build!(model; new_kwargs...)
+        end
+    end
+    if status != ModelBuildStatus.BUILT
+        error("build! of the $(typeof(model)) $(get_name(model)) failed: $status")
+    end
+    return
+end
+
+# Shared scaffolding for `solve!`/`run!`: storage init, logging, serialization, and
+# outputs processing. `action!` runs the model-kind-specific solve step under the run
+# timer and sets the run status.
+function _run_and_finalize!(
+    action!::Function,
+    model::AbstractOptimizationModel;
+    export_optimization_problem = true,
+    export_problem_outputs = false,
+)
+    file_mode = "a"
+    register_recorders!(model, file_mode)
+    logger = configure_logging(get_internal(model), PROBLEM_LOG_FILENAME, file_mode)
+    try
+        Logging.with_logger(logger) do
+            try
+                initialize_storage!(
+                    get_store(model),
+                    get_optimization_container(model),
+                    get_store_params(model),
+                )
+                action!(model)
+                if export_optimization_problem
+                    TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Serialize" begin
+                        serialize_optimization_model(model)
+                    end
+                end
+                TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Outputs processing" begin
+                    outputs = OptimizationProblemOutputs(model)
+                    serialize_outputs(outputs, get_output_dir(model))
+                    export_problem_outputs && export_outputs(outputs)
+                end
+                @info "\n$(RUN_OPERATION_MODEL_TIMER)\n"
+            catch e
+                @error "$(get_name(model)) failed" exception = (e, catch_backtrace())
+                set_run_status!(model, RunStatus.FAILED)
+            end
+        end
+    finally
+        wait_for_serialization!(model)
+        unregister_recorders!(model)
+        close(logger)
+    end
+    return get_run_status(model)
+end

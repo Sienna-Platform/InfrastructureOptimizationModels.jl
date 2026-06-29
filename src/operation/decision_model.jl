@@ -197,3 +197,69 @@ function init_model_store_params!(model::DecisionModel)
 end
 
 get_horizon(model::DecisionModel) = get_horizon(get_settings(model))
+
+reset_time_series_type(model::DecisionModel) =
+    get_deterministic_time_series_type(get_system(model))
+
+"""
+Default solve method for a `DecisionModel`.
+
+This calls `build!` on the model if it is not already built, forwarding all keyword
+arguments to it.
+
+# Arguments
+
+  - `model::DecisionModel`: the decision model
+  - `export_problem_outputs::Bool = false`: export `OptimizationProblemOutputs` DataFrames to CSV
+  - `console_level = Logging.Error`
+  - `file_level = Logging.Info`
+  - `disable_timer_outputs = false`: Enable/Disable timing outputs
+  - `export_optimization_problem::Bool = true`: serialize the model to allow re-execution later
+  - `store_system_in_results::Bool = true`: store the system as JSON in the results HDF5 file
+
+# Examples
+
+```julia
+outputs = solve!(model)
+outputs = solve!(model; export_problem_outputs = true)
+```
+"""
+function solve!(
+    model::DecisionModel;
+    export_problem_outputs = false,
+    console_level = Logging.Error,
+    file_level = Logging.Info,
+    disable_timer_outputs = false,
+    export_optimization_problem = true,
+    store_system_in_results = true,
+    kwargs...,
+)
+    if store_system_in_results
+        @warn "store_system_in_results is set to true. This will do nothing unless a Simulation is being built."
+    end
+    build_if_not_already_built!(
+        model;
+        console_level = console_level,
+        file_level = file_level,
+        disable_timer_outputs = disable_timer_outputs,
+        kwargs...,
+    )
+    set_console_level!(model, console_level)
+    set_file_level!(model, file_level)
+    TimerOutputs.reset_timer!(RUN_OPERATION_MODEL_TIMER)
+    disable_timer_outputs && TimerOutputs.disable_timer!(RUN_OPERATION_MODEL_TIMER)
+    optimizer = get(kwargs, :optimizer, nothing)
+    return _run_and_finalize!(
+        model;
+        export_optimization_problem = export_optimization_problem,
+        export_problem_outputs = export_problem_outputs,
+    ) do m
+        TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Solve" begin
+            _pre_solve_model_checks(m, optimizer)
+            solve_model!(m)
+            current_time = get_initial_time(m)
+            write_outputs!(get_store(m), m, current_time, current_time)
+            write_optimizer_stats!(get_store(m), get_optimizer_stats(m), current_time)
+        end
+    end
+end
