@@ -544,17 +544,33 @@ function sparse_container_spec(::Type{T}, axs::Vararg{Any, N}) where {T <: Numbe
     return SparseAxisArray(contents)
 end
 
-"""
-Sparse container holding a fresh `zero(T)` for each index tuple in `index_keys`.
-Use when the populated keys are genuinely irregular — not a full cartesian product
-of axes (e.g. per-outage monitored-component sets). Each entry gets its own
-`zero(T)` so mutating one does not alias the others.
-"""
+# Build a sparse container over an explicit list of index tuples instead of a
+# cartesian product of axes. Use for genuinely irregular sparsity (e.g.
+# per-outage monitored-component sets) where the populated keys are not a full
+# product. Each entry gets a fresh `zero(T)` so mutating one does not alias the
+# others; an empty `index_keys` yields an empty container of the inferred key
+# type. Drive these through the `sparse_keys` kwarg on `add_*_container!`.
 function sparse_container_spec(
     ::Type{T},
     index_keys::AbstractVector{<:Tuple},
 ) where {T <: JuMP.GenericAffExpr}
     contents = Dict{eltype(index_keys), T}(k => zero(T) for k in index_keys)
+    return SparseAxisArray(contents)
+end
+
+function sparse_container_spec(
+    ::Type{T},
+    index_keys::AbstractVector{<:Tuple},
+) where {T <: JuMP.VariableRef}
+    contents = Dict{eltype(index_keys), Union{Nothing, T}}(k => nothing for k in index_keys)
+    return SparseAxisArray(contents)
+end
+
+function sparse_container_spec(
+    ::Type{T},
+    index_keys::AbstractVector{<:Tuple},
+) where {T <: JuMP.ConstraintRef}
+    contents = Dict{eltype(index_keys), Union{Nothing, T}}(k => nothing for k in index_keys)
     return SparseAxisArray(contents)
 end
 
