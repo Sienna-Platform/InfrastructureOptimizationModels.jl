@@ -31,11 +31,10 @@ operation models at simulation time.
 
 reserves = ServiceModel(PSY.VariableReserve{PSY.ReserveUp}, RangeReserve)
 """
-mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
+mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B, S <: SlackUsage}
     # Heterogeneous by design: concrete Vector of the abstract type, not a UnionAll field.
     feedforwards::Vector{AbstractAffectFeedforward}
     service_name::String
-    use_slacks::Bool
     duals::Vector{DataType}
     time_series_names::Dict{Type{<:TimeSeriesParameter}, String}
     attributes::Dict{String, Any}
@@ -65,10 +64,9 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
 
         _check_service_formulation(D)
         _check_service_formulation(B)
-        new{D, B}(
+        new{D, B, slack_usage(use_slacks)}(
             convert(Vector{AbstractAffectFeedforward}, feedforwards),
             service_name,
-            use_slacks,
             duals,
             time_series_names,
             attributes_for_model,
@@ -86,7 +84,8 @@ get_formulation(
 ) where {D <: IS.InfrastructureSystemsComponent, B} = B
 get_feedforwards(m::ServiceModel) = m.feedforwards
 get_service_name(m::ServiceModel) = m.service_name
-get_use_slacks(m::ServiceModel) = m.use_slacks
+get_slack_usage(::ServiceModel{D, B, S}) where {D, B, S} = S()
+get_use_slacks(::ServiceModel{D, B, S}) where {D, B, S} = S === UseSlacks
 get_duals(m::ServiceModel) = m.duals
 get_time_series_names(m::ServiceModel) = m.time_series_names
 get_attributes(m::ServiceModel) = m.attributes

@@ -65,8 +65,7 @@ Establishes the NetworkModel for a given AC network formulation type.
 #
 # nw2 = NetworkModel(CopperPlatePowerModel; subnetworks = Dict(1 => Set([1,2,3])))
 """
-mutable struct NetworkModel{T <: AbstractPowerModel}
-    use_slacks::Bool
+mutable struct NetworkModel{T <: AbstractPowerModel, S <: SlackUsage}
     PTDF_matrix::Union{Nothing, AbstractInfrastructureNetworkMatrix}
     MODF_matrix::Union{Nothing, AbstractInfrastructureNetworkMatrix}
     subnetworks::Dict{Int, Set{Int}}
@@ -94,8 +93,7 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
         hvdc_network_model = nothing,
     ) where {T <: AbstractPowerModel}
         _check_pm_formulation(T)
-        new{T}(
-            use_slacks,
+        new{T, slack_usage(use_slacks)}(
             PTDF_matrix,
             MODF_matrix,
             subnetworks,
@@ -115,7 +113,8 @@ mutable struct NetworkModel{T <: AbstractPowerModel}
     end
 end
 
-get_use_slacks(m::NetworkModel) = m.use_slacks
+get_slack_usage(::NetworkModel{T, S}) where {T, S} = S()
+get_use_slacks(::NetworkModel{T, S}) where {T, S} = S === UseSlacks
 get_PTDF_matrix(m::NetworkModel) = m.PTDF_matrix
 get_MODF_matrix(m::NetworkModel) = m.MODF_matrix
 get_reduce_radial_branches(m::NetworkModel) = m.reduce_radial_branches

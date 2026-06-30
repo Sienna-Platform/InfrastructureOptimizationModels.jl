@@ -64,7 +64,7 @@ function _show_method(
     table = Matrix{String}(undef, 1, length(header))
     table[1, 1] = string(get_component_type(model))
     table[1, 2] = string(get_formulation(model))
-    table[1, 3] = string(model.use_slacks)
+    table[1, 3] = string(get_use_slacks(model))
 
     PrettyTables.pretty_table(
         io,

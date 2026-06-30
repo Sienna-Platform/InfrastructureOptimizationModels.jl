@@ -57,10 +57,10 @@ thermal_gens = DeviceModel(ThermalStandard, ThermalBasicUnitCommitment)
 mutable struct DeviceModel{
     D <: IS.InfrastructureSystemsComponent,
     B <: AbstractDeviceFormulation,
+    S <: SlackUsage,
 }
     # Heterogeneous by design: concrete Vector of the abstract type, not a UnionAll field.
     feedforwards::Vector{AbstractAffectFeedforward}
-    use_slacks::Bool
     duals::Vector{DataType}
     services::Vector{ServiceModel}
     time_series_names::Dict{Type{<:ParameterType}, String}
@@ -91,9 +91,8 @@ mutable struct DeviceModel{
         _check_device_formulation(D)
         _check_device_formulation(B)
         outages_field = _add_device_model_outages(D, B, outages)
-        new{D, B}(
+        new{D, B, slack_usage(use_slacks)}(
             convert(Vector{AbstractAffectFeedforward}, feedforwards),
-            use_slacks,
             duals,
             Vector{ServiceModel}(),
             time_series_names,
@@ -141,7 +140,8 @@ get_formulation(
 get_feedforwards(m::DeviceModel) = m.feedforwards
 get_services(m::DeviceModel) = m.services
 get_services(::Nothing) = nothing
-get_use_slacks(m::DeviceModel) = m.use_slacks
+get_slack_usage(::DeviceModel{D, B, S}) where {D, B, S} = S()
+get_use_slacks(::DeviceModel{D, B, S}) where {D, B, S} = S === UseSlacks
 get_duals(m::DeviceModel) = m.duals
 get_time_series_names(m::DeviceModel) = m.time_series_names
 get_attributes(m::DeviceModel) = m.attributes
