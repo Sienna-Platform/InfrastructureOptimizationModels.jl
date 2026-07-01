@@ -152,6 +152,115 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         @test haskey(PSI.get_expressions(container), expr_key)
     end
 
+    @testset "add_variable_container! - sparse starts empty, filled by assignment" begin
+        mock_sys = MockSystem(100.0)
+        settings = PSI.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        container = PSI.OptimizationContainer(
+            mock_sys,
+            settings,
+            JuMP.Model(),
+            MockDeterministic,
+        )
+        PSI.set_time_steps!(container, 1:1)
+        model = PSI.get_jump_model(container)
+
+        # The (outage, name, t) key set is ragged; the axes only fix the key
+        # tuple type. The container starts empty and the caller fills it.
+        result = PSI.add_variable_container!(
+            container, TestVariableType, MockComponentType, String[], String[], 1:1;
+            sparse = true, meta = "svc",
+        )
+
+        @test result isa SparseAxisArray
+        @test isempty(result.data)
+        @test keytype(result.data) == Tuple{String, String, Int}
+        idx_keys = [("outage1", "b1", 1), ("outage1", "b2", 1), ("outage2", "b1", 1)]
+        for k in idx_keys
+            result[k...] = JuMP.@variable(model)
+        end
+        @test issetequal(keys(result.data), idx_keys)
+        var_key = PSI.VariableKey(TestVariableType, MockComponentType, "svc")
+        @test haskey(PSI.get_variables(container), var_key)
+        @test PSI.get_variables(container)[var_key] === result
+    end
+
+    @testset "add_constraints_container! - sparse starts empty, filled by assignment" begin
+        mock_sys = MockSystem(100.0)
+        settings = PSI.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        container = PSI.OptimizationContainer(
+            mock_sys,
+            settings,
+            JuMP.Model(),
+            MockDeterministic,
+        )
+        PSI.set_time_steps!(container, 1:1)
+        model = PSI.get_jump_model(container)
+        x = JuMP.@variable(model)
+
+        result = PSI.add_constraints_container!(
+            container, MockConstraintType, MockComponentType, String[], String[], 1:1;
+            sparse = true, meta = "lb",
+        )
+
+        @test result isa SparseAxisArray
+        @test isempty(result.data)
+        @test keytype(result.data) == Tuple{String, String, Int}
+        idx_keys = [("outage1", "b1", 1), ("outage2", "b1", 1)]
+        for k in idx_keys
+            result[k...] = JuMP.@constraint(model, x <= 1.0)
+        end
+        @test issetequal(keys(result.data), idx_keys)
+        cons_key = PSI.ConstraintKey(MockConstraintType, MockComponentType, "lb")
+        @test haskey(PSI.get_constraints(container), cons_key)
+        @test PSI.get_constraints(container)[cons_key] === result
+    end
+
+    @testset "add_expression_container! - sparse starts empty, filled by assignment" begin
+        mock_sys = MockSystem(100.0)
+        settings = PSI.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        container = PSI.OptimizationContainer(
+            mock_sys,
+            settings,
+            JuMP.Model(),
+            MockDeterministic,
+        )
+        PSI.set_time_steps!(container, 1:1)
+        model = PSI.get_jump_model(container)
+
+        result = PSI.add_expression_container!(
+            container, MockExpressionType, MockComponentType, String[], String[], 1:1;
+            sparse = true, meta = "svc",
+        )
+
+        @test result isa SparseAxisArray
+        @test isempty(result.data)
+        @test keytype(result.data) == Tuple{String, String, Int}
+        x = JuMP.@variable(model)
+        idx_keys = [("outage1", "b1", 1), ("outage2", "b1", 1)]
+        for k in idx_keys
+            result[k...] = 2.0 * x
+        end
+        @test issetequal(keys(result.data), idx_keys)
+        expr_key = PSI.ExpressionKey(MockExpressionType, MockComponentType, "svc")
+        @test haskey(PSI.get_expressions(container), expr_key)
+        @test PSI.get_expressions(container)[expr_key] === result
+    end
+
     @testset "Parameter multiplier applied exactly once" begin
         # Regression for the double-multiply bug: the generic get_parameter_values
         # previously multiplied by the multiplier, and calculate_parameter_values

@@ -694,14 +694,16 @@ Key-constructing overload: builds the key from (T, U, meta) then delegates.
 end
 
 ####################################### Variable Container #################################
-add_variable_container!(
+function add_variable_container!(
     container::OptimizationContainer, ::Type{T}, ::Type{U}, axs::Vararg{Any, N};
     sparse = false, meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: VariableType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
-} = _add_container!(container, T, U, JuMP.VariableRef, sparse, axs...; meta = meta)
+}
+    return _add_container!(container, T, U, JuMP.VariableRef, sparse, axs...; meta = meta)
+end
 
 function add_variable_container!(
     container::OptimizationContainer,
@@ -810,14 +812,16 @@ function get_dual_keys(container::OptimizationContainer)
 end
 
 ##################################### Constraint Container #################################
-add_constraints_container!(
+function add_constraints_container!(
     container::OptimizationContainer, ::Type{T}, ::Type{U}, axs::Vararg{Any, N};
     sparse = false, meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: ConstraintType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
-} = _add_container!(container, T, U, JuMP.ConstraintRef, sparse, axs...; meta = meta)
+}
+    return _add_container!(container, T, U, JuMP.ConstraintRef, sparse, axs...; meta = meta)
+end
 
 function get_constraint_keys(container::OptimizationContainer)
     return collect(keys(container.constraints))

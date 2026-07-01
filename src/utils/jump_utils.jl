@@ -290,6 +290,40 @@ function to_outputs_dataframe(
     )
 end
 
+# Time-only (1-D) variables — e.g. `ReserveRequirementSlack` — are indexed by the
+# time axis alone. The name column is a constant placeholder so the frame layout
+# matches the name-indexed variants.
+function to_outputs_dataframe(
+    array::DenseAxisArray{Float64, 1, <:Tuple{IntegerAxis}},
+    timestamps,
+    ::Val{TableFormat.LONG},
+)
+    if length(timestamps) != length(array)
+        error(
+            "The number of timestamps must match the number of rows. " *
+            "timestamps = $(length(timestamps)) " *
+            "num_rows = $(length(array))",
+        )
+    end
+    return DataFrames.DataFrame(
+        :DateTime => _collect_timestamps(timestamps),
+        :name => fill("Result", length(array)),
+        :value => array.data,
+    )
+end
+
+function to_outputs_dataframe(
+    array::DenseAxisArray{Float64, 1, <:Tuple{IntegerAxis}},
+    ::Nothing,
+    ::Val{TableFormat.LONG},
+)
+    return DataFrames.DataFrame(
+        :time_index => collect(axes(array, 1)),
+        :name => fill("Result", length(array)),
+        :value => array.data,
+    )
+end
+
 function to_outputs_dataframe(
     array::DenseAxisArray{Float64, 2, <:Tuple{Vector{String}, IntegerAxis}},
     timestamps,
@@ -475,39 +509,12 @@ end
 """
 Returns the correct container specification for the selected type of JuMP Model
 """
-function sparse_container_spec(
-    ::Type{T},
-    axs::Vararg{Any, N},
-) where {T <: JuMP.AbstractJuMPScalar, N}
-    indexes = Base.Iterators.product(axs...)
-    # Build a fresh zero(T) per key — `indexes .=> zero(T)` aliases one mutable
-    # zero (e.g. an AffExpr) across every entry, so mutating one corrupts all.
-    contents = Dict{eltype(indexes), T}(k => zero(T) for k in indexes)
-    return SparseAxisArray(contents)
-end
-
-function sparse_container_spec(
-    ::Type{T},
-    axs::Vararg{Any, N},
-) where {T <: JuMP.VariableRef, N}
-    indexes = Base.Iterators.product(axs...)
-    contents = Dict{eltype(indexes), Union{Nothing, T}}(indexes .=> nothing)
-    return SparseAxisArray(contents)
-end
-
-function sparse_container_spec(
-    ::Type{T},
-    axs::Vararg{Any, N},
-) where {T <: JuMP.ConstraintRef, N}
-    indexes = Base.Iterators.product(axs...)
-    contents = Dict{eltype(indexes), Union{Nothing, T}}(indexes .=> nothing)
-    return SparseAxisArray(contents)
-end
-
-function sparse_container_spec(::Type{T}, axs::Vararg{Any, N}) where {T <: Number, N}
-    indexes = Base.Iterators.product(axs...)
-    contents = Dict{eltype(indexes), T}(indexes .=> zero(T))
-    return SparseAxisArray(contents)
+# Empty sparse container; the key tuple type is inferred from the axis types, so
+# the axes only have to carry the right element types — callers fill the
+# (possibly ragged) populated keys by assignment.
+function sparse_container_spec(::Type{T}, axs::Vararg{Any, N}) where {T, N}
+    K = eltype(Base.Iterators.product(axs...))
+    return SparseAxisArray(Dict{K, T}())
 end
 
 function remove_undef!(expression_array::AbstractArray)
