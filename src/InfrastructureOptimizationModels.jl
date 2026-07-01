@@ -215,7 +215,6 @@ export serialize_optimization_model
 export build!, solve!, run!
 export build_model!, build_pre_step!, build_if_not_already_built!
 export handle_initial_conditions!, solve_and_write_initial_conditions!
-export execute_emulation!
 export build_problem!, build_initial_conditions!
 
 export get_device_models

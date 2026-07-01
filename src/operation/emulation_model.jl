@@ -178,43 +178,6 @@ function _progress_meter_enabled()
            (get(ENV, "RUNNING_SIENNA_TESTS", nothing) != "true")
 end
 
-# Called `run_impl!` in PSI.
-function execute_emulation!(
-    model::EmulationModel;
-    optimizer = nothing,
-    enable_progress_bar = _progress_meter_enabled(),
-    kwargs...,
-)
-    _pre_solve_model_checks(model, optimizer)
-    internal = get_internal(model)
-    executions = get_executions(internal)
-    # Temporary check. Needs better way to manage re-runs of the same model
-    if internal.execution_count > 0
-        error("Call build! again")
-    end
-    prog_bar = ProgressMeter.Progress(executions; enabled = enable_progress_bar)
-    initial_time = get_initial_time(model)
-    for execution in 1:executions
-        TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Run execution" begin
-            solve_model!(model)
-            current_time = initial_time + (execution - 1) * get_resolution(model)
-            write_outputs!(get_store(model), model, execution, current_time)
-            write_optimizer_stats!(
-                get_store(model),
-                get_optimizer_stats(model),
-                execution,
-            )
-            advance_execution_count!(model)
-            ProgressMeter.update!(
-                prog_bar,
-                get_execution_count(model);
-                showvalues = [(:Execution, execution)],
-            )
-        end
-    end
-    return
-end
-
 """
 Default run method for an `EmulationModel`.
 
@@ -241,13 +204,41 @@ status = run!(model; output_dir = "./model_output", optimizer = HiGHS.Optimizer,
 """
 run!(model::EmulationModel; kwargs...) = execute_model!(model; kwargs...)
 
+# The run loop was called `run_impl!` in PSI.
 function _execute_model!(
     model::EmulationModel;
+    optimizer = nothing,
     enable_progress_bar = _progress_meter_enabled(),
     kwargs...,
 )
     TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Run" begin
-        execute_emulation!(model; enable_progress_bar = enable_progress_bar, kwargs...)
+        _pre_solve_model_checks(model, optimizer)
+        internal = get_internal(model)
+        executions = get_executions(internal)
+        # Temporary check. Needs better way to manage re-runs of the same model
+        if internal.execution_count > 0
+            error("Call build! again")
+        end
+        prog_bar = ProgressMeter.Progress(executions; enabled = enable_progress_bar)
+        initial_time = get_initial_time(model)
+        for execution in 1:executions
+            TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Run execution" begin
+                solve_model!(model)
+                current_time = initial_time + (execution - 1) * get_resolution(model)
+                write_outputs!(get_store(model), model, execution, current_time)
+                write_optimizer_stats!(
+                    get_store(model),
+                    get_optimizer_stats(model),
+                    execution,
+                )
+                advance_execution_count!(model)
+                ProgressMeter.update!(
+                    prog_bar,
+                    get_execution_count(model);
+                    showvalues = [(:Execution, execution)],
+                )
+            end
+        end
         set_run_status!(model, RunStatus.SUCCESSFULLY_FINALIZED)
     end
     return
