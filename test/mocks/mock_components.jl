@@ -10,11 +10,10 @@ These types can be used:
 
 using InfrastructureOptimizationModels
 using InfrastructureSystems
-const PSI = InfrastructureOptimizationModels
 const IS = InfrastructureSystems
 
 # Mock formulation type for testing DeviceModel
-struct TestDeviceFormulation <: PSI.AbstractDeviceFormulation end
+struct TestDeviceFormulation <: IOM.AbstractDeviceFormulation end
 struct TestPowerModel <: IS.Optimization.AbstractPowerModel end
 
 # Mock operation costs for testing objective function construction.
