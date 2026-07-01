@@ -114,6 +114,12 @@ function has_service end
 # Operation-model lifecycle extension points — downstream (e.g. POM) supplies methods
 # dispatched on concrete problem types.
 function validate_time_series! end
+# Builds the domain-specific contents of the optimization container from the template
+# (devices/networks/services). POM implements it for `PowerOperationsProblemTemplate`.
+function build_problem! end
+# Builds the initial-conditions sub-model. POM implements it (it needs the power-specific
+# initial-conditions template).
+function build_initial_conditions! end
 
 import TimerOutputs
 
@@ -135,6 +141,7 @@ import DataFrames: DataFrame, DataFrameRow, Not, innerjoin, select
 import DataFramesMeta: @chain, @orderby, @rename, @select, @subset, @transform
 import HDF5
 import PrettyTables
+import ProgressMeter
 
 ################################################################################
 # Type Aliases
@@ -204,6 +211,11 @@ export init_optimization_container!
 export get_initial_conditions
 export serialize_outputs
 export serialize_optimization_model
+# Operation-model lifecycle (generic; POM supplies build_problem!/build_initial_conditions!)
+export build!, solve!, run!
+export build_model!, build_pre_step!, build_if_not_already_built!
+export handle_initial_conditions!, solve_and_write_initial_conditions!
+export build_problem!, build_initial_conditions!
 
 export get_device_models
 export get_branch_models
@@ -652,8 +664,6 @@ include("operation/problem_outputs.jl")
 include("operation/time_series_interface.jl")
 include("operation/optimization_debugging.jl")
 include("operation/model_numerical_analysis_utils.jl")
-
-include("initial_conditions/calculate_initial_condition.jl")
 
 # Utils
 include("utils/indexing.jl")

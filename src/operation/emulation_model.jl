@@ -160,3 +160,86 @@ function init_model_store_params!(model::EmulationModel)
     )
     return
 end
+
+# Emulation models solve one step at a time; they are always built for recurrent solves.
+reset_time_series_type(::EmulationModel) = IS.SingleTimeSeries
+
+function _mark_recurrent_solves!(model::EmulationModel)
+    get_optimization_container(model).built_for_recurrent_solves = true
+    return
+end
+
+_apply_build_executions!(model::EmulationModel, executions) =
+    set_executions!(model, executions)
+
+function _progress_meter_enabled()
+    return isa(stderr, Base.TTY) &&
+           (get(ENV, "CI", nothing) != "true") &&
+           (get(ENV, "RUNNING_SIENNA_TESTS", nothing) != "true")
+end
+
+"""
+Default run method for an `EmulationModel`.
+
+This calls `build!` on the model if it is not already built, forwarding all keyword
+arguments to it.
+
+# Arguments
+
+  - `model::EmulationModel`: the emulation model
+  - `optimizer::MOI.OptimizerWithAttributes`: the optimizer used to solve the model
+  - `executions::Int`: number of executions for the emulator run
+  - `export_problem_outputs::Bool`: export `OptimizationProblemOutputs` DataFrames to CSV
+  - `output_dir::String`: required if the model is not already built, otherwise ignored
+  - `enable_progress_bar::Bool`: enable/disable progress bar printing
+  - `export_optimization_problem::Bool`: serialize the model to allow re-execution later
+  - `store_system_in_results::Bool = true`: store the system as JSON in the results HDF5 file
+
+# Examples
+
+```julia
+status = run!(model; optimizer = HiGHS.Optimizer, executions = 10)
+status = run!(model; output_dir = "./model_output", optimizer = HiGHS.Optimizer, executions = 10)
+```
+"""
+run!(model::EmulationModel; kwargs...) = execute_model!(model; kwargs...)
+
+# The run loop was called `run_impl!` in PSI.
+function _execute_model!(
+    model::EmulationModel;
+    optimizer = nothing,
+    enable_progress_bar = _progress_meter_enabled(),
+    kwargs...,
+)
+    TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Run" begin
+        _pre_solve_model_checks(model, optimizer)
+        internal = get_internal(model)
+        executions = get_executions(internal)
+        # Temporary check. Needs better way to manage re-runs of the same model
+        if internal.execution_count > 0
+            error("Call build! again")
+        end
+        prog_bar = ProgressMeter.Progress(executions; enabled = enable_progress_bar)
+        initial_time = get_initial_time(model)
+        for execution in 1:executions
+            TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Run execution" begin
+                solve_model!(model)
+                current_time = initial_time + (execution - 1) * get_resolution(model)
+                write_outputs!(get_store(model), model, execution, current_time)
+                write_optimizer_stats!(
+                    get_store(model),
+                    get_optimizer_stats(model),
+                    execution,
+                )
+                advance_execution_count!(model)
+                ProgressMeter.update!(
+                    prog_bar,
+                    get_execution_count(model);
+                    showvalues = [(:Execution, execution)],
+                )
+            end
+        end
+        set_run_status!(model, RunStatus.SUCCESSFULLY_FINALIZED)
+    end
+    return
+end

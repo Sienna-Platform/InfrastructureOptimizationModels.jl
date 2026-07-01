@@ -197,3 +197,42 @@ function init_model_store_params!(model::DecisionModel)
 end
 
 get_horizon(model::DecisionModel) = get_horizon(get_settings(model))
+
+reset_time_series_type(model::DecisionModel) =
+    get_deterministic_time_series_type(get_system(model))
+
+"""
+Default solve method for a `DecisionModel`.
+
+This calls `build!` on the model if it is not already built, forwarding all keyword
+arguments to it.
+
+# Arguments
+
+  - `model::DecisionModel`: the decision model
+  - `export_problem_outputs::Bool = false`: export `OptimizationProblemOutputs` DataFrames to CSV
+  - `console_level = Logging.Error`
+  - `file_level = Logging.Info`
+  - `disable_timer_outputs = false`: Enable/Disable timing outputs
+  - `export_optimization_problem::Bool = true`: serialize the model to allow re-execution later
+  - `store_system_in_results::Bool = true`: store the system as JSON in the results HDF5 file
+
+# Examples
+
+```julia
+outputs = solve!(model)
+outputs = solve!(model; export_problem_outputs = true)
+```
+"""
+solve!(model::DecisionModel; kwargs...) = execute_model!(model; kwargs...)
+
+function _execute_model!(model::DecisionModel; optimizer = nothing, kwargs...)
+    TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Solve" begin
+        _pre_solve_model_checks(model, optimizer)
+        solve_model!(model)
+        current_time = get_initial_time(model)
+        write_outputs!(get_store(model), model, current_time, current_time)
+        write_optimizer_stats!(get_store(model), get_optimizer_stats(model), current_time)
+    end
+    return
+end
