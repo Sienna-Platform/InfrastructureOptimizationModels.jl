@@ -140,7 +140,7 @@ function _onvar_cost(
 )
     value_curve = IS.get_value_curve(cost_function)
     cost_component = IS.get_function_data(value_curve)
-    # Always in \$/h
+    # Cost at zero output (y-intercept), always in \$/h.
     constant_term = IS.get_constant_term(cost_component)
     return constant_term
 end
