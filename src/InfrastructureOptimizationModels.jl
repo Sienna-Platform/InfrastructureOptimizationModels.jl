@@ -666,9 +666,6 @@ include("operation/time_series_interface.jl")
 include("operation/optimization_debugging.jl")
 include("operation/model_numerical_analysis_utils.jl")
 
-include("initial_conditions/calculate_initial_condition.jl")
-include("initial_conditions/operation_initialization.jl")
-
 # Utils
 include("utils/indexing.jl")
 include("utils/print_pt_v3.jl")

@@ -224,42 +224,15 @@ outputs = solve!(model)
 outputs = solve!(model; export_problem_outputs = true)
 ```
 """
-function solve!(
-    model::DecisionModel;
-    export_problem_outputs = false,
-    console_level = Logging.Error,
-    file_level = Logging.Info,
-    disable_timer_outputs = false,
-    export_optimization_problem = true,
-    store_system_in_results = true,
-    kwargs...,
-)
-    if store_system_in_results
-        @warn "store_system_in_results is set to true. This will do nothing unless a Simulation is being built."
+solve!(model::DecisionModel; kwargs...) = execute_model!(model; kwargs...)
+
+function _execute_model!(model::DecisionModel; optimizer = nothing, kwargs...)
+    TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Solve" begin
+        _pre_solve_model_checks(model, optimizer)
+        solve_model!(model)
+        current_time = get_initial_time(model)
+        write_outputs!(get_store(model), model, current_time, current_time)
+        write_optimizer_stats!(get_store(model), get_optimizer_stats(model), current_time)
     end
-    build_if_not_already_built!(
-        model;
-        console_level = console_level,
-        file_level = file_level,
-        disable_timer_outputs = disable_timer_outputs,
-        kwargs...,
-    )
-    set_console_level!(model, console_level)
-    set_file_level!(model, file_level)
-    TimerOutputs.reset_timer!(RUN_OPERATION_MODEL_TIMER)
-    disable_timer_outputs && TimerOutputs.disable_timer!(RUN_OPERATION_MODEL_TIMER)
-    optimizer = get(kwargs, :optimizer, nothing)
-    return _run_and_finalize!(
-        model;
-        export_optimization_problem = export_optimization_problem,
-        export_problem_outputs = export_problem_outputs,
-    ) do m
-        TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Solve" begin
-            _pre_solve_model_checks(m, optimizer)
-            solve_model!(m)
-            current_time = get_initial_time(m)
-            write_outputs!(get_store(m), m, current_time, current_time)
-            write_optimizer_stats!(get_store(m), get_optimizer_stats(m), current_time)
-        end
-    end
+    return
 end

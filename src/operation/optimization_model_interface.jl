@@ -434,6 +434,31 @@ function build_model!(model::AbstractOptimizationModel)
     return
 end
 
+# Called `initialize!` in PSI (lived in operation_model_interface.jl).
+function solve_and_write_initial_conditions!(model::AbstractOptimizationModel)
+    container = get_optimization_container(model)
+    if get_initial_conditions_model_container(get_internal(model)) === nothing
+        return
+    end
+    @info "Solving Initialization Model for $(get_name(model))"
+    status = execute_optimizer!(
+        get_initial_conditions_model_container(get_internal(model)),
+        get_system(model),
+    )
+    if status == RunStatus.FAILED
+        error("Model failed to initialize")
+    end
+
+    write_initial_conditions_data!(
+        container,
+        get_initial_conditions_model_container(get_internal(model)),
+    )
+    init_file = get_initial_conditions_file(model)
+    Serialization.serialize(init_file, get_initial_conditions_data(container))
+    @info "Serialized initial conditions to $init_file"
+    return
+end
+
 function handle_initial_conditions!(model::AbstractOptimizationModel)
     TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Model Initialization" begin
         if isempty(get_template(model))
@@ -526,7 +551,7 @@ function build!(
     model::AbstractOptimizationModel;
     executions = 1,
     output_dir::String,
-    recorders = [],
+    recorders = Symbol[],
     console_level = Logging.Error,
     file_level = Logging.Info,
     disable_timer_outputs = false,
@@ -567,6 +592,9 @@ function build!(
     return get_status(model)
 end
 
+# Execution-time kwargs consumed by `_execute_model!`, not by `build!`.
+const _EXECUTION_KWARGS = (:optimizer, :enable_progress_bar)
+
 function build_if_not_already_built!(model::AbstractOptimizationModel; kwargs...)
     status = get_status(model)
     if status == ModelBuildStatus.EMPTY
@@ -575,7 +603,7 @@ function build_if_not_already_built!(model::AbstractOptimizationModel; kwargs...
                 "'output_dir' must be provided as a kwarg if the model build status is $status",
             )
         else
-            new_kwargs = Dict(k => v for (k, v) in kwargs if k != :optimizer)
+            new_kwargs = Dict(k => v for (k, v) in kwargs if k ∉ _EXECUTION_KWARGS)
             status = build!(model; new_kwargs...)
         end
     end
@@ -585,15 +613,31 @@ function build_if_not_already_built!(model::AbstractOptimizationModel; kwargs...
     return
 end
 
-# Shared scaffolding for `solve!`/`run!`: storage init, logging, serialization, and
-# outputs processing. `action!` runs the model-kind-specific solve step under the run
-# timer and sets the run status.
-function _run_and_finalize!(
-    action!::Function,
+function execute_model!(
     model::AbstractOptimizationModel;
-    export_optimization_problem = true,
     export_problem_outputs = false,
+    console_level = Logging.Error,
+    file_level = Logging.Info,
+    disable_timer_outputs = false,
+    export_optimization_problem = true,
+    store_system_in_results = true,
+    kwargs...,
 )
+    if store_system_in_results
+        @warn "store_system_in_results is set to true. This will do nothing unless a Simulation is being built."
+    end
+    build_if_not_already_built!(
+        model;
+        console_level = console_level,
+        file_level = file_level,
+        disable_timer_outputs = disable_timer_outputs,
+        kwargs...,
+    )
+    set_console_level!(model, console_level)
+    set_file_level!(model, file_level)
+    TimerOutputs.reset_timer!(RUN_OPERATION_MODEL_TIMER)
+    disable_timer_outputs && TimerOutputs.disable_timer!(RUN_OPERATION_MODEL_TIMER)
+
     file_mode = "a"
     register_recorders!(model, file_mode)
     logger = configure_logging(get_internal(model), PROBLEM_LOG_FILENAME, file_mode)
@@ -605,7 +649,7 @@ function _run_and_finalize!(
                     get_optimization_container(model),
                     get_store_params(model),
                 )
-                action!(model)
+                _execute_model!(model; kwargs...)
                 if export_optimization_problem
                     TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Serialize" begin
                         serialize_optimization_model(model)

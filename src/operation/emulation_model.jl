@@ -239,39 +239,16 @@ status = run!(model; optimizer = HiGHS.Optimizer, executions = 10)
 status = run!(model; output_dir = "./model_output", optimizer = HiGHS.Optimizer, executions = 10)
 ```
 """
-function run!(
+run!(model::EmulationModel; kwargs...) = execute_model!(model; kwargs...)
+
+function _execute_model!(
     model::EmulationModel;
-    export_problem_outputs = false,
-    console_level = Logging.Error,
-    file_level = Logging.Info,
-    disable_timer_outputs = false,
-    export_optimization_problem = true,
     enable_progress_bar = _progress_meter_enabled(),
-    store_system_in_results = true,
     kwargs...,
 )
-    if store_system_in_results
-        @warn "store_system_in_results is set to true. This will do nothing unless a Simulation is being built."
+    TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Run" begin
+        execute_emulation!(model; enable_progress_bar = enable_progress_bar, kwargs...)
+        set_run_status!(model, RunStatus.SUCCESSFULLY_FINALIZED)
     end
-    build_if_not_already_built!(
-        model;
-        console_level = console_level,
-        file_level = file_level,
-        disable_timer_outputs = disable_timer_outputs,
-        kwargs...,
-    )
-    set_console_level!(model, console_level)
-    set_file_level!(model, file_level)
-    TimerOutputs.reset_timer!(RUN_OPERATION_MODEL_TIMER)
-    disable_timer_outputs && TimerOutputs.disable_timer!(RUN_OPERATION_MODEL_TIMER)
-    return _run_and_finalize!(
-        model;
-        export_optimization_problem = export_optimization_problem,
-        export_problem_outputs = export_problem_outputs,
-    ) do m
-        TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Run" begin
-            execute_emulation!(m; enable_progress_bar = enable_progress_bar, kwargs...)
-            set_run_status!(m, RunStatus.SUCCESSFULLY_FINALIZED)
-        end
-    end
+    return
 end
