@@ -82,7 +82,6 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     initial_conditions::OrderedDict{InitialConditionKey, Vector{<:InitialCondition}}
     initial_conditions_data::InitialConditionsData
     infeasibility_conflict::Dict{Symbol, Array}
-    pm::Union{Nothing, AbstractPowerModel}
     model_base_power::Float64
     optimizer_stats::OptimizerStats
     built_for_recurrent_solves::Bool
@@ -132,7 +131,6 @@ function OptimizationContainer(
         OrderedDict{InitialConditionKey, Vector{<:InitialCondition}}(),
         InitialConditionsData(),
         Dict{Symbol, Array}(),
-        nothing,
         get_base_power(sys),
         OptimizerStats(),
         false,
@@ -318,7 +316,7 @@ function init_optimization_container!(
     container::OptimizationContainer,
     network_model::NetworkModel{T},
     sys::IS.InfrastructureSystemsContainer,
-) where {T <: AbstractPowerModel}
+) where {T <: AbstractNetworkModel}
     # The order of operations matter
     # stateful unit system is being phased out; POM should no longer need this.
     # temp_set_units_base_system!(sys, "SYSTEM_BASE")

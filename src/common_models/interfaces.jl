@@ -219,11 +219,16 @@ is_from_evaluator(::Type{<:AuxVariableType}) = false
 """
 Extension point: Get minimum and maximum limits for a given component, constraint type, and device formulation.
 """
-get_min_max_limits(
-    ::IS.InfrastructureSystemsComponent,
-    ::Type{<:ConstraintType},
-    ::Type{<:AbstractDeviceFormulation},
-) = nothing
+function get_min_max_limits(
+    component::IS.InfrastructureSystemsComponent,
+    ::Type{T},
+    ::Type{F},
+) where {T <: ConstraintType, F <: AbstractDeviceFormulation}
+    error(
+        "`get_min_max_limits` not implemented for component $(typeof(component)), \
+        constraint $T, formulation $F. Implement it in the downstream package (e.g. POM).",
+    )
+end
 
 """
 Extension point: variable cost.

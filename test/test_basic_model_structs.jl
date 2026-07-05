@@ -1,11 +1,11 @@
 @testset "DeviceModel Tests" begin
     @test_throws ArgumentError DeviceModel(ThermalGen, ThermalStandardUnitCommitment)
     @test_throws ArgumentError DeviceModel(ThermalStandard, PSI.AbstractThermalFormulation)
-    @test_throws ArgumentError NetworkModel(AbstractPowerModel)
+    @test_throws ArgumentError NetworkModel(AbstractNetworkModel)
 end
 
 @testset "NetworkModel Tests" begin
-    @test_throws ArgumentError NetworkModel(AbstractPowerModel)
+    @test_throws ArgumentError NetworkModel(AbstractNetworkModel)
     ec_multi = EvaluationContainer()
     add_evaluator!(ec_multi, DCPowerFlow, DCPowerFlow())
     add_evaluator!(

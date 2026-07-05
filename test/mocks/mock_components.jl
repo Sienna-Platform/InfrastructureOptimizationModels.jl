@@ -15,7 +15,7 @@ const IS = InfrastructureSystems
 
 # Mock formulation type for testing DeviceModel
 struct TestDeviceFormulation <: PSI.AbstractDeviceFormulation end
-struct TestPowerModel <: IS.Optimization.AbstractPowerModel end
+struct TestPowerModel <: AbstractNetworkModel end
 
 # Mock operation costs for testing objective function construction.
 # Mirrors the PSY pattern: separate static and time-series types.

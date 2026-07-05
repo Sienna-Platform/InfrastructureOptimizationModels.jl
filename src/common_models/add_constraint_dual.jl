@@ -18,7 +18,7 @@ function add_constraint_dual!(
     container::OptimizationContainer,
     sys::IS.InfrastructureSystemsContainer,
     model::NetworkModel{T},
-) where {T <: AbstractPowerModel}
+) where {T <: AbstractNetworkModel}
     if !isempty(get_duals(model))
         # component is ACBus, but we don't have PSY as a dependency.
         devices = get_available_components(model, component_for_network_dual(nothing), sys)
@@ -111,7 +111,7 @@ function assign_dual_variable!(
     container::OptimizationContainer,
     constraint_type::Type{<:ConstraintType},
     devices::U,
-    ::NetworkModel{<:AbstractPowerModel},
+    ::NetworkModel{<:AbstractNetworkModel},
 ) where {
     U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
 } where {D <: IS.InfrastructureSystemsComponent}

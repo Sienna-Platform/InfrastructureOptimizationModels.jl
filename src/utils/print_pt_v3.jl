@@ -172,7 +172,7 @@ function _show_method(io::IO, network_model::NetworkModel, backend::Symbol; kwar
     table = [
         "Network Model" string(get_network_formulation(network_model))
         "Slacks" get_use_slacks(network_model)
-        "PTDF" !isnothing(get_PTDF_matrix(network_model))
+        "Network Matrix" !isnothing(get_network_matrix(network_model))
         "Duals" join(string.(get_duals(network_model)), " ")
     ]
 
