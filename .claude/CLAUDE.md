@@ -4,8 +4,9 @@ Platform-wide Sienna conventions (performance, type stability, formatter, enviro
 
 ## Purpose & Role
 
-IOM is the **optimization-model utility layer** of Sienna — the abstraction beneath
-PowerSimulations.jl (PSI) and PowerOperationsModels.jl (POM). It defines the generic,
+IOM is the **optimization-model utility layer** of the psy6 stack — the domain-neutral
+abstraction beneath PowerOperationsModels.jl (POM). In this line the old PowerSimulations.jl
+does not exist: **PSI ≈ POM + IOM**. IOM defines the generic,
 domain-agnostic machinery for *building* optimization models: the optimization container,
 variable/constraint/expression/parameter abstractions and their containers, model wrappers
 (`DeviceModel`/`NetworkModel`/`ServiceModel`), the two operation-model types
@@ -21,6 +22,22 @@ proportional, quadratic formulations translating IS `ValueCurve` types into JuMP
 *costs*. "Production cost", "fuel cost", "start-up cost" are domain concepts owned by POM.
 IOM functions may name PSY cost types in signatures (for dispatch) but their job is building
 JuMP objective expressions.
+
+## The IOM/POM split (PR #104) — do not re-litigate
+
+PR #104 moved the problem taxonomy out of IOM. IOM **removed**: `OperationModel`,
+`DecisionProblem`, `EmulationProblem`, the `Generic*`/`Default*` problem types, and the
+`Simulation*` stubs. POM now owns the `PowerOperationModel <: IOM.AbstractOptimizationProblem`
+chain (`POM/src/core/problem_types.jl`); the old `OperationModel` abstract became
+`IOM.AbstractOptimizationModel`; `validate_time_series!`/`validate_template` remain here as
+stubs on the neutral abstract. **When a symbol is "missing from IOM", check whether #104
+moved it to POM before re-adding anything here.**
+
+Domain-neutrality litmus: if a name only makes sense for power systems, it belongs in POM.
+Known audit-flagged leaks to shrink, not extend: power vocabulary in `src/core/network_model.jl`
+(`PTDF_matrix`, `MODF_matrix`, `AbstractPowerModel`, `reduce_radial_branches`), the dead
+`pm::Union{Nothing,AbstractPowerModel}` field in `optimization_container.jl`, and
+model-lifecycle stubs that silently no-op instead of erroring.
 
 ## Optimization Model Construction Conventions
 
@@ -96,7 +113,8 @@ groups:
 - **Prefer IS types over PSY types.** Use IS parent types where possible:
   `PSY.Component` → `IS.InfrastructureSystemsComponent`,
   `PSY.System` → `IS.InfrastructureSystemsContainer`, cost curves via `IS.CostCurve`,
-  `IS.LinearCurve`, `IS.UnitSystem`, etc. IOM imports key/formulation abstract types and
+  `IS.LinearCurve`, unit markers via `IS.RelativeUnits` (`SU`/`DU`/`NU` — the legacy
+  `IS.UnitSystem` enum is gone from the cost-curve API in IS4). IOM imports key/formulation abstract types and
   generic accessors from `InfrastructureSystems.Optimization` / `InfrastructureSystems` to
   avoid duplication.
 - **Extension-point stubs.** The main module declares empty generic functions
@@ -153,12 +171,29 @@ Relevant to `src/objective_function/value_curve_cost.jl`, `offer_curve_types.jl`
 
 ## Cross-Package Coupling
 
-- **Upstream:** InfrastructureSystems.jl — base types, key/formulation abstract types,
-  generic component/time-series accessors, cost-curve types, serialization. Imported, not
-  duplicated.
-- **Downstream:** PowerSimulations.jl, PowerOperationsModels.jl, PowerSystemsInvestments.jl
-  build concrete formulations and supply methods for IOM's extension-point stubs using PSY
-  types. Consider downstream impact for any signature/abstract-type change.
+- **Upstream:** InfrastructureSystems.jl (IS4 branch via `[sources]`) — base types,
+  key/formulation abstract types, generic component/time-series accessors, cost-curve types,
+  serialization. Imported, not duplicated.
+- **Downstream:** PowerOperationsModels.jl (primary) and PowerSystemsInvestments.jl build
+  concrete formulations and supply methods for IOM's extension-point stubs using PSY types.
+  Consider downstream impact for any signature/abstract-type change; run the POM suite after
+  IOM edits.
+- **The `IOM._*` surface is load-bearing.** POM currently calls ~56 distinct non-exported
+  `IOM._*` helpers (parameter/multiplier setters, PWL machinery). Renaming or changing any
+  `_`-prefixed function here can break POM even though it is "private". The standing action
+  item (2026-07-02 audit, candidate 4) is to formalize this contract: docstring the
+  problem-template and interface stubs, promote the most-used `_*` helpers to exported API,
+  and add a conformance harness POM CI can run. Until then: treat `_*` signature changes as
+  breaking, and never add new `_*` reaches from downstream.
+- **Reduction seam:** IOM keeps only the abstract `AbstractBranchReductionTracker`; the
+  concrete `BranchReductionOptimizationTracker` lives in POM. Evaluators: IOM owns
+  `AbstractEvaluator`; POM wraps PowerFlows models in `PowerFlowEvaluator`. Keep IOM
+  PF-agnostic.
+- **Result keys:** outputs encode as `"VariableType__ComponentType"` (`__` delimiter) through
+  `IOM.OptimizationProblemOutputs`; read via `read_variable(res, key; table_format =
+  TableFormat.WIDE)`. Statuses: `IOM.ModelBuildStatus.BUILT`,
+  `IOM.RunStatus.SUCCESSFULLY_FINALIZED`. Renaming any of these breaks every downstream
+  results consumer.
 
 ## Commands (verified)
 
