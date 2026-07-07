@@ -137,6 +137,7 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_ramp_constraints.jl"))
                     include(joinpath(TEST_DIR, "test_duration_constraints.jl"))
                     include(joinpath(TEST_DIR, "test_emulation_model_store.jl"))
+                    include(joinpath(TEST_DIR, "test_model_store.jl"))
 
                     # --- quadratic_approximations/ subfolder ---
                     include(joinpath(TEST_DIR, "test_quadratic_approximations.jl"))
@@ -152,7 +153,7 @@ function run_tests()
                 ============================================================================
                 - test_basic_model_structs.jl, test_model_decision.jl, test_model_emulation.jl:
                   previously used PSY/PowerModels types; rewrite with mocks before re-enabling.
-                - test_model_store.jl, test_offer_curve_cost.jl: PSY/PSB-backed integration tests
+                - test_offer_curve_cost.jl: PSY/PSB-backed integration tests
                   removed when IOM dropped PSY/PSB dependencies; rewrite with mocks.
                 ============================================================================
                 =#
