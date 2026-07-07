@@ -1,6 +1,6 @@
 @testset "DeviceModel Tests" begin
     @test_throws ArgumentError DeviceModel(ThermalGen, ThermalStandardUnitCommitment)
-    @test_throws ArgumentError DeviceModel(ThermalStandard, PSI.AbstractThermalFormulation)
+    @test_throws ArgumentError DeviceModel(ThermalStandard, IOM.AbstractThermalFormulation)
     @test_throws ArgumentError NetworkModel(AbstractNetworkModel)
 end
 

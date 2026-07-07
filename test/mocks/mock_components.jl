@@ -13,7 +13,7 @@ using InfrastructureSystems
 const IS = InfrastructureSystems
 
 # Mock formulation type for testing DeviceModel
-struct TestDeviceFormulation <: PSI.AbstractDeviceFormulation end
+struct TestDeviceFormulation <: IOM.AbstractDeviceFormulation end
 struct TestPowerModel <: AbstractNetworkModel end
 
 # Mock operation costs for testing objective function construction.
