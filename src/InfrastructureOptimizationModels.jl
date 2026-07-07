@@ -58,8 +58,7 @@ import InfrastructureSystems.Optimization:
     AbstractRenewableFormulation,
     AbstractStorageFormulation,
     AbstractLoadFormulation,
-    AbstractHVDCNetworkModel,
-    AbstractPowerModel
+    AbstractHVDCNetworkModel
 
 import InfrastructureSystems:
     @scoped_enum,
@@ -166,8 +165,9 @@ export ServicesModelContainer, DevicesModelContainer, BranchModelContainer
 export InitialCondition
 
 # Network Relevant Exports
+export AbstractNetworkModel
 export NetworkModel
-export get_PTDF_matrix, get_MODF_matrix, get_reduce_radial_branches
+export get_network_matrix, get_contingency_matrix, get_reduce_radial_branches
 export get_outages
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, has_subnetworks, get_subsystem

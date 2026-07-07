@@ -154,6 +154,12 @@ import InfrastructureSystems as IS
     @test IOM.get_resolution(opt_res1) == Millisecond(3600000)
     @test IOM.get_resolution(opt_res2) == Millisecond(3600000)
     @test isnothing(IOM.get_resolution(opt_res3))
+
+    # Regression: showing outputs with a single time period used to throw
+    # `MethodError: no method matching Minute(::Nothing)` because the resolution
+    # is `nothing` when there is only one timestamp.
+    @test occursin("N/A (single period)", sprint(show, MIME("text/plain"), opt_res3))
+    @test occursin("Resolution: 60 minutes", sprint(show, MIME("text/plain"), opt_res1))
 end
 
 @testset "Test OptimizationProblemOutputs 3d long format" begin

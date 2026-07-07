@@ -173,8 +173,8 @@ Is this offer curve carrying meaningful data, as opposed to the default
 `MarketBidCost` / `ImportExportCost`? Only used for load formulations.
 """
 function is_nontrivial_offer(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve})
-    xs = IS.get_x_coords(IS.get_function_data(IS.get_value_curve(curve)))
-    return last(xs) > first(xs)
+    lo, hi = IS.get_domain(IS.get_function_data(IS.get_value_curve(curve)))
+    return hi > lo
 end
 # A TS-backed offer side is the absent/placeholder side of a one-sided participant
 # (a load with no supply offer, or a generator with no demand offer) when it carries a

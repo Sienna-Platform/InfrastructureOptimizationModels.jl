@@ -35,7 +35,7 @@ function add_range_constraints!(
     U <: VariableType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_variable(container, U, V)
     _add_bound_range_constraints_impl!(container, T, LowerBound(), array, devices, model)
@@ -55,7 +55,7 @@ function add_range_constraints!(
     U <: RangeConstraintLBExpressions,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_bound_range_constraints_impl!(container, T, LowerBound(), array, devices, model)
@@ -74,7 +74,7 @@ function add_range_constraints!(
     U <: RangeConstraintUBExpressions,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_bound_range_constraints_impl!(container, T, UpperBound(), array, devices, model)
@@ -235,7 +235,7 @@ function add_semicontinuous_range_constraints!(
     U <: VariableType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_variable(container, U, V)
     _add_semicontinuous_bound_range_constraints_impl!(
@@ -257,7 +257,7 @@ function add_semicontinuous_range_constraints!(
     U <: RangeConstraintLBExpressions,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_semicontinuous_bound_range_constraints_impl!(
@@ -277,7 +277,7 @@ function add_semicontinuous_range_constraints!(
     U <: RangeConstraintUBExpressions,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_semicontinuous_bound_range_constraints_impl!(
@@ -383,7 +383,7 @@ function add_parameterized_bound_range_constraints(
     P <: ParameterType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_parameterized_bound_range_constraints_impl!(
@@ -406,7 +406,7 @@ function add_parameterized_bound_range_constraints(
     P <: ParameterType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_variable(container, U, V)
     _add_parameterized_bound_range_constraints_impl!(
@@ -429,7 +429,7 @@ function add_parameterized_lower_bound_range_constraints(
     P <: ParameterType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     add_parameterized_bound_range_constraints(
         container,
@@ -458,7 +458,7 @@ function add_parameterized_upper_bound_range_constraints(
     P <: ParameterType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     add_parameterized_bound_range_constraints(
         container,

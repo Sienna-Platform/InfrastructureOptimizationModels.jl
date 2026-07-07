@@ -17,9 +17,13 @@ struct MockReductionTracker <: IOM.AbstractBranchReductionTracker end
 
 @testset "NetworkModel with abstract network matrices" begin
     matrix = MockNetworkMatrix([1.0 0.0; 0.0 1.0])
-    nw = IOM.NetworkModel(TestPowerModel; PTDF_matrix = matrix, MODF_matrix = matrix)
-    @test IOM.get_PTDF_matrix(nw) === matrix
-    @test IOM.get_MODF_matrix(nw) === matrix
+    nw = IOM.NetworkModel(
+        TestPowerModel;
+        network_matrix = matrix,
+        contingency_matrix = matrix,
+    )
+    @test IOM.get_network_matrix(nw) === matrix
+    @test IOM.get_contingency_matrix(nw) === matrix
     # Reduction data and tracker are populated by the matrix-aware downstream package.
     @test IOM.get_network_reduction(nw) === nothing
     @test IOM.get_reduced_branch_tracker(nw) === nothing

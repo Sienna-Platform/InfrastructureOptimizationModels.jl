@@ -172,7 +172,7 @@ function _show_method(io::IO, network_model::NetworkModel, backend::Symbol; kwar
     table = [
         "Network Model" string(get_network_formulation(network_model))
         "Slacks" get_use_slacks(network_model)
-        "PTDF" !isnothing(get_PTDF_matrix(network_model))
+        "Network Matrix" !isnothing(get_network_matrix(network_model))
         "Duals" join(string.(get_duals(network_model)), " ")
     ]
 
@@ -218,17 +218,21 @@ function _show_method(
 ) where {T <: OptimizationProblemOutputs}
     timestamps = get_timestamps(outputs)
 
+    # `get_resolution` returns `nothing` when there is a single timestamp (no
+    # interval to diff), so guard against `Dates.Minute(nothing)`.
+    resolution = get_resolution(outputs)
+    resolution_str =
+        isnothing(resolution) ? "N/A (single period)" :
+        string(Dates.Minute(resolution))
+
     if backend == :html
         println(io, "<p> Start: $(first(timestamps))</p>")
         println(io, "<p> End: $(last(timestamps))</p>")
-        println(
-            io,
-            "<p> Resolution: $(Dates.Minute(get_resolution(outputs)))</p>",
-        )
+        println(io, "<p> Resolution: $(resolution_str)</p>")
     else
         println(io, "Start: $(first(timestamps))")
         println(io, "End: $(last(timestamps))")
-        println(io, "Resolution: $(Dates.Minute(get_resolution(outputs)))")
+        println(io, "Resolution: $(resolution_str)")
     end
 
     values = Dict{String, Vector{String}}(
