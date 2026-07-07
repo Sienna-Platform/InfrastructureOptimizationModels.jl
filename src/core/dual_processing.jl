@@ -19,14 +19,14 @@ function _copy_dual_values!(dual::SparseAxisArray, constraint::SparseAxisArray)
 end
 
 # Solver tolerances may give us "integer" values that aren't exactly 0 or 1.
-rounded_value(v::JuMP.VariableRef) = round(JuMP.value(v))
+rounded_value(v::JuMP.VariableRef) = round(jump_value(v))
 
 function process_duals(container::OptimizationContainer, lp_optimizer)
     var_cache = container.primal_values_cache.variables_cache
     for (k, v) in get_variables(container)
         v1 = first(v)
         if JuMP.is_binary(v1) || JuMP.is_integer(v1)
-            var_cache[k] = round.(jump_value.(v))
+            var_cache[k] = rounded_value.(v)
         else
             var_cache[k] = jump_value.(v)
         end
