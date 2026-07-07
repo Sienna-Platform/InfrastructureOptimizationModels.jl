@@ -4,18 +4,9 @@ Formulation type to augment the power balance constraint expression with a time 
 struct FixedOutput <: AbstractDeviceFormulation end
 
 """
-Domain-neutral supertype for the per-device contingency-event model. The concrete,
-PowerSystems-specific `EventModel{<:Contingency, <:AbstractEventCondition}` lives in
-`PowerOperationsModels`; IOM only needs the abstract to type the `DeviceModel.events`
-field (mirroring how `AbstractAffectFeedforward` types the `feedforwards` field).
+Abstracts for event contingencies
 """
 abstract type AbstractEventModel end
-
-"""
-Domain-neutral supertype for the key under which an `AbstractEventModel` is stored in a
-`DeviceModel`. The concrete `EventKey{<:Contingency, <:Component}` lives in
-`PowerOperationsModels`.
-"""
 abstract type AbstractEventKey end
 
 function _check_device_formulation(
@@ -81,13 +72,7 @@ mutable struct DeviceModel{
     time_series_names::Dict{Type{<:ParameterType}, String}
     attributes::Dict{String, Any}
     subsystem::Union{Nothing, String}
-    # Contingency-event models keyed by an `AbstractEventKey`. Concrete key/value types
-    # are power-specific and live in POM; stored abstractly here like `feedforwards`.
     events::Dict{AbstractEventKey, AbstractEventModel}
-    # Keyed by UUID to match PNM's `get_registered_contingencies(::VirtualMODF) ::
-    # Dict{UUID, ContingencySpec}` so the consolidation step in network_model.jl can
-    # set-diff directly. UUIDs are also stable across (de)serialization in a way that
-    # live component references aren't.
     outages::Dict{Base.UUID, Dict{DataType, Set{String}}}
     device_cache::Vector{D}
     function DeviceModel(
@@ -177,8 +162,7 @@ set_subsystem!(m::DeviceModel, id::String) = m.subsystem = id
     set_event_model!(model::DeviceModel, key::AbstractEventKey, event_model::AbstractEventModel)
 
 Attach an event (contingency) model to `model` under `key`. Errors if `key` is already
-present. The concrete `EventKey`/`EventModel` types and the convenience method that derives
-the key from the event model live in `PowerOperationsModels`.
+present.
 """
 function set_event_model!(
     model::DeviceModel{D, B},
