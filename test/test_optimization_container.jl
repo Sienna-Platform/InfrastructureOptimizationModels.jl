@@ -150,24 +150,24 @@ struct MockExpressionType <: ISOPT.ExpressionType end
 
     @testset "add_variable_container! - sparse starts empty, filled by assignment" begin
         mock_sys = MockSystem(100.0)
-        settings = PSI.Settings(
+        settings = IOM.Settings(
             mock_sys;
             horizon = Dates.Hour(1),
             resolution = Dates.Hour(1),
             time_series_cache_size = 0,
         )
-        container = PSI.OptimizationContainer(
+        container = IOM.OptimizationContainer(
             mock_sys,
             settings,
             JuMP.Model(),
             MockDeterministic,
         )
-        PSI.set_time_steps!(container, 1:1)
-        model = PSI.get_jump_model(container)
+        IOM.set_time_steps!(container, 1:1)
+        model = IOM.get_jump_model(container)
 
         # The (outage, name, t) key set is ragged; the axes only fix the key
         # tuple type. The container starts empty and the caller fills it.
-        result = PSI.add_variable_container!(
+        result = IOM.add_variable_container!(
             container, TestVariableType, MockComponentType, String[], String[], 1:1;
             sparse = true, meta = "svc",
         )
@@ -180,30 +180,30 @@ struct MockExpressionType <: ISOPT.ExpressionType end
             result[k...] = JuMP.@variable(model)
         end
         @test issetequal(keys(result.data), idx_keys)
-        var_key = PSI.VariableKey(TestVariableType, MockComponentType, "svc")
-        @test haskey(PSI.get_variables(container), var_key)
-        @test PSI.get_variables(container)[var_key] === result
+        var_key = IOM.VariableKey(TestVariableType, MockComponentType, "svc")
+        @test haskey(IOM.get_variables(container), var_key)
+        @test IOM.get_variables(container)[var_key] === result
     end
 
     @testset "add_constraints_container! - sparse starts empty, filled by assignment" begin
         mock_sys = MockSystem(100.0)
-        settings = PSI.Settings(
+        settings = IOM.Settings(
             mock_sys;
             horizon = Dates.Hour(1),
             resolution = Dates.Hour(1),
             time_series_cache_size = 0,
         )
-        container = PSI.OptimizationContainer(
+        container = IOM.OptimizationContainer(
             mock_sys,
             settings,
             JuMP.Model(),
             MockDeterministic,
         )
-        PSI.set_time_steps!(container, 1:1)
-        model = PSI.get_jump_model(container)
+        IOM.set_time_steps!(container, 1:1)
+        model = IOM.get_jump_model(container)
         x = JuMP.@variable(model)
 
-        result = PSI.add_constraints_container!(
+        result = IOM.add_constraints_container!(
             container, MockConstraintType, MockComponentType, String[], String[], 1:1;
             sparse = true, meta = "lb",
         )
@@ -216,29 +216,29 @@ struct MockExpressionType <: ISOPT.ExpressionType end
             result[k...] = JuMP.@constraint(model, x <= 1.0)
         end
         @test issetequal(keys(result.data), idx_keys)
-        cons_key = PSI.ConstraintKey(MockConstraintType, MockComponentType, "lb")
-        @test haskey(PSI.get_constraints(container), cons_key)
-        @test PSI.get_constraints(container)[cons_key] === result
+        cons_key = IOM.ConstraintKey(MockConstraintType, MockComponentType, "lb")
+        @test haskey(IOM.get_constraints(container), cons_key)
+        @test IOM.get_constraints(container)[cons_key] === result
     end
 
     @testset "add_expression_container! - sparse starts empty, filled by assignment" begin
         mock_sys = MockSystem(100.0)
-        settings = PSI.Settings(
+        settings = IOM.Settings(
             mock_sys;
             horizon = Dates.Hour(1),
             resolution = Dates.Hour(1),
             time_series_cache_size = 0,
         )
-        container = PSI.OptimizationContainer(
+        container = IOM.OptimizationContainer(
             mock_sys,
             settings,
             JuMP.Model(),
             MockDeterministic,
         )
-        PSI.set_time_steps!(container, 1:1)
-        model = PSI.get_jump_model(container)
+        IOM.set_time_steps!(container, 1:1)
+        model = IOM.get_jump_model(container)
 
-        result = PSI.add_expression_container!(
+        result = IOM.add_expression_container!(
             container, MockExpressionType, MockComponentType, String[], String[], 1:1;
             sparse = true, meta = "svc",
         )
@@ -252,9 +252,9 @@ struct MockExpressionType <: ISOPT.ExpressionType end
             result[k...] = 2.0 * x
         end
         @test issetequal(keys(result.data), idx_keys)
-        expr_key = PSI.ExpressionKey(MockExpressionType, MockComponentType, "svc")
-        @test haskey(PSI.get_expressions(container), expr_key)
-        @test PSI.get_expressions(container)[expr_key] === result
+        expr_key = IOM.ExpressionKey(MockExpressionType, MockComponentType, "svc")
+        @test haskey(IOM.get_expressions(container), expr_key)
+        @test IOM.get_expressions(container)[expr_key] === result
     end
 
     @testset "Parameter multiplier applied exactly once" begin
