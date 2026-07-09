@@ -586,6 +586,18 @@ function deserialize_metadata!(
     return
 end
 
+"""
+Reject 1D dense/sparse JuMP containers (issue #15): variable/constraint/expression/dual
+containers must always be indexable as `x[i, j]`, never as a bare vector `x[i]`. Containers
+with 3+ dimensions (e.g. PWL sparse containers keyed on `(name, segment, time)`) are fine.
+"""
+function _check_container_dims(key::OptimizationContainerKey, value)
+    if value isa Union{JuMP.Containers.DenseAxisArray, JuMP.Containers.SparseAxisArray}
+        IS.@assert_op ndims(value) >= 2
+    end
+    return
+end
+
 # PERF: compilation hotspot. from string conversion at the container[key] = value line?
 function _assign_container!(container::OrderedDict, key::OptimizationContainerKey, value)
     if haskey(container, key)
@@ -594,6 +606,7 @@ function _assign_container!(container::OrderedDict, key::OptimizationContainerKe
         )
         throw(IS.InvalidValue("$key is already stored"))
     end
+    _check_container_dims(key, value)
     container[key] = value
     @debug "Added container entry $(typeof(key)) $(encode_key(key))" _group =
         LOG_GROUP_OPTIMIZATION_CONTAINER
@@ -878,6 +891,8 @@ function add_param_container_shared_axes!(
         param_array = DenseAxisArray{param_type}(undef, axs...)
         multiplier_array = fill!(DenseAxisArray{Float64}(undef, axs...), NaN)
     end
+    _check_container_dims(key, param_array)
+    _check_container_dims(key, multiplier_array)
     param_container = ParameterContainer(attribute, param_array, multiplier_array)
     _assign_container!(container.parameters, key, param_container)
     return param_container
