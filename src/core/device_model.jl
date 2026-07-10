@@ -73,6 +73,7 @@ mutable struct DeviceModel{
     attributes::Dict{String, Any}
     subsystem::Union{Nothing, String}
     events::Dict{AbstractEventKey, AbstractEventModel}
+    # Maps outage UUIDs to monitored components grouped by device type. PNM indexes DF matrices with UUIDs.
     outages::Dict{Base.UUID, Dict{DataType, Set{String}}}
     device_cache::Vector{D}
     function DeviceModel(
