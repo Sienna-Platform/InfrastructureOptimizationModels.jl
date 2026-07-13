@@ -154,6 +154,14 @@ import InfrastructureSystems as IS
     @test IOM.get_resolution(opt_res1) == Millisecond(3600000)
     @test IOM.get_resolution(opt_res2) == Millisecond(3600000)
     @test isnothing(IOM.get_resolution(opt_res3))
+
+    # `show` routes through `_show_method`, which prints the resolution. Regression test
+    # for the broken `ISOPT.get_resolution` qualification (get_resolution is IOM-owned,
+    # not a member of InfrastructureSystems.Optimization).
+    plain_str = sprint(show, MIME("text/plain"), opt_res1)
+    @test occursin("Resolution: 60 minutes", plain_str)
+    html_str = sprint(show, MIME("text/html"), opt_res1)
+    @test occursin("Resolution: 60 minutes", html_str)
 end
 
 @testset "Test OptimizationProblemOutputs 3d long format" begin
