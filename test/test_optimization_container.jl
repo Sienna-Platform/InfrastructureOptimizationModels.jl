@@ -38,6 +38,38 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         @test isempty(IOM.get_expressions(container))
     end
 
+    @testset "1D containers are rejected (issue #15)" begin
+        mock_sys = MockSystem(100.0)
+        settings = IOM.Settings(
+            mock_sys;
+            horizon = Dates.Hour(24),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,  # Bypass stores_time_series_in_memory check
+        )
+        container = IOM.OptimizationContainer(
+            mock_sys,
+            settings,
+            nothing,
+            MockDeterministic,
+        )
+        IOM.set_time_steps!(container, 1:24)
+        device_names = ["gen1", "gen2"]
+
+        # Passing a single axis (no time dimension) must fail, not silently build a Vector.
+        @test_throws Exception IOM.add_variable_container!(
+            container,
+            IOM.ActivePowerVariable,
+            MockComponentType,
+            device_names,
+        )
+        @test_throws Exception IOM.add_constraints_container!(
+            container,
+            MockConstraintType,
+            MockComponentType,
+            device_names,
+        )
+    end
+
     @testset "add_variable_container!" begin
         mock_sys = MockSystem(100.0)
         settings = IOM.Settings(
