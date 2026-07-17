@@ -28,6 +28,12 @@ jobs:
         run: |
           julia --project=branch/test -e 'using Pkg; Pkg.develop(PackageSpec(path=joinpath(pwd(), "branch"))); Pkg.instantiate()'
           julia -t 4 --project=branch/test branch/test/performance/bilinear_delta_local.jl | tee branch_output.txt
+      - name: Run container build benchmark Main
+        run: |
+          julia -t 4 --project=main/test main/test/performance/container_build.jl | tee container_main_output.txt
+      - name: Run container build benchmark Branch
+        run: |
+          julia -t 4 --project=branch/test branch/test/performance/container_build.jl | tee container_branch_output.txt
       - name: Read main results
         id: main_results
         run: |
@@ -39,6 +45,18 @@ jobs:
         run: |
           echo "body<<EOF" >> "$GITHUB_OUTPUT"
           cat branch_output.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+      - name: Read container main results
+        id: container_main_results
+        run: |
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          cat container_main_output.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+      - name: Read container branch results
+        id: container_branch_results
+        run: |
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          cat container_branch_output.txt >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
       - name: Find comment
         uses: peter-evans/find-comment@v4
@@ -62,6 +80,14 @@ jobs:
             ```
             ${{ steps.branch_results.outputs.body }}
             ```
+            Container Build (Main)
+            ```
+            ${{ steps.container_main_results.outputs.body }}
+            ```
+            Container Build (This branch)
+            ```
+            ${{ steps.container_branch_results.outputs.body }}
+            ```
       - name: Update comment
         if: steps.fc.outputs.comment-id != ''
         uses: peter-evans/create-or-update-comment@v5
@@ -76,5 +102,13 @@ jobs:
             This branch
             ```
             ${{ steps.branch_results.outputs.body }}
+            ```
+            Container Build (Main)
+            ```
+            ${{ steps.container_main_results.outputs.body }}
+            ```
+            Container Build (This branch)
+            ```
+            ${{ steps.container_branch_results.outputs.body }}
             ```
           edit-mode: replace

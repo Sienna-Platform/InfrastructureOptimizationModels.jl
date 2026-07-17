@@ -506,6 +506,26 @@ function container_spec(::Type{Float64}, axs::Vararg{Any, N}) where {N}
     return cont
 end
 
+# Specialized dense path for the dominant `names × time` shape: pins the return type
+# and skips the `Vararg` splat. Behavior is identical to the generic method above.
+function container_spec(
+    ::Type{T},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+) where {T}
+    return DenseAxisArray{T}(undef, names, time_steps)
+end
+
+function container_spec(
+    ::Type{Float64},
+    names::Vector{String},
+    time_steps::UnitRange{Int},
+)
+    cont = DenseAxisArray{Float64}(undef, names, time_steps)
+    fill!(cont.data, NaN)
+    return cont
+end
+
 """
 Returns the correct container specification for the selected type of JuMP Model
 """
@@ -515,6 +535,26 @@ Returns the correct container specification for the selected type of JuMP Model
 function sparse_container_spec(::Type{T}, axs::Vararg{Any, N}) where {T, N}
     K = eltype(Base.Iterators.product(axs...))
     return SparseAxisArray(Dict{K, T}())
+end
+
+# Specialized sparse paths for the two hot shapes: hardcode the key tuple type so the
+# `eltype(Iterators.product(...))` computation is elided. `names × time` and
+# `names × segments × time` (PWL / approximation containers).
+function sparse_container_spec(
+    ::Type{T},
+    ::Vector{String},
+    ::UnitRange{Int},
+) where {T}
+    return SparseAxisArray(Dict{Tuple{String, Int}, T}())
+end
+
+function sparse_container_spec(
+    ::Type{T},
+    ::Vector{String},
+    ::UnitRange{Int},
+    ::UnitRange{Int},
+) where {T}
+    return SparseAxisArray(Dict{Tuple{String, Int, Int}, T}())
 end
 
 function remove_undef!(expression_array::AbstractArray)
