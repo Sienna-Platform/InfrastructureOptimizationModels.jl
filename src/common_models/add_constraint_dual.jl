@@ -31,11 +31,10 @@ end
 
 # Service model
 #
-# Services of the same type now share merged constraint containers keyed by
+# Services of the same type share merged constraint containers keyed by
 # `(constraint_type, service_type)` with empty meta, so the dual mirrors the existing
 # constraint container exactly (as the device/network paths do) rather than building a
-# per-service `[service_name]` axis. Guarded against re-creation because grouped
-# construction may call this once per formulation group that shares a service type.
+# per-service `[service_name]` axis. The `haskey` check keeps dual creation idempotent.
 function add_constraint_dual!(
     container::OptimizationContainer,
     sys::IS.InfrastructureSystemsContainer,
