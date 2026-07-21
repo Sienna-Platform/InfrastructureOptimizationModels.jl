@@ -14,9 +14,8 @@ end
 
 """
 Establishes the model for all services of a particular type. A `ServiceModel` represents
-every service of its type in the system; it has no single service name. Uses the keyword
-argument `feedforwards` to enable passing values between operation models at simulation
-time.
+every service of its type in the system. Uses the keyword argument `feedforwards` to
+enable passing values between operation models at simulation time.
 
 # Arguments
 
