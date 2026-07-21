@@ -63,9 +63,6 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
         for (k, v) in attributes
             attributes_for_model[k] = v
         end
-        if !haskey(attributes_for_model, "aggregated_service_model")
-            push!(attributes_for_model, "aggregated_service_model" => true)
-        end
 
         _check_service_formulation(D)
         _check_service_formulation(B)
