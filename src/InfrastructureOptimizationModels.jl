@@ -297,7 +297,6 @@ export get_parameter_array
 export get_network_reduction
 export get_multiplier_array
 export get_parameter_column_refs
-export get_service_name
 export get_default_time_series_type
 export add_expression_container!
 

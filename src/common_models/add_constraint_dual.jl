@@ -30,37 +30,28 @@ function add_constraint_dual!(
 end
 
 # Service model
+#
+# Services of the same type now share merged constraint containers keyed by
+# `(constraint_type, service_type)` with empty meta, so the dual mirrors the existing
+# constraint container exactly (as the device/network paths do) rather than building a
+# per-service `[service_name]` axis. Guarded against re-creation because grouped
+# construction may call this once per formulation group that shares a service type.
 function add_constraint_dual!(
     container::OptimizationContainer,
     sys::IS.InfrastructureSystemsContainer,
     model::ServiceModel{T, D},
 ) where {T <: IS.InfrastructureSystemsComponent, D <: AbstractServiceFormulation}
     if !isempty(get_duals(model))
-        service = get_available_components(model, sys)
+        time_steps = get_time_steps(container)
         for constraint_type in get_duals(model)
-            assign_dual_variable!(container, constraint_type, service, D)
+            for key in _existing_constraint_keys(container, constraint_type, T)
+                dual_key = ConstraintKey(get_entry_type(key), T, key.meta)
+                haskey(get_duals(container), dual_key) && continue
+                existing = get_constraint(container, key)
+                _assign_dual_from_existing!(container, key, existing, T, time_steps)
+            end
         end
     end
-    return
-end
-
-# service formulation
-function assign_dual_variable!(
-    container::OptimizationContainer,
-    constraint_type::Type{<:ConstraintType},
-    service::D,
-    ::Type{<:AbstractServiceFormulation},
-) where {D <: IS.InfrastructureSystemsComponent}
-    time_steps = get_time_steps(container)
-    service_name = IS.get_name(service)
-    add_dual_container!(
-        container,
-        constraint_type,
-        D,
-        [service_name],
-        time_steps;
-        meta = service_name,
-    )
     return
 end
 

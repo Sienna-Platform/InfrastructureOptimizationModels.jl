@@ -1,6 +1,6 @@
 
 const DevicesModelContainer = Dict{Symbol, DeviceModel}
-const ServicesModelContainer = Dict{Tuple{String, Symbol}, ServiceModel}
+const ServicesModelContainer = Dict{Symbol, ServiceModel}
 
 abstract type AbstractProblemTemplate end
 
