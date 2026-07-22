@@ -44,7 +44,9 @@ function add_constraint_dual!(
         time_steps = get_time_steps(container)
         for constraint_type in get_duals(model)
             for key in _existing_constraint_keys(container, constraint_type, T)
-                dual_key = ConstraintKey(get_entry_type(key), T, key.meta)
+                # `_existing_constraint_keys` filters on `get_entry_type(key) === constraint_type`,
+                # so `constraint_type` is exactly the key's entry type (avoids re-deriving it).
+                dual_key = ConstraintKey(constraint_type, T, key.meta)
                 haskey(get_duals(container), dual_key) && continue
                 existing = get_constraint(container, key)
                 _assign_dual_from_existing!(container, key, existing, T, time_steps)
