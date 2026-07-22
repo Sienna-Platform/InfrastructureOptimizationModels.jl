@@ -92,17 +92,26 @@ get_attributes(m::ServiceModel) = m.attributes
 get_attribute(m::ServiceModel, key::String) = get(m.attributes, key, nothing)
 # Whole nested map: service name -> device type -> contributing devices.
 get_contributing_devices_map(m::ServiceModel) = m.contributing_devices_map
-# One service's inner `Dict{DataType, Vector}` (empty Dict if the service is absent).
+# Shared empty sentinel returned when a service has no entry in the map. The 3-arg
+# `get(dict, key, default)` evaluates `default` eagerly, so building the empty Dict inline
+# would allocate a throwaway Dict on every call, including the (common) hit path. This
+# accessor is read-only for all callers (only the no-arg whole-map form is mutated, via
+# `get!`), so a single shared const is safe to hand back on the miss path.
+const _EMPTY_CONTRIBUTING_DEVICES_MAP =
+    Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}}()
+# One service's inner `Dict{DataType, Vector}` (shared empty Dict if the service is absent).
 get_contributing_devices_map(m::ServiceModel, service_name::AbstractString) =
-    get(
-        m.contributing_devices_map,
-        service_name,
-        Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}}(),
-    )
+    get(() -> _EMPTY_CONTRIBUTING_DEVICES_MAP, m.contributing_devices_map, service_name)
 # All contributing devices across ALL services (flatten the nested map).
+# TODO(services stability): flattening across device types yields a Vector whose element
+# type widens to the abstract common ancestor when a service has more than one contributing
+# device type, so downstream builders lose type stability. Revisit by iterating the
+# per-(device type) map groups (each concretely typed) instead of flattening.
 get_contributing_devices(m::ServiceModel) =
     [z for inner in values(m.contributing_devices_map) for x in values(inner) for z in x]
 # One service's contributing devices (flattened Vector).
+# TODO(services stability): same multi-device-type widening as the all-services flatten
+# above; revisit to iterate the concretely-typed per-device-type map groups.
 get_contributing_devices(m::ServiceModel, service_name::AbstractString) =
     [z for x in values(get_contributing_devices_map(m, service_name)) for z in x]
 get_subsystem(m::ServiceModel) = m.subsystem
