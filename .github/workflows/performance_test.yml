@@ -28,6 +28,13 @@ jobs:
         run: |
           julia --project=branch/test -e 'using Pkg; Pkg.develop(PackageSpec(path=joinpath(pwd(), "branch"))); Pkg.instantiate()'
           julia -t 4 --project=branch/test branch/test/performance/bilinear_delta_local.jl | tee branch_output.txt
+      - name: Stage container build benchmark into main checkout
+        # The benchmark script may not exist on main (or may differ). Both sides must run
+        # the *same* measurement code for the comparison to mean anything, so the branch's
+        # copy is what gets executed against the main package.
+        run: |
+          mkdir -p main/test/performance
+          cp branch/test/performance/container_build.jl main/test/performance/container_build.jl
       - name: Run container build benchmark Main
         run: |
           julia -t 4 --project=main/test main/test/performance/container_build.jl | tee container_main_output.txt
