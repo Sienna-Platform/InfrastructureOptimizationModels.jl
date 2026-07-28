@@ -387,6 +387,69 @@ end
         end
     end
 
+    @testset "CostCurve{QuadraticCurve} unit-system invariance" begin
+        # Check that if we provide the same physical cost in different unit systems,
+        # we get the same objective coefficient.
+        time_steps = 1:3
+        system_base = 100.0
+        device_base = 50.0
+        a = 0.5    # $/MW^2h, physical quadratic rate
+        b = 20.0   # $/MWh, physical linear rate
+
+        curve_variants = (
+            NATURAL_UNITS = IS.CostCurve(IS.QuadraticCurve(a, b, 0.0), IS.NaturalUnit()),
+            SYSTEM_BASE = IS.CostCurve(
+                IS.QuadraticCurve(a * system_base^2, b * system_base, 0.0),
+                IS.SystemBaseUnit(),
+            ),
+            DEVICE_BASE = IS.CostCurve(
+                IS.QuadraticCurve(a * device_base^2, b * device_base, 0.0),
+                IS.DeviceBaseUnit(),
+            ),
+        )
+
+        lin_coefs = Dict{Symbol, Float64}()
+        quad_coefs = Dict{Symbol, Float64}()
+        for (label, cost_curve) in pairs(curve_variants)
+            device = make_mock_thermal(
+                "gen1";
+                base_power = device_base,
+                limits = (min = 0.0, max = 100.0),
+            )
+            container = setup_quadratic_test_container(
+                time_steps, device; resolution = Dates.Hour(1),
+            )
+            InfrastructureOptimizationModels.add_variable_cost_to_objective!(
+                container,
+                TestActivePowerVariable,
+                device,
+                cost_curve,
+                TestQuadraticFormulation,
+            )
+            lin_coefs[label] = get_objective_coefficient(
+                container,
+                TestActivePowerVariable,
+                MockThermalGen,
+                "gen1",
+                first(time_steps),
+            )
+            quad_coefs[label] = get_objective_quadratic_coefficient(
+                container,
+                TestActivePowerVariable,
+                MockThermalGen,
+                "gen1",
+                first(time_steps),
+            )
+        end
+
+        @test lin_coefs[:NATURAL_UNITS] ≈ lin_coefs[:SYSTEM_BASE] atol = 1e-10
+        @test lin_coefs[:NATURAL_UNITS] ≈ lin_coefs[:DEVICE_BASE] atol = 1e-10
+        @test quad_coefs[:NATURAL_UNITS] ≈ quad_coefs[:SYSTEM_BASE] atol = 1e-10
+        @test quad_coefs[:NATURAL_UNITS] ≈ quad_coefs[:DEVICE_BASE] atol = 1e-10
+        @test lin_coefs[:NATURAL_UNITS] ≈ b * system_base atol = 1e-10
+        @test quad_coefs[:NATURAL_UNITS] ≈ a * system_base^2 atol = 1e-10
+    end
+
     @testset "quadratic fallback to linear when quadratic term is zero" begin
         time_steps = 1:2
         device =
