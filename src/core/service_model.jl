@@ -92,13 +92,10 @@ get_attributes(m::ServiceModel) = m.attributes
 get_attribute(m::ServiceModel, key::String) = get(m.attributes, key, nothing)
 # Whole nested map: service name -> device type -> contributing devices.
 get_contributing_devices_map(m::ServiceModel) = m.contributing_devices_map
-# Shared empty sentinel returned when a service has no entry in the map. Read-only for all
-# callers (only the no-arg whole-map form is mutated, via `get!`), so handing back one shared
-# const on the miss path is safe. As a const it is referenced, not rebuilt, so the 3-arg
-# `get` below stays allocation-free on both the hit and miss paths.
+# Returned for a service with no entry in the map. Callers treat it as read-only (shared).
 const _EMPTY_CONTRIBUTING_DEVICES_MAP =
     Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}}()
-# One service's inner `Dict{DataType, Vector}` (shared empty Dict if the service is absent).
+# One service's inner `device type -> devices` map (the empty const if the service is absent).
 get_contributing_devices_map(m::ServiceModel, service_name::AbstractString) =
     get(m.contributing_devices_map, service_name, _EMPTY_CONTRIBUTING_DEVICES_MAP)
 # All contributing devices across ALL services (flatten the nested map).
