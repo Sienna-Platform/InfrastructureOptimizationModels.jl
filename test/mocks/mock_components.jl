@@ -150,6 +150,13 @@ get_rate(b::MockBranch) = b.rating
 # Subtypes IS.InfrastructureSystemsComponent so it works with VariableKey, ConstraintKey, etc.
 struct MockComponentType <: IS.InfrastructureSystemsComponent end
 
+# Mock supplemental attribute for testing event parameter containers.
+# Subtypes IS.SupplementalAttribute (not IS.InfrastructureSystemsComponent), mirroring
+# PSY.Contingency <: SupplementalAttribute.
+struct MockContingency <: IS.SupplementalAttribute end
+
+struct MockEventParameter <: InfrastructureOptimizationModels.EventParameter end
+
 # Structures for the network problem
 struct MockNetworkNode <: IS.InfrastructureSystemsComponent
     name::String

@@ -80,23 +80,25 @@ get_sos_status(attr::CostFunctionAttributes) = attr.sos_status
 get_variable_types(attr::CostFunctionAttributes) = attr.variable_types
 get_uses_compact_power(attr::CostFunctionAttributes) = attr.uses_compact_power
 
+"""
+Attributes for event (contingency) parameters. `T` is the `IS.SupplementalAttribute`
+subtype describing the contingency and `U` is the parameter type stored in the container.
+"""
 struct EventParametersAttributes{
-    T <: IS.InfrastructureSystemsComponent,
+    T <: IS.SupplementalAttribute,
     U <: ParameterType,
-} <: ParameterAttributes
-    affected_devices::Vector{T}
-end
+} <: ParameterAttributes end
 
 function EventParametersAttributes(
     ::Type{T},
     ::Type{U},
-) where {T <: IS.InfrastructureSystemsComponent, U <: ParameterType}
-    return EventParametersAttributes{T, U}(T[])
+) where {T <: IS.SupplementalAttribute, U <: ParameterType}
+    return EventParametersAttributes{T, U}()
 end
 
 function get_param_type(
     ::EventParametersAttributes{T, U},
-) where {T <: IS.InfrastructureSystemsComponent, U <: ParameterType}
+) where {T <: IS.SupplementalAttribute, U <: ParameterType}
     return U
 end
 
