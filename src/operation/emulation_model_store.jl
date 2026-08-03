@@ -109,6 +109,28 @@ function write_output!(
     return
 end
 
+# Sparse containers (e.g. reserve variables keyed `(service, device, t)`) are stored as
+# 2D dense with the non-time tuple flattened into encoded `"a__b"` columns, matching the
+# storage `initialize_storage!` allocated via `get_column_names_from_axis_array`. Columns
+# are ordered by their encoded string so the flattened matrix aligns with the
+# pre-allocated dataset's rows (`set_value!` copies positionally).
+function write_output!(
+    store::EmulationModelStore,
+    name::Symbol,
+    key::OptimizationContainerKey,
+    index::EmulationModelIndexType,
+    update_timestamp::Dates.DateTime,
+    array::SparseAxisArray{T, N, K},
+) where {T, N, K <: NTuple{N, Any}}
+    tuple_columns = unique!([k[1:(N - 1)] for k in keys(array.data)])
+    sort!(tuple_columns; by = encode_tuple_to_column)
+    matrix = _to_matrix(array, tuple_columns)
+    columns = encode_tuple_to_column.(tuple_columns)
+    dense = DenseAxisArray(permutedims(matrix), columns, 1:size(matrix, 1))
+    write_output!(store, name, key, index, update_timestamp, dense)
+    return
+end
+
 function read_outputs(
     store::EmulationModelStore{InMemoryDataset},
     key::OptimizationContainerKey;

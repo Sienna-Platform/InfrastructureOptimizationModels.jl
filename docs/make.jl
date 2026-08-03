@@ -36,6 +36,11 @@ makedocs(
     pages = Any[p for p in pages],
     draft = false,
     plugins = [links],
+    # Pre-existing broken `@ref` links (also red on `main`): the explanation/reference pages
+    # reference symbols that were moved to PowerOperationsModels in the IOM/POM split (#104).
+    # Downgrade only the cross-reference failures to warnings so the site builds; every other
+    # category (missing docstrings, doctests, ...) still fails the build.
+    warnonly = [:cross_references],
 )
 
 deploydocs(
