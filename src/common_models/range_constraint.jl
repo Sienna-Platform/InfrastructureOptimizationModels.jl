@@ -414,7 +414,14 @@ function add_parameterized_bound_range_constraints(
     return
 end
 
-# Backwards-compatible wrappers
+# Direction-specific wrappers over `add_parameterized_bound_range_constraints`.
+"""
+Add `array[name, t] >= multiplier[name, t] * parameter[name, t]` constraints of type `T`,
+where `array` is the variable or expression `U` and the right-hand side comes from the
+parameter `P`. For `P <: TimeSeriesParameter` only devices that own the time series named in
+`get_time_series_names(model)[P]` are constrained. Mirror of
+[`add_parameterized_upper_bound_range_constraints`](@ref).
+"""
 function add_parameterized_lower_bound_range_constraints(
     container::OptimizationContainer,
     ::Type{T},
@@ -444,6 +451,13 @@ function add_parameterized_lower_bound_range_constraints(
     return
 end
 
+"""
+Add `array[name, t] <= multiplier[name, t] * parameter[name, t]` constraints of type `T`,
+where `array` is the variable or expression `U` and the right-hand side comes from the
+parameter `P`. For `P <: TimeSeriesParameter` only devices that own the time series named in
+`get_time_series_names(model)[P]` are constrained. Mirror of
+[`add_parameterized_lower_bound_range_constraints`](@ref).
+"""
 function add_parameterized_upper_bound_range_constraints(
     container::OptimizationContainer,
     ::Type{T},
