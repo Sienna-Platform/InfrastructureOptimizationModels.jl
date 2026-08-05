@@ -333,7 +333,7 @@ export add_time_series_parameter_container!,
     add_event_parameter_container!,
     add_param_container_split_axes!,
     add_param_container_shared_axes!
-# Deprecated alias for the four builders above; see add_param_container_shims.jl (issue #147).
+# Compatibility alias for the four builders above; see add_param_container_shims.jl (issue #147).
 export add_param_container!
 export remove_undef!
 

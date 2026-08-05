@@ -1,7 +1,8 @@
 """
 Thin wrappers around `add_param_container_split_axes!` and `add_param_container_shared_axes!`.
 Each one constructs one `ParameterAttributes` subtype and is named after it; the `T <: ...`
-constraints are assertions that the right builder was called, not dispatch selectors.
+constraints are primarily sanity checks (each builder has a single method) rather than selecting
+among multiple overloads of a single `add_param_container!` function.
 Legacy `add_param_container!` shims live in `add_param_container_shims.jl`.
 """
 
