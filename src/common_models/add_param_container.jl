@@ -1,8 +1,15 @@
 """
-Thin wrappers around `add_param_container_split_axes!` and `add_param_container_shared_axes!`
-that dispatch on concrete parameter supertypes to construct the correct `ParameterAttributes`.
+Thin wrappers around `add_param_container_split_axes!` and `add_param_container_shared_axes!`.
+Each one constructs one `ParameterAttributes` subtype and is named after it; the `T <: ...`
+constraints are assertions that the right builder was called, not dispatch selectors.
+Legacy `add_param_container!` shims live in `add_param_container_shims.jl`.
 """
-function add_param_container!(
+
+"""
+Allocate a time-series parameter container (`TimeSeriesAttributes`). Parameter and multiplier
+arrays may have different first axes, so this is the only builder using the split-axes allocator.
+"""
+function add_time_series_parameter_container!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
@@ -37,15 +44,21 @@ function add_param_container!(
     )
 end
 
-function add_param_container!(
+"""
+Allocate a cost-function parameter container (`CostFunctionAttributes`).
+
+Note that `data_type` sets both the attributes' type parameter and the parameter array's element
+type, bypassing `get_param_eltype(container)`.
+"""
+function add_cost_function_parameter_container!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
     variable_types::Tuple{Vararg{Type}},
+    axs...;
     sos_variable::SOSStatusVariable = SOSStatusVariable.NO_VARIABLE,
     uses_compact_power::Bool = false,
     data_type::DataType = Float64,
-    axs...;
     sparse = false,
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {T <: ObjectiveFunctionParameter, U <: IS.InfrastructureSystemsComponent}
@@ -62,7 +75,11 @@ function add_param_container!(
     )
 end
 
-function add_param_container!(
+"""
+Allocate a parameter container fed by another container's values (`VariableValueAttributes`).
+`source_key` is the variable/aux-variable key supplying those values.
+"""
+function add_variable_value_parameter_container!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
@@ -82,7 +99,11 @@ function add_param_container!(
         sparse = sparse)
 end
 
-function add_param_container!(
+"""
+Allocate an event parameter container (`EventParametersAttributes`). `V` is the component type
+whose instances the event affects.
+"""
+function add_event_parameter_container!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
@@ -97,26 +118,6 @@ function add_param_container!(
 }
     param_key = ParameterKey(T, U, meta)
     attributes = EventParametersAttributes(V, T)
-    return add_param_container_shared_axes!(
-        container, param_key, attributes, get_param_eltype(container), axs...;
-        sparse = sparse)
-end
-
-function add_param_container!(
-    container::OptimizationContainer,
-    ::Type{T},
-    ::Type{U},
-    source_key::V,
-    axs...;
-    sparse = false,
-    meta = CONTAINER_KEY_EMPTY_META,
-) where {
-    T <: FixValueParameter,
-    U <: IS.InfrastructureSystemsComponent,
-    V <: OptimizationContainerKey,
-}
-    param_key = ParameterKey(T, U, meta)
-    attributes = VariableValueAttributes(source_key)
     return add_param_container_shared_axes!(
         container, param_key, attributes, get_param_eltype(container), axs...;
         sparse = sparse)

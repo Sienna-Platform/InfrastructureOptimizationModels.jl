@@ -326,10 +326,15 @@ export OnStatusParameter
 
 # core folder exports
 # optimization_container.jl refactor
-# add_param_container!
-export add_param_container!,
+# parameter container builders
+export add_time_series_parameter_container!,
+    add_cost_function_parameter_container!,
+    add_variable_value_parameter_container!,
+    add_event_parameter_container!,
     add_param_container_split_axes!,
     add_param_container_shared_axes!
+# Deprecated alias for the four builders above; see add_param_container_shims.jl (issue #147).
+export add_param_container!
 export remove_undef!
 
 # Bulk-added: symbols used by POM but previously not exported
@@ -344,6 +349,7 @@ export add_sparse_pwl_interpolation_variables!
 export JuMPOrFloat
 # Constraint helpers
 export add_range_constraints!, add_parameterized_upper_bound_range_constraints
+export add_parameterized_lower_bound_range_constraints
 export add_reserve_bound_range_constraints!, add_commitment_bound_range_constraints!
 export add_semicontinuous_range_constraints!, add_semicontinuous_ramp_constraints!
 export add_slacked_range_constraints!, fill_slacked_range_constraints!
@@ -638,9 +644,10 @@ include("bilinear_approximations/no_approx.jl")
 include("bilinear_approximations/hybs.jl")
 include("bilinear_approximations/nmdt.jl")
 
-# add_param_container! wrappers — must come after piecewise_linear.jl
+# parameter container builders — must come after piecewise_linear.jl
 # (which defines VariableValueParameter and FixValueParameter)
 include("common_models/add_param_container.jl")
+include("common_models/add_param_container_shims.jl")
 
 include("operation/optimization_model_interface.jl")
 include("operation/decision_model_store.jl")
