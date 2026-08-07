@@ -4,8 +4,6 @@ Minimal time series mocks for testing parameter updates.
 
 using Dates
 
-# Subtypes IS.TimeSeriesData so it can stand in for a real time series type wherever one is
-# required by dispatch (e.g. `TimeSeriesAttributes`), without carrying any of the machinery.
 struct MockDeterministic <: IS.TimeSeriesData
     name::String
     data::Vector{Float64}
