@@ -115,6 +115,7 @@ function has_service end
 function validate_time_series! end
 
 import TimerOutputs
+import PrecompileTools
 
 # Base Imports
 import Base.getindex
@@ -666,4 +667,9 @@ include("utils/jump_utils.jl")
 include("utils/component_utils.jl")
 include("utils/time_series_utils.jl")
 include("utils/datetime_utils.jl")
+
+# Must remain the LAST include: bindings referenced by the workload resolve at
+# precompile execution time, so anything defined or imported after this line
+# would be invisible to it and fail only during Pkg.precompile.
+include("precompile_workload.jl")
 end
