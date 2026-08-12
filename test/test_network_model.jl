@@ -1,37 +1,41 @@
 """
-Unit tests for NetworkModel with the IS network-matrix abstractions. IOM holds
-matrices, reduction data, and the branch-reduction tracker behind abstract types
-with no PowerNetworkMatrices dependency; these mocks stand in for the
-implementing package (POM/PNM).
+Unit tests for NetworkModel's neutral network anchors. IOM holds the network source,
+the derived network data, and the branch-reduction tracker behind abstract types with
+no PowerNetworkMatrices dependency; these mocks stand in for the implementing package
+(POM/PNM).
 """
 
-struct MockNetworkMatrix <: IOM.AbstractInfrastructureNetworkMatrix{Float64}
-    data::Matrix{Float64}
-end
-Base.size(m::MockNetworkMatrix) = size(m.data)
-Base.getindex(m::MockNetworkMatrix, i::Int, j::Int) = m.data[i, j]
+struct MockNetworkSource <: IOM.AbstractNetworkSource end
 
-struct MockReductionData <: IOM.AbstractInfrastructureNetworkReductionData end
+struct MockNetworkData <: IOM.AbstractNetworkData end
 
 struct MockReductionTracker <: IOM.AbstractBranchReductionTracker end
 
-@testset "NetworkModel with abstract network matrices" begin
-    matrix = MockNetworkMatrix([1.0 0.0; 0.0 1.0])
+@testset "NetworkModel with abstract network source and data" begin
+    source = MockNetworkSource()
     nw = IOM.NetworkModel(
         TestPowerModel;
-        network_matrix = matrix,
-        contingency_matrix = matrix,
+        network_source = source,
+        reduction_exceptions = [3, 7],
     )
-    @test IOM.get_network_matrix(nw) === matrix
-    @test IOM.get_contingency_matrix(nw) === matrix
-    # Reduction data and tracker are populated by the matrix-aware downstream package.
-    @test IOM.get_network_reduction(nw) === nothing
+    @test IOM.get_network_source(nw) === source
+    @test IOM.get_reduction_exceptions(nw) == [3, 7]
+    # Network data and tracker are populated by the matrix-aware downstream package.
+    @test IOM.get_network_data(nw) === nothing
     @test IOM.get_reduced_branch_tracker(nw) === nothing
 
-    nw.network_reduction = MockReductionData()
-    @test IOM.get_network_reduction(nw) isa MockReductionData
+    data = MockNetworkData()
+    IOM.set_network_data!(nw, data)
+    @test IOM.get_network_data(nw) === data
 
     tracker = MockReductionTracker()
     IOM.set_reduced_branch_tracker!(nw, tracker)
     @test IOM.get_reduced_branch_tracker(nw) === tracker
+end
+
+@testset "NetworkModel defaults to the neutral source" begin
+    nw = IOM.NetworkModel(TestPowerModel)
+    @test IOM.get_network_source(nw) === IOM.DefaultNetworkSource()
+    @test isempty(IOM.get_reduction_exceptions(nw))
+    @test isempty(IOM.get_subnetworks(nw))
 end
