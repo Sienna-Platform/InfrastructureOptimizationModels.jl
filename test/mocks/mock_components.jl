@@ -128,7 +128,8 @@ end
 get_name(l::MockLoad) = l.name
 get_available(l::MockLoad) = l.available
 get_bus(l::MockLoad) = l.bus
-get_max_active_power(l::MockLoad) = l.max_active_power
+IOM.get_max_active_power(l::MockLoad) = l.max_active_power
+IOM.get_max_active_power(g::MockThermalGen) = g.active_power_limits.max
 
 # Mock Branch
 struct MockBranch <: AbstractMockDevice
