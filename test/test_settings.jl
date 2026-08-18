@@ -10,6 +10,17 @@ using InfrastructureOptimizationModels
 # MockSystem is defined in mocks/mock_system.jl, MockMOIOptimizer in mocks/mock_optimizer.jl
 # Both are loaded by InfrastructureOptimizationModelsTests.jl
 
+# Minimal extension-point implementations so DecisionModel/EmulationModel can be built
+# end-to-end against MockSystem, to exercise the kwargs -> Settings threading.
+struct SettingsTestTemplate <: IOM.AbstractProblemTemplate end
+IOM.finalize_template!(::SettingsTestTemplate, args...) = nothing
+IOM.get_network_model(::SettingsTestTemplate) = nothing
+
+struct SettingsTestProblem <: IOM.AbstractOptimizationProblem end
+IOM.validate_time_series!(::IOM.DecisionModel{SettingsTestProblem}) = nothing
+IOM.validate_time_series!(::IOM.EmulationModel{SettingsTestProblem}) = nothing
+IOM.get_time_series_counts_by_type(::MockSystem) = [Dict("type" => "Deterministic")]
+
 @testset "Settings" begin
     @testset "Construction with defaults" begin
         sys = MockSystem(100.0, false)
@@ -37,6 +48,7 @@ using InfrastructureOptimizationModels
         @test IOM.get_export_optimization_model(settings) ==
               IOM.OptimizationModelExportFormat.NONE
         @test IOM.get_store_variable_names(settings) == false
+        @test IOM.get_system_to_file(settings) == true
         @test IOM.get_check_numerical_bounds(settings) == true
         @test IOM.get_ext(settings) isa Dict{String, Any}
     end
@@ -50,6 +62,7 @@ using InfrastructureOptimizationModels
             warm_start = false,
             allow_fails = true,
             check_numerical_bounds = false,
+            system_to_file = false,
             ext = Dict{String, Any}("custom" => 123),
         )
 
@@ -59,6 +72,7 @@ using InfrastructureOptimizationModels
         @test IOM.get_check_components(settings) == true
         @test IOM.get_allow_fails(settings) == true
         @test IOM.get_check_numerical_bounds(settings) == false
+        @test IOM.get_system_to_file(settings) == false
         @test IOM.get_ext(settings)["custom"] == 123
     end
 
@@ -156,5 +170,30 @@ using InfrastructureOptimizationModels
         settings_second =
             IOM.Settings(sys; horizon = Second(3600), resolution = Second(300))
         @test IOM.get_horizon(settings_second) == Dates.Millisecond(Second(3600))
+    end
+
+    @testset "system_to_file through model constructors" begin
+        sys = MockSystem(100.0, false)
+        template = SettingsTestTemplate()
+
+        decision_model_default = IOM.DecisionModel{SettingsTestProblem}(template, sys)
+        @test IOM.get_system_to_file(IOM.get_settings(decision_model_default)) == true
+
+        decision_model = IOM.DecisionModel{SettingsTestProblem}(
+            template,
+            sys;
+            system_to_file = false,
+        )
+        @test IOM.get_system_to_file(IOM.get_settings(decision_model)) == false
+
+        emulation_model_default = IOM.EmulationModel{SettingsTestProblem}(template, sys)
+        @test IOM.get_system_to_file(IOM.get_settings(emulation_model_default)) == true
+
+        emulation_model = IOM.EmulationModel{SettingsTestProblem}(
+            template,
+            sys;
+            system_to_file = false,
+        )
+        @test IOM.get_system_to_file(IOM.get_settings(emulation_model)) == false
     end
 end

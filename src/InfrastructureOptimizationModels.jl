@@ -167,7 +167,8 @@ export InitialCondition
 # Network Relevant Exports
 export AbstractNetworkModel
 export NetworkModel
-export get_network_matrix, get_contingency_matrix, get_reduce_radial_branches
+export get_network_matrix, get_contingency_matrix
+export get_network_source, get_reduction_exceptions, get_network_data, set_network_data!
 export get_outages
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, has_subnetworks, get_subsystem
@@ -178,6 +179,9 @@ export supports_outages
 export validate_network_model
 export AbstractBranchReductionTracker
 export set_reduced_branch_tracker!
+export AbstractNetworkSource
+export AbstractNetworkData
+export DefaultNetworkSource
 # Note: Concrete network model types (PTDFPowerModel, CopperPlatePowerModel, etc.)
 # and the branch-reduction tracker machinery are defined in PowerOperationsModels, not IOM.
 
@@ -518,6 +522,7 @@ export get_check_numerical_bounds, get_allow_fails
 export get_optimizer_solve_log_print, get_calculate_conflict
 export get_detailed_optimizer_stats, get_direct_mode_optimizer
 export get_store_variable_names, get_export_optimization_model
+export get_system_to_file
 export use_time_series_cache
 export set_horizon!, set_initial_time!, set_warm_start!
 export log_values
