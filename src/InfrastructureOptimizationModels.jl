@@ -522,6 +522,7 @@ export get_check_numerical_bounds, get_allow_fails
 export get_optimizer_solve_log_print, get_calculate_conflict
 export get_detailed_optimizer_stats, get_direct_mode_optimizer
 export get_store_variable_names, get_export_optimization_model
+export get_system_to_file
 export use_time_series_cache
 export set_horizon!, set_initial_time!, set_warm_start!
 export log_values
