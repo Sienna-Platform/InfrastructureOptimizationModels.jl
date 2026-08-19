@@ -34,7 +34,7 @@ InfrastructureSystems = {url = "https://github.com/Sienna-Platform/Infrastructur
 InfrastructureOptimizationModels = {path = ".."}
 # IS4's own [sources] pin for this is ignored once IS is a dependency rather than the root
 # project; the test env needs its own pin so Pkg can resolve IS4's unregistered OpenAPI dep.
-PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerCoreOpenAPIModels.jl"}
+PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "feat/infrastore-integration", subdir = "PowerCoreOpenAPIModels.jl"}
 
 [compat]
 HiGHS = "1"

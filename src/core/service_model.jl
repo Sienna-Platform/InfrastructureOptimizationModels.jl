@@ -44,7 +44,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
     }
     subsystem::Union{Nothing, String}
     # Maps outage UUIDs to monitored components grouped by device type. PNM indexes DF matrices with UUIDs.
-    outages::Dict{Base.UUID, Dict{DataType, Set{String}}}
+    outages::Dict{Int, Dict{DataType, Set{String}}}
     function ServiceModel(
         ::Type{D},
         ::Type{B};
@@ -73,7 +73,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
             attributes_for_model,
             contributing_devices_map,
             nothing,
-            Dict{Base.UUID, Dict{DataType, Set{String}}}(),
+            Dict{Int, Dict{DataType, Set{String}}}(),
         )
     end
 end
