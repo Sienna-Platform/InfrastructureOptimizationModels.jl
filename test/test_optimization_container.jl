@@ -391,4 +391,34 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         @test expr1 == expr2
         @test JuMP.coefficient(expr2, x) == 5.0
     end
+
+    @testset "Event parameter container accepts supplemental-attribute contingency types" begin
+        mock_sys = MockSystem(100.0)
+        settings = IOM.Settings(
+            mock_sys;
+            horizon = Dates.Hour(24),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        container = IOM.OptimizationContainer(
+            mock_sys,
+            settings,
+            nothing,
+            MockDeterministic,
+        )
+        IOM.set_time_steps!(container, 1:24)
+        time_steps = IOM.get_time_steps(container)
+
+        IOM.add_param_container!(
+            container,
+            MockEventParameter,
+            MockComponentType,
+            MockContingency,
+            ["dev1", "dev2"],
+            time_steps,
+        )
+        key = IOM.ParameterKey(MockEventParameter, MockComponentType)
+        pc = IOM.get_parameter(container, key)
+        @test IOM.get_attributes(pc) isa IOM.EventParametersAttributes{MockContingency}
+    end
 end

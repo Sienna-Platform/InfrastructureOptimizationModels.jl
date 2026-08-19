@@ -115,7 +115,7 @@ function add_event_parameter_container!(
 ) where {
     T <: EventParameter,
     U <: IS.InfrastructureSystemsComponent,
-    V <: IS.InfrastructureSystemsComponent,
+    V <: IS.SupplementalAttribute,
 }
     param_key = ParameterKey(T, U, meta)
     attributes = EventParametersAttributes(V, T)
