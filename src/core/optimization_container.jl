@@ -736,9 +736,18 @@ function add_variable_container!(
     return _add_container!(container, T, U, JuMP.VariableRef, sparse, axs...; meta = meta)
 end
 
-function _get_pwl_variables_container()
-    contents = Dict{Tuple{String, Int, Int}, JuMP.VariableRef}()
-    return SparseAxisArray(contents)
+"""
+Key tuple type for the empty `SparseAxisArray` auto-created for a `SparseVariableType`.
+
+Defaults to the 3D device-offer PWL shape `(device_name, segment, time)`. A variable type
+that needs an extra axis - e.g. a per-service reserve offer keyed
+`(service_name, device_name, segment, time)` - overrides this method to widen the key. Downstream
+packages extend it for their own sparse variable types.
+"""
+sparse_variable_key_type(::Type{<:SparseVariableType}) = Tuple{String, Int, Int}
+
+function _get_pwl_variables_container(::Type{T}) where {T <: SparseVariableType}
+    return SparseAxisArray(Dict{sparse_variable_key_type(T), JuMP.VariableRef}())
 end
 
 function add_variable_container!(
@@ -751,7 +760,7 @@ function add_variable_container!(
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
 }
     var_key = VariableKey(T, U, meta)
-    _assign_container!(container.variables, var_key, _get_pwl_variables_container())
+    _assign_container!(container.variables, var_key, _get_pwl_variables_container(T))
     return container.variables[var_key]
 end
 

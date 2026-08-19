@@ -51,7 +51,7 @@ load = MockLoad("load1", true, bus, 75.0)
 get_name(load)
 get_available(load)
 get_bus(load)
-get_max_active_power(load)
+IOM.get_max_active_power(load)
 
 # MockBranch
 bus2 = MockBus("bus2", 2, :PQ)

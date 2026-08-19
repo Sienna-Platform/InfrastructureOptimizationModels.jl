@@ -167,7 +167,8 @@ export InitialCondition
 # Network Relevant Exports
 export AbstractNetworkModel
 export NetworkModel
-export get_network_matrix, get_contingency_matrix, get_reduce_radial_branches
+export get_network_matrix, get_contingency_matrix
+export get_network_source, get_reduction_exceptions, get_network_data, set_network_data!
 export get_outages
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, has_subnetworks, get_subsystem
@@ -178,6 +179,9 @@ export supports_outages
 export validate_network_model
 export AbstractBranchReductionTracker
 export set_reduced_branch_tracker!
+export AbstractNetworkSource
+export AbstractNetworkData
+export DefaultNetworkSource
 # Note: Concrete network model types (PTDFPowerModel, CopperPlatePowerModel, etc.)
 # and the branch-reduction tracker machinery are defined in PowerOperationsModels, not IOM.
 
@@ -297,7 +301,6 @@ export get_parameter_array
 export get_network_reduction
 export get_multiplier_array
 export get_parameter_column_refs
-export get_service_name
 export get_default_time_series_type
 export add_expression_container!
 
@@ -327,10 +330,15 @@ export OnStatusParameter
 
 # core folder exports
 # optimization_container.jl refactor
-# add_param_container!
-export add_param_container!,
+# parameter container builders
+export add_time_series_parameter_container!,
+    add_cost_function_parameter_container!,
+    add_variable_value_parameter_container!,
+    add_event_parameter_container!,
     add_param_container_split_axes!,
     add_param_container_shared_axes!
+# Compatibility alias for the four builders above; see add_param_container_shims.jl (issue #147).
+export add_param_container!
 export remove_undef!
 
 # Bulk-added: symbols used by POM but previously not exported
@@ -345,6 +353,7 @@ export add_sparse_pwl_interpolation_variables!
 export JuMPOrFloat
 # Constraint helpers
 export add_range_constraints!, add_parameterized_upper_bound_range_constraints
+export add_parameterized_lower_bound_range_constraints
 export add_reserve_bound_range_constraints!, add_commitment_bound_range_constraints!
 export add_semicontinuous_range_constraints!, add_semicontinuous_ramp_constraints!
 export add_slacked_range_constraints!, fill_slacked_range_constraints!
@@ -513,6 +522,7 @@ export get_check_numerical_bounds, get_allow_fails
 export get_optimizer_solve_log_print, get_calculate_conflict
 export get_detailed_optimizer_stats, get_direct_mode_optimizer
 export get_store_variable_names, get_export_optimization_model
+export get_system_to_file
 export use_time_series_cache
 export set_horizon!, set_initial_time!, set_warm_start!
 export log_values
@@ -639,9 +649,10 @@ include("bilinear_approximations/no_approx.jl")
 include("bilinear_approximations/hybs.jl")
 include("bilinear_approximations/nmdt.jl")
 
-# add_param_container! wrappers — must come after piecewise_linear.jl
+# parameter container builders — must come after piecewise_linear.jl
 # (which defines VariableValueParameter and FixValueParameter)
 include("common_models/add_param_container.jl")
+include("common_models/add_param_container_shims.jl")
 
 include("operation/optimization_model_interface.jl")
 include("operation/decision_model_store.jl")

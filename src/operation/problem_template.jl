@@ -1,6 +1,6 @@
 
 const DevicesModelContainer = Dict{Symbol, DeviceModel}
-const ServicesModelContainer = Dict{Tuple{String, Symbol}, ServiceModel}
+const ServicesModelContainer = Dict{Symbol, ServiceModel}
 
 abstract type AbstractProblemTemplate end
 
@@ -135,27 +135,28 @@ function finalize_template!(template::AbstractProblemTemplate, args...)
     )
 end
 
-# Deep-copy a template while sharing the network model's PNM matrices by reference:
-# their solver caches hold raw factorization handles and deliberately error on deepcopy
-# (PNM #312). The matrices are read-only inputs, so sharing is safe.
+# Deep-copy a template while sharing the network source and derived data by reference:
+# both can hold PNM matrices whose solver caches carry raw factorization handles and
+# deliberately error on deepcopy (PNM #312). Sharing is safe because instantiation
+# replaces the copy's `network_data` outright rather than mutating the original's.
 function _deepcopy_template(template::AbstractProblemTemplate)
     network_model = get_network_model(template)
     network_model === nothing && return deepcopy(template)
-    ptdf = network_model.network_matrix
-    modf = network_model.contingency_matrix
-    network_model.network_matrix = nothing
-    network_model.contingency_matrix = nothing
-    # Restore the input template's matrices even if `deepcopy` throws, so a
+    source = network_model.network_source
+    network_data = network_model.network_data
+    network_model.network_source = DefaultNetworkSource()
+    network_model.network_data = nothing
+    # Restore the input template's source and data even if `deepcopy` throws, so a
     # failed copy doesn't leave the caller's template stripped.
     template_ = try
         deepcopy(template)
     finally
-        network_model.network_matrix = ptdf
-        network_model.contingency_matrix = modf
+        network_model.network_source = source
+        network_model.network_data = network_data
     end
     copied_network_model = get_network_model(template_)
-    copied_network_model.network_matrix = ptdf
-    copied_network_model.contingency_matrix = modf
+    copied_network_model.network_source = source
+    copied_network_model.network_data = network_data
     return template_
 end
 

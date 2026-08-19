@@ -17,6 +17,7 @@ JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+PowerCoreOpenAPIModels = "b7b40286-e793-417d-a9a0-b1583e4da1cb"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
@@ -38,6 +39,7 @@ JuMP = "^1.28"
 LinearAlgebra = "1"
 Logging = "1"
 MathOptInterface = "1"
+PowerCoreOpenAPIModels = "0.1"
 PrettyTables = "3.1"
 Random = "^1.10"
 Serialization = "1"
@@ -46,4 +48,7 @@ TimerOutputs = "~0.5"
 julia = "^1.10"
 
 [sources]
-InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "feat/rust-time-series-store"}
+InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "feat/infrastore-integration"}
+# IS's own [sources] pin for this is ignored once IS is a dependency rather than the root
+# project; IOM needs its own pin so Pkg can resolve IS's unregistered OpenAPI dep.
+PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerCoreOpenAPIModels.jl"}
