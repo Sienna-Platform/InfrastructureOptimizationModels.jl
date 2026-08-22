@@ -84,6 +84,22 @@ Avoid creating expression containers solely as intermediate computation steps.
 The repo-wide directory tree is detailed enough to reconstruct from `src/` itself; keep this
 section in sync only at the directory/role level when structure changes.
 
+## What IOM is
+
+**IOM is the InfrastructureSystems of optimization**: a domain-neutral utility library that
+several modeling packages build on — PowerOperationsModels today, PowerSystemsInvestments and
+anything else tomorrow. That shapes how to read this code:
+
+- **A function with no caller inside IOM is not dead code.** It is library surface for
+  consumers, present or future. Do not propose deleting it, and do not propose moving it into
+  POM (or any other consumer) because "POM is the only caller" — a single consumer today is
+  not evidence the utility belongs there.
+- **Do not reshuffle IOM's or POM's imports and exports.** The export list and the `_*`
+  helper surface are deliberate API, not accidents to tidy. Leave them alone unless the task
+  is explicitly about the public interface.
+- The direction of travel is IOM → consumers. Never move a utility downstream to shrink IOM,
+  and never introduce a dependency on a consumer.
+
 ## Main Public API
 
 275 exports in the main module file (`src/InfrastructureOptimizationModels.jl`). Notable
@@ -178,13 +194,10 @@ Relevant to `src/objective_function/value_curve_cost.jl`, `offer_curve_types.jl`
   concrete formulations and supply methods for IOM's extension-point stubs using PSY types.
   Consider downstream impact for any signature/abstract-type change; run the POM suite after
   IOM edits.
-- **The `IOM._*` surface is load-bearing.** POM currently calls ~56 distinct non-exported
+- **The `IOM._*` surface is load-bearing.** POM currently calls ~28 distinct non-exported
   `IOM._*` helpers (parameter/multiplier setters, PWL machinery). Renaming or changing any
-  `_`-prefixed function here can break POM even though it is "private". The standing action
-  item (2026-07-02 audit, candidate 4) is to formalize this contract: docstring the
-  problem-template and interface stubs, promote the most-used `_*` helpers to exported API,
-  and add a conformance harness POM CI can run. Until then: treat `_*` signature changes as
-  breaking, and never add new `_*` reaches from downstream.
+  `_`-prefixed function here can break a consumer even though it is "private", so treat `_*`
+  signature changes as breaking.
 - **Reduction seam:** IOM keeps only the abstract `AbstractBranchReductionTracker`; the
   concrete `BranchReductionOptimizationTracker` lives in POM. Evaluators: IOM owns
   `AbstractEvaluator`; POM wraps PowerFlows models in `PowerFlowEvaluator`. Keep IOM
