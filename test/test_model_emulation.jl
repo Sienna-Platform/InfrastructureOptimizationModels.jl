@@ -258,9 +258,8 @@ end
     var2 = read_variable(outputs2, ActivePowerVariable, ThermalStandard)
     @test var1_a == var2
     @test get_source_data(outputs2) === nothing
-    # Commented out for now, as we no longer automatically serialize the system with results, but this should be added back in the future.
-    # load_system(outputs2)
-    # @test get_source_data(outputs2) isa PSY.System
+    # IOM cannot rebuild a System from the bundle POM writes -- that needs PSY. The
+    # round-trip is covered downstream by PowerAnalytics' `load_outputs`.
 
     # Serialize to a new directory with the exported function.
     outputs_path = joinpath(path, "outputs")

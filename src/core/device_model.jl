@@ -47,8 +47,8 @@ Establishes the model for a particular device specified by type. Uses the keywor
   - `attributes::Dict{String, Any} = get_default_attributes(D, B)` : use to specify attributes to the device
   - `outages::AbstractVector{<:IS.InfrastructureSystemsComponent} = IS.InfrastructureSystemsComponent[]` :
     N-1 contingencies to model when the formulation is security-constrained. The
-    constructor stores the `IS.get_uuid(outage)` of each entry as a key in the model's
-    `outages::Dict{UUID, Dict{DataType, Set{String}}}` field with empty inner maps;
+    constructor stores the `IS.get_id(outage)` of each entry as a key in the model's
+    `outages::Dict{Int, Dict{DataType, Set{String}}}` field with empty inner maps;
     template validation in downstream packages fills the inner maps with the per-type
     set of monitored component names that each outage carries. Power-specific
     validation (e.g. checking that entries are `PSY.Outage` subtypes) lives in
@@ -74,7 +74,7 @@ mutable struct DeviceModel{
     subsystem::Union{Nothing, String}
     events::Dict{AbstractEventKey, AbstractEventModel}
     # Maps outage UUIDs to monitored components grouped by device type. PNM indexes DF matrices with UUIDs.
-    outages::Dict{Base.UUID, Dict{DataType, Set{String}}}
+    outages::Dict{Int, Dict{DataType, Set{String}}}
     device_cache::Vector{D}
     function DeviceModel(
         ::Type{D},
@@ -115,7 +115,7 @@ function _add_device_model_outages(
     ::Type{B},
     outages::AbstractVector{<:IS.InfrastructureSystemsComponent},
 ) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
-    field = Dict{Base.UUID, Dict{DataType, Set{String}}}()
+    field = Dict{Int, Dict{DataType, Set{String}}}()
     isempty(outages) && return field
     if !supports_outages(B)
         @warn "DeviceModel{$D, $B}: 'outages' kwarg ignored — formulation does \
@@ -123,7 +123,7 @@ function _add_device_model_outages(
         return field
     end
     for outage in outages
-        field[IS.get_uuid(outage)] = Dict{DataType, Set{String}}()
+        field[IS.get_id(outage)] = Dict{DataType, Set{String}}()
     end
     return field
 end

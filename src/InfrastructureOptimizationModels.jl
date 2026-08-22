@@ -73,7 +73,6 @@ import InfrastructureSystems:
     configure_logging,
     strip_module_name,
     to_namedtuple,
-    get_uuid,
     compute_file_hash,
     convert_for_path,
     COMPONENT_NAME_DELIMITER,
