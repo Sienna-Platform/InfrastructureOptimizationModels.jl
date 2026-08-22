@@ -4,7 +4,7 @@ Minimal time series mocks for testing parameter updates.
 
 using Dates
 
-struct MockDeterministic <: IS.TimeSeriesData
+struct MockDeterministic <: IS.TimeSeriesData{Float64}
     name::String
     data::Vector{Float64}
     resolution::Dates.Period
