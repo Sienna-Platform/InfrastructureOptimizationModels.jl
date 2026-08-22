@@ -88,9 +88,11 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     evaluator_aux_var_keys::Vector{AuxVarKey}
     standalone_aux_var_keys::Vector{AuxVarKey}
     metadata::OptimizationContainerMetadata
-    # DataType (concrete) — the constructor rejects abstract types; covers IS time
-    # series types and duck-typed mocks alike.
-    default_time_series_type::DataType
+    # Any non-abstract time series type — a plain `DataType` or, for a parametric
+    # type named without its parameters (`DeterministicSingleTimeSeries`, i.e. a
+    # `UnionAll`), the unparameterized name. The constructor rejects abstract
+    # types; this covers IS time series types and duck-typed mocks alike.
+    default_time_series_type::Type
     evaluations::EvaluationContainer
     serialization_task::Union{Nothing, Task}
 end
@@ -101,7 +103,10 @@ function OptimizationContainer(
     jump_model::Union{Nothing, JuMP.Model},
     ::Type{T},
 ) where {T}
-    if isabstracttype(T)
+    # `T` may be a `UnionAll` (`DeterministicSingleTimeSeries`, whose IS definition
+    # is parametric); unwrap it so the abstractness test sees the underlying type
+    # instead of silently passing every unparameterized name.
+    if isabstracttype(Base.unwrap_unionall(T))
         error("Default Time Series Type $T can't be abstract")
     end
 
@@ -1503,7 +1508,6 @@ function get_time_series_initial_values!(
         forecast;
         start_time = initial_time,
         len = length(time_steps),
-        ignore_scaling_factors = true,
     )
     return ts_values
 end
