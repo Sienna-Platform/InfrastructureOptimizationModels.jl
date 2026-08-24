@@ -10,12 +10,11 @@ These types can be used:
 
 using InfrastructureOptimizationModels
 using InfrastructureSystems
-const PSI = InfrastructureOptimizationModels
 const IS = InfrastructureSystems
 
 # Mock formulation type for testing DeviceModel
-struct TestDeviceFormulation <: PSI.AbstractDeviceFormulation end
-struct TestPowerModel <: IS.Optimization.AbstractPowerModel end
+struct TestDeviceFormulation <: IOM.AbstractDeviceFormulation end
+struct TestPowerModel <: AbstractNetworkModel end
 
 # Mock operation costs for testing objective function construction.
 # Mirrors the PSY pattern: separate static and time-series types.
@@ -129,7 +128,8 @@ end
 get_name(l::MockLoad) = l.name
 get_available(l::MockLoad) = l.available
 get_bus(l::MockLoad) = l.bus
-get_max_active_power(l::MockLoad) = l.max_active_power
+IOM.get_max_active_power(l::MockLoad) = l.max_active_power
+IOM.get_max_active_power(g::MockThermalGen) = g.active_power_limits.max
 
 # Mock Branch
 struct MockBranch <: AbstractMockDevice

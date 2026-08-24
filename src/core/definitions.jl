@@ -127,7 +127,6 @@ const M_VALUE = 1e6
 # λ = 0.5 is optimal per Beach et al. (2024), Remark 1.
 const DNMDT_LAMBDA = 0.5
 
-const NO_SERVICE_NAME_PROVIDED = ""
 const UPPER_BOUND = "ub"
 const LOWER_BOUND = "lb"
 const MAX_OPTIMIZE_TRIES = 2

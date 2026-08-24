@@ -3,6 +3,12 @@ Formulation type to augment the power balance constraint expression with a time 
 """
 struct FixedOutput <: AbstractDeviceFormulation end
 
+"""
+Abstracts for event contingencies
+"""
+abstract type AbstractEventModel end
+abstract type AbstractEventKey end
+
 function _check_device_formulation(
     ::Type{D},
 ) where {D <: Union{AbstractDeviceFormulation, IS.InfrastructureSystemsComponent}}
@@ -41,8 +47,8 @@ Establishes the model for a particular device specified by type. Uses the keywor
   - `attributes::Dict{String, Any} = get_default_attributes(D, B)` : use to specify attributes to the device
   - `outages::AbstractVector{<:IS.InfrastructureSystemsComponent} = IS.InfrastructureSystemsComponent[]` :
     N-1 contingencies to model when the formulation is security-constrained. The
-    constructor stores the `IS.get_uuid(outage)` of each entry as a key in the model's
-    `outages::Dict{UUID, Dict{DataType, Set{String}}}` field with empty inner maps;
+    constructor stores the `IS.get_id(outage)` of each entry as a key in the model's
+    `outages::Dict{Int, Dict{DataType, Set{String}}}` field with empty inner maps;
     template validation in downstream packages fills the inner maps with the per-type
     set of monitored component names that each outage carries. Power-specific
     validation (e.g. checking that entries are `PSY.Outage` subtypes) lives in
@@ -66,11 +72,9 @@ mutable struct DeviceModel{
     time_series_names::Dict{Type{<:ParameterType}, String}
     attributes::Dict{String, Any}
     subsystem::Union{Nothing, String}
-    # Keyed by UUID to match PNM's `get_registered_contingencies(::VirtualMODF) ::
-    # Dict{UUID, ContingencySpec}` so the consolidation step in network_model.jl can
-    # set-diff directly. UUIDs are also stable across (de)serialization in a way that
-    # live component references aren't.
-    outages::Dict{Base.UUID, Dict{DataType, Set{String}}}
+    events::Dict{AbstractEventKey, AbstractEventModel}
+    # Maps outage UUIDs to monitored components grouped by device type. PNM indexes DF matrices with UUIDs.
+    outages::Dict{Int, Dict{DataType, Set{String}}}
     device_cache::Vector{D}
     function DeviceModel(
         ::Type{D},
@@ -99,6 +103,7 @@ mutable struct DeviceModel{
             time_series_names,
             attributes_,
             nothing,
+            Dict{AbstractEventKey, AbstractEventModel}(),
             outages_field,
             Vector{D}(),
         )
@@ -110,7 +115,7 @@ function _add_device_model_outages(
     ::Type{B},
     outages::AbstractVector{<:IS.InfrastructureSystemsComponent},
 ) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
-    field = Dict{Base.UUID, Dict{DataType, Set{String}}}()
+    field = Dict{Int, Dict{DataType, Set{String}}}()
     isempty(outages) && return field
     if !supports_outages(B)
         @warn "DeviceModel{$D, $B}: 'outages' kwarg ignored — formulation does \
@@ -118,7 +123,7 @@ function _add_device_model_outages(
         return field
     end
     for outage in outages
-        field[IS.get_uuid(outage)] = Dict{DataType, Set{String}}()
+        field[IS.get_id(outage)] = Dict{DataType, Set{String}}()
     end
     return field
 end
@@ -148,10 +153,29 @@ get_attributes(m::DeviceModel) = m.attributes
 get_attribute(::Nothing, ::String) = nothing
 get_attribute(m::DeviceModel, key::String) = get(m.attributes, key, nothing)
 get_subsystem(m::DeviceModel) = m.subsystem
+get_events(m::DeviceModel) = m.events
 get_outages(m::DeviceModel) = m.outages
 get_device_cache(m::DeviceModel) = m.device_cache
 
 set_subsystem!(m::DeviceModel, id::String) = m.subsystem = id
+
+"""
+    set_event_model!(model::DeviceModel, key::AbstractEventKey, event_model::AbstractEventModel)
+
+Attach an event (contingency) model to `model` under `key`. Errors if `key` is already
+present.
+"""
+function set_event_model!(
+    model::DeviceModel{D, B},
+    key::AbstractEventKey,
+    event_model::AbstractEventModel,
+) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
+    if haskey(model.events, key)
+        error("EventModel $key already exists in model for device $D")
+    end
+    model.events[key] = event_model
+    return
+end
 
 function set_model!(
     dict::Dict,

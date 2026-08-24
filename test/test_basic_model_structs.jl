@@ -1,11 +1,11 @@
 @testset "DeviceModel Tests" begin
     @test_throws ArgumentError DeviceModel(ThermalGen, ThermalStandardUnitCommitment)
-    @test_throws ArgumentError DeviceModel(ThermalStandard, PSI.AbstractThermalFormulation)
-    @test_throws ArgumentError NetworkModel(AbstractPowerModel)
+    @test_throws ArgumentError DeviceModel(ThermalStandard, IOM.AbstractThermalFormulation)
+    @test_throws ArgumentError NetworkModel(AbstractNetworkModel)
 end
 
 @testset "NetworkModel Tests" begin
-    @test_throws ArgumentError NetworkModel(AbstractPowerModel)
+    @test_throws ArgumentError NetworkModel(AbstractNetworkModel)
     ec_multi = EvaluationContainer()
     add_evaluator!(ec_multi, DCPowerFlow, DCPowerFlow())
     add_evaluator!(
@@ -62,8 +62,8 @@ end
     ]
 
     for ff in ffs
-        for av in PSI.get_affected_values(ff)
-            @test isa(av, PSI.VariableKey)
+        for av in IOM.get_affected_values(ff)
+            @test isa(av, IOM.VariableKey)
         end
     end
 
@@ -73,8 +73,8 @@ end
         affected_values = [OnStatusParameter],
     )
 
-    for av in PSI.get_affected_values(ff)
-        @test isa(av, PSI.ParameterKey)
+    for av in IOM.get_affected_values(ff)
+        @test isa(av, IOM.ParameterKey)
     end
 
     @test_throws ErrorException UpperBoundFeedforward(

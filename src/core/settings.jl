@@ -19,6 +19,7 @@ struct Settings
     rebuild_model::Bool
     export_optimization_model::OptimizationModelExportFormat
     store_variable_names::Bool
+    system_to_file::Bool
     check_numerical_bounds::Bool
     ext::Dict{String, Any}
 end
@@ -83,6 +84,7 @@ function Settings(
     rebuild_model = false,
     export_optimization_model = OptimizationModelExportFormat.NONE,
     store_variable_names = false,
+    system_to_file = true,
     ext = Dict{String, Any}(),
 )
     if time_series_cache_size > 0 && stores_time_series_in_memory(sys)
@@ -115,6 +117,7 @@ function Settings(
         rebuild_model,
         export_optimization_model_,
         store_variable_names,
+        system_to_file,
         check_numerical_bounds,
         ext,
     )
@@ -155,6 +158,7 @@ get_direct_mode_optimizer(settings::Settings) = settings.direct_mode_optimizer
 get_store_variable_names(settings::Settings) = settings.store_variable_names
 get_rebuild_model(settings::Settings) = settings.rebuild_model
 get_export_optimization_model(settings::Settings) = settings.export_optimization_model
+get_system_to_file(settings::Settings) = settings.system_to_file
 use_time_series_cache(settings::Settings) = settings.time_series_cache_size > 0
 
 function set_horizon!(settings::Settings, horizon::Dates.TimePeriod)

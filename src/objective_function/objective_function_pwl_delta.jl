@@ -153,16 +153,18 @@ end
 # POM overrides these for specific device types and formulations.
 ##################################################
 
+# Fallbacks accept any formulation (device or service): service formulations
+# (e.g. StepwiseCostReserve) carry no min-gen-power offset, so they resolve here.
 _include_min_gen_power_in_constraint(
     ::Type,
     ::Type{<:VariableType},
-    ::Type{<:AbstractDeviceFormulation},
+    ::Type,
 ) = false
 
 _include_constant_min_gen_power_in_constraint(
     ::Type,
     ::Type{<:VariableType},
-    ::Type{<:AbstractDeviceFormulation},
+    ::Type,
 ) = false
 
 ##################################################
@@ -186,16 +188,18 @@ function add_pwl_constraint_delta!(
     break_points::Vector{<:JuMPOrFloat},
     pwl_vars::Vector{JuMP.VariableRef},
     period::Int,
-    ::Type{W},
+    ::Type{W};
+    meta = CONTAINER_KEY_EMPTY_META,
 ) where {T <: IS.InfrastructureSystemsComponent, U <: VariableType,
-    D <: AbstractDeviceFormulation,
+    D,
     W <: AbstractPiecewiseLinearBlockOfferConstraint}
-    variables = get_variable(container, U, T)
+    variables = get_variable(container, U, T, meta)
     const_container = lazy_container_addition!(
         container,
         W,
         T,
-        axes(variables)...,
+        axes(variables)...;
+        meta = meta,
     )
     name = get_name(component)
 

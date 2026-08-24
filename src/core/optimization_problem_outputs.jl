@@ -104,27 +104,14 @@ get_optimizer_stats(res::OptimizationProblemOutputs) = res.optimizer_stats
 get_parameter_values(res::OptimizationProblemOutputs) = res.parameter_values
 get_source_data(res::OptimizationProblemOutputs) = res.source_data
 
-make_system_filename(sys::IS.InfrastructureSystemsContainer) =
-    make_system_filename(get_system_uuid(sys))
-make_system_filename(sys_uuid::Union{Base.UUID, AbstractString}) = "system-$(sys_uuid).json"
-
 """
-Load the system from disk if not already set, and return it.
-
-Currently only used in the tests, not downstream in POM.
+Name of the serialized-system bundle written beside an outputs directory. A bundle is a
+directory (document plus time-series sidecar), not a single file, so this carries no
+extension.
 """
-function load_system(res::OptimizationProblemOutputs; kwargs...)
-    !isnothing(get_source_data(res)) && return
-    file = joinpath(get_outputs_dir(res), make_system_filename(get_source_data_uuid(res)))
-    if isfile(file)
-        sys = IS.InfrastructureSystemsContainer(file; time_series_read_only = true)
-        @info "De-serialized the system from files."
-    else
-        error("Could not locate system file: $file")
-    end
-    set_source_data!(res, sys)
-    return
-end
+make_system_dirname(sys::IS.InfrastructureSystemsContainer) =
+    make_system_dirname(get_system_uuid(sys))
+make_system_dirname(sys_uuid::Union{Base.UUID, AbstractString}) = "system-$(sys_uuid)"
 
 get_forecast_horizon(res::OptimizationProblemOutputs) = length(get_timestamps(res))
 get_output_dir(res::OptimizationProblemOutputs) = res.output_dir
@@ -330,21 +317,14 @@ read_optimizer_stats(res::OptimizationProblemOutputs) = res.optimizer_stats
 """
 Set the system in the outputs instance.
 
-Throws InvalidValue if the source UUID is incorrect.
+Does not verify that `source` produced these outputs: the only identity IOM records is
+`source_data_uuid`, and resolving it for a domain system is the caller's job. Callers that
+can check should do so before calling (see PowerAnalytics' `load_outputs`).
 """
 function set_source_data!(
     res::OptimizationProblemOutputs,
     source::InfrastructureSystemsType,
 )
-    source_uuid = get_uuid(source)
-    if source_uuid != res.source_data_uuid
-        throw(
-            InvalidValue(
-                "System mismatch. $source_uuid does not match the stored value of $(res.source_data_uuid)",
-            ),
-        )
-    end
-
     res.source_data = source
     return
 end

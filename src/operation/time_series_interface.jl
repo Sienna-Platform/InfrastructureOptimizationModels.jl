@@ -5,7 +5,6 @@ function get_time_series_values!(
     name::String,
     initial_time::Dates.DateTime,
     horizon::Int;
-    ignore_scaling_factors = true,
     interval::Dates.Millisecond = UNSET_INTERVAL,
 ) where {T <: IS.Forecast}
     is_interval = _to_is_interval(interval)
@@ -18,13 +17,12 @@ function get_time_series_values!(
             name;
             start_time = initial_time,
             len = horizon,
-            ignore_scaling_factors = ignore_scaling_factors,
             interval = is_interval,
         )
     end
 
     cache = get_time_series_cache(model)
-    key = IS.TimeSeriesCacheKey(IS.get_uuid(component), T, name, resolution, is_interval)
+    key = IS.TimeSeriesCacheKey(IS.get_id(component), T, name, resolution, is_interval)
     if haskey(cache, key)
         ts_cache = cache[key]
     else
@@ -34,7 +32,6 @@ function get_time_series_values!(
             name,
             initial_time,
             horizon;
-            ignore_scaling_factors = ignore_scaling_factors,
             interval = is_interval,
             resolution = resolution,
         )
@@ -52,7 +49,6 @@ function get_time_series_values!(
     name::String,
     initial_time::Dates.DateTime,
     len::Int = 1;
-    ignore_scaling_factors = true,
     resolution::Dates.Millisecond = UNSET_RESOLUTION,
 ) where {T <: IS.StaticTimeSeries, U <: IS.InfrastructureSystemsComponent}
     settings = get_settings(model)
@@ -66,13 +62,12 @@ function get_time_series_values!(
             name;
             start_time = initial_time,
             len = len,
-            ignore_scaling_factors = ignore_scaling_factors,
             resolution = is_resolution,
         )
     end
 
     cache = get_time_series_cache(model)
-    key = IS.TimeSeriesCacheKey(IS.get_uuid(component), T, name, key_resolution, nothing)
+    key = IS.TimeSeriesCacheKey(IS.get_id(component), T, name, key_resolution, nothing)
     if haskey(cache, key)
         ts_cache = cache[key]
     else
@@ -82,7 +77,6 @@ function get_time_series_values!(
             name,
             initial_time,
             len;
-            ignore_scaling_factors = ignore_scaling_factors,
             resolution = is_resolution,
         )
         cache[key] = ts_cache

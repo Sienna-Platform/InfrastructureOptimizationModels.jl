@@ -137,6 +137,12 @@ end
 
 # Called `solve_impl!(model)` in PSI.
 function solve_model!(model::AbstractOptimizationModel)
+    if !is_built(model)
+        error(
+            "Model $(get_name(model)) is not built (status $(get_status(model))); \
+            call build!(model) before solve_model!.",
+        )
+    end
     container = get_optimization_container(model)
     model_name = get_name(model)
     ts = get_current_timestamp(model)

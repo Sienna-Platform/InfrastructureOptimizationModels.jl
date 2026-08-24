@@ -296,6 +296,53 @@ end
         end
     end
 
+    @testset "CostCurve{LinearCurve} unit-system invariance" begin
+        # Check that if we provide the same physical cost in different unit systems,
+        # we get the same objective coefficient.
+        time_steps = 1:3
+        system_base = 100.0
+        device_base = 50.0
+        rate = 30.0  # $/MWh, the physical cost rate represented in all three curves
+
+        curve_variants = (
+            NATURAL_UNITS = IS.CostCurve(IS.LinearCurve(rate), IS.NaturalUnit()),
+            SYSTEM_BASE = IS.CostCurve(
+                IS.LinearCurve(rate * system_base),
+                IS.SystemBaseUnit(),
+            ),
+            DEVICE_BASE = IS.CostCurve(
+                IS.LinearCurve(rate * device_base),
+                IS.DeviceBaseUnit(),
+            ),
+        )
+
+        coefs = Dict{Symbol, Float64}()
+        for (label, cost_curve) in pairs(curve_variants)
+            device = make_mock_thermal("gen1"; base_power = device_base)
+            container = setup_container_with_variables(
+                time_steps, device; resolution = Dates.Hour(1),
+            )
+            InfrastructureOptimizationModels.add_variable_cost_to_objective!(
+                container,
+                TestActivePowerVariable,
+                device,
+                cost_curve,
+                TestLinearFormulation,
+            )
+            coefs[label] = get_objective_coefficient(
+                container,
+                TestActivePowerVariable,
+                MockThermalGen,
+                "gen1",
+                first(time_steps),
+            )
+        end
+
+        @test coefs[:NATURAL_UNITS] ≈ coefs[:SYSTEM_BASE] atol = 1e-10
+        @test coefs[:NATURAL_UNITS] ≈ coefs[:DEVICE_BASE] atol = 1e-10
+        @test coefs[:NATURAL_UNITS] ≈ rate * system_base atol = 1e-10
+    end
+
     @testset "add_variable_cost_to_objective! with FuelCurve{LinearCurve}" begin
         time_steps = 1:3
         device = make_mock_thermal("gen1"; base_power = 50.0)

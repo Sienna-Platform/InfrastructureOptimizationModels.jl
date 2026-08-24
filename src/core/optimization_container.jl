@@ -82,16 +82,17 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     initial_conditions::OrderedDict{InitialConditionKey, Vector{<:InitialCondition}}
     initial_conditions_data::InitialConditionsData
     infeasibility_conflict::Dict{Symbol, Array}
-    pm::Union{Nothing, AbstractPowerModel}
     model_base_power::Float64
     optimizer_stats::OptimizerStats
     built_for_recurrent_solves::Bool
     evaluator_aux_var_keys::Vector{AuxVarKey}
     standalone_aux_var_keys::Vector{AuxVarKey}
     metadata::OptimizationContainerMetadata
-    # DataType (concrete) — the constructor rejects abstract types; covers IS time
-    # series types and duck-typed mocks alike.
-    default_time_series_type::DataType
+    # Any non-abstract time series type — a plain `DataType` or, for a parametric
+    # type named without its parameters (`DeterministicSingleTimeSeries`, i.e. a
+    # `UnionAll`), the unparameterized name. The constructor rejects abstract
+    # types; this covers IS time series types and duck-typed mocks alike.
+    default_time_series_type::Type
     evaluations::EvaluationContainer
     serialization_task::Union{Nothing, Task}
 end
@@ -102,7 +103,10 @@ function OptimizationContainer(
     jump_model::Union{Nothing, JuMP.Model},
     ::Type{T},
 ) where {T}
-    if isabstracttype(T)
+    # `T` may be a `UnionAll` (`DeterministicSingleTimeSeries`, whose IS definition
+    # is parametric); unwrap it so the abstractness test sees the underlying type
+    # instead of silently passing every unparameterized name.
+    if isabstracttype(Base.unwrap_unionall(T))
         error("Default Time Series Type $T can't be abstract")
     end
 
@@ -132,7 +136,6 @@ function OptimizationContainer(
         OrderedDict{InitialConditionKey, Vector{<:InitialCondition}}(),
         InitialConditionsData(),
         Dict{Symbol, Array}(),
-        nothing,
         get_base_power(sys),
         OptimizerStats(),
         false,
@@ -318,7 +321,7 @@ function init_optimization_container!(
     container::OptimizationContainer,
     network_model::NetworkModel{T},
     sys::IS.InfrastructureSystemsContainer,
-) where {T <: AbstractPowerModel}
+) where {T <: AbstractNetworkModel}
     # The order of operations matter
     # stateful unit system is being phased out; POM should no longer need this.
     # temp_set_units_base_system!(sys, "SYSTEM_BASE")
@@ -480,35 +483,13 @@ function compute_conflict!(container::OptimizationContainer)
     JuMP.unset_silent(jump_model)
     jump_model.is_model_dirty = false
     conflict = container.infeasibility_conflict
+    # Only the `JuMP.compute_conflict!` call itself signals whether the optimizer
+    # supports IIS/conflict refining. Keep its `try` narrow so that a failure to
+    # *read back* the conflict of a single constraint container (below) is not
+    # misreported as "optimizer doesn't support IIS" and does not discard the
+    # conflict that was successfully computed.
     try
         JuMP.compute_conflict!(jump_model)
-        conflict_status = MOI.get(jump_model, MOI.ConflictStatus())
-        if conflict_status != MOI.CONFLICT_FOUND
-            @error "No conflict could be found for the model. Status: $conflict_status"
-            if !get_optimizer_solve_log_print(settings)
-                JuMP.set_silent(jump_model)
-            end
-            return conflict_status
-        end
-
-        for (key, field_container) in get_constraints(container)
-            conflict_indices = check_conflict_status(jump_model, field_container)
-            if isempty(conflict_indices)
-                @info "Conflict Index returned empty for $key"
-                continue
-            else
-                conflict[encode_key(key)] = conflict_indices
-            end
-        end
-
-        msg = IOBuffer()
-        for (k, v) in conflict
-            PrettyTables.pretty_table(msg, v; header = [k])
-        end
-
-        @error "Constraints participating in conflict basis (IIS) \n\n$(String(take!(msg)))"
-
-        return conflict_status
     catch e
         jump_model.is_model_dirty = true
         if isa(e, MethodError)
@@ -516,9 +497,46 @@ function compute_conflict!(container::OptimizationContainer)
         else
             @error "Can't compute conflict" exception = (e, catch_backtrace())
         end
+        return MOI.NO_CONFLICT_EXISTS
     end
 
-    return MOI.NO_CONFLICT_EXISTS
+    conflict_status = MOI.get(jump_model, MOI.ConflictStatus())
+    if conflict_status != MOI.CONFLICT_FOUND
+        @error "No conflict could be found for the model. Status: $conflict_status"
+        if !get_optimizer_solve_log_print(settings)
+            JuMP.set_silent(jump_model)
+        end
+        return conflict_status
+    end
+
+    # Label each constraint container independently: a failure to read the
+    # conflict status of one container (e.g. an unsupported constraint type)
+    # must not abort the loop and hide the conflict found for the others.
+    for (key, field_container) in get_constraints(container)
+        conflict_indices = try
+            check_conflict_status(jump_model, field_container)
+        catch e
+            @warn "Could not read conflict status for $key; skipping" exception =
+                (e, catch_backtrace())
+            continue
+        end
+        if isempty(conflict_indices)
+            @info "Conflict Index returned empty for $key"
+        else
+            conflict[encode_key(key)] = conflict_indices
+        end
+    end
+
+    msg = IOBuffer()
+    for (k, v) in conflict
+        PrettyTables.pretty_table(msg, v; column_labels = [k])
+    end
+    @error "Constraints participating in conflict basis (IIS) \n\n$(String(take!(msg)))"
+
+    if !get_optimizer_solve_log_print(settings)
+        JuMP.set_silent(jump_model)
+    end
+    return conflict_status
 end
 
 function write_optimizer_stats!(container::OptimizationContainer)
@@ -573,6 +591,18 @@ function deserialize_metadata!(
     return
 end
 
+"""
+Reject 1D dense/sparse JuMP containers (issue #15): variable/constraint/expression/dual
+containers must always be indexable as `x[i, j]`, never as a bare vector `x[i]`. Containers
+with 3+ dimensions (e.g. PWL sparse containers keyed on `(name, segment, time)`) are fine.
+"""
+function _check_container_dims(key::OptimizationContainerKey, value)
+    if value isa Union{JuMP.Containers.DenseAxisArray, JuMP.Containers.SparseAxisArray}
+        IS.@assert_op ndims(value) >= 2
+    end
+    return
+end
+
 # PERF: compilation hotspot. from string conversion at the container[key] = value line?
 function _assign_container!(container::OrderedDict, key::OptimizationContainerKey, value)
     if haskey(container, key)
@@ -581,6 +611,7 @@ function _assign_container!(container::OrderedDict, key::OptimizationContainerKe
         )
         throw(IS.InvalidValue("$key is already stored"))
     end
+    _check_container_dims(key, value)
     container[key] = value
     @debug "Added container entry $(typeof(key)) $(encode_key(key))" _group =
         LOG_GROUP_OPTIMIZATION_CONTAINER
@@ -679,14 +710,16 @@ Key-constructing overload: builds the key from (T, U, meta) then delegates.
 end
 
 ####################################### Variable Container #################################
-add_variable_container!(
+function add_variable_container!(
     container::OptimizationContainer, ::Type{T}, ::Type{U}, axs::Vararg{Any, N};
     sparse = false, meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: VariableType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
-} = _add_container!(container, T, U, JuMP.VariableRef, sparse, axs...; meta = meta)
+}
+    return _add_container!(container, T, U, JuMP.VariableRef, sparse, axs...; meta = meta)
+end
 
 function add_variable_container!(
     container::OptimizationContainer,
@@ -703,9 +736,18 @@ function add_variable_container!(
     return _add_container!(container, T, U, JuMP.VariableRef, sparse, axs...; meta = meta)
 end
 
-function _get_pwl_variables_container()
-    contents = Dict{Tuple{String, Int, Int}, JuMP.VariableRef}()
-    return SparseAxisArray(contents)
+"""
+Key tuple type for the empty `SparseAxisArray` auto-created for a `SparseVariableType`.
+
+Defaults to the 3D device-offer PWL shape `(device_name, segment, time)`. A variable type
+that needs an extra axis - e.g. a per-service reserve offer keyed
+`(service_name, device_name, segment, time)` - overrides this method to widen the key. Downstream
+packages extend it for their own sparse variable types.
+"""
+sparse_variable_key_type(::Type{<:SparseVariableType}) = Tuple{String, Int, Int}
+
+function _get_pwl_variables_container(::Type{T}) where {T <: SparseVariableType}
+    return SparseAxisArray(Dict{sparse_variable_key_type(T), JuMP.VariableRef}())
 end
 
 function add_variable_container!(
@@ -718,7 +760,7 @@ function add_variable_container!(
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
 }
     var_key = VariableKey(T, U, meta)
-    _assign_container!(container.variables, var_key, _get_pwl_variables_container())
+    _assign_container!(container.variables, var_key, _get_pwl_variables_container(T))
     return container.variables[var_key]
 end
 
@@ -795,14 +837,16 @@ function get_dual_keys(container::OptimizationContainer)
 end
 
 ##################################### Constraint Container #################################
-add_constraints_container!(
+function add_constraints_container!(
     container::OptimizationContainer, ::Type{T}, ::Type{U}, axs::Vararg{Any, N};
     sparse = false, meta = CONTAINER_KEY_EMPTY_META,
 ) where {
     T <: ConstraintType,
     U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
     N,
-} = _add_container!(container, T, U, JuMP.ConstraintRef, sparse, axs...; meta = meta)
+}
+    return _add_container!(container, T, U, JuMP.ConstraintRef, sparse, axs...; meta = meta)
+end
 
 function get_constraint_keys(container::OptimizationContainer)
     return collect(keys(container.constraints))
@@ -865,6 +909,8 @@ function add_param_container_shared_axes!(
         param_array = DenseAxisArray{param_type}(undef, axs...)
         multiplier_array = fill!(DenseAxisArray{Float64}(undef, axs...), NaN)
     end
+    _check_container_dims(key, param_array)
+    _check_container_dims(key, multiplier_array)
     param_container = ParameterContainer(attribute, param_array, multiplier_array)
     _assign_container!(container.parameters, key, param_container)
     return param_container
@@ -1462,7 +1508,6 @@ function get_time_series_initial_values!(
         forecast;
         start_time = initial_time,
         len = length(time_steps),
-        ignore_scaling_factors = true,
     )
     return ts_values
 end

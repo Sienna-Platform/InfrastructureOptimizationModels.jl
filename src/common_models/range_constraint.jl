@@ -35,7 +35,7 @@ function add_range_constraints!(
     U <: VariableType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_variable(container, U, V)
     _add_bound_range_constraints_impl!(container, T, LowerBound(), array, devices, model)
@@ -55,7 +55,7 @@ function add_range_constraints!(
     U <: RangeConstraintLBExpressions,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_bound_range_constraints_impl!(container, T, LowerBound(), array, devices, model)
@@ -74,7 +74,7 @@ function add_range_constraints!(
     U <: RangeConstraintUBExpressions,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_bound_range_constraints_impl!(container, T, UpperBound(), array, devices, model)
@@ -235,7 +235,7 @@ function add_semicontinuous_range_constraints!(
     U <: VariableType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_variable(container, U, V)
     _add_semicontinuous_bound_range_constraints_impl!(
@@ -257,7 +257,7 @@ function add_semicontinuous_range_constraints!(
     U <: RangeConstraintLBExpressions,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_semicontinuous_bound_range_constraints_impl!(
@@ -277,7 +277,7 @@ function add_semicontinuous_range_constraints!(
     U <: RangeConstraintUBExpressions,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_semicontinuous_bound_range_constraints_impl!(
@@ -383,7 +383,7 @@ function add_parameterized_bound_range_constraints(
     P <: ParameterType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_expression(container, U, V)
     _add_parameterized_bound_range_constraints_impl!(
@@ -406,7 +406,7 @@ function add_parameterized_bound_range_constraints(
     P <: ParameterType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     array = get_variable(container, U, V)
     _add_parameterized_bound_range_constraints_impl!(
@@ -414,7 +414,19 @@ function add_parameterized_bound_range_constraints(
     return
 end
 
-# Backwards-compatible wrappers
+# Direction-specific wrappers over `add_parameterized_bound_range_constraints`.
+"""
+Add `array[name, t] >= rhs[name, t]` constraints of type `T`, where `array` is the variable or
+expression `U` and the right-hand side is built from the parameter `P`. The right-hand side
+depends on the parameter family:
+
+  - generic `P`: `multiplier[name, t] * parameter[name, t]`
+  - `P <: EventParameter`: `get_max_active_power(device) * parameter[name, t]`
+  - `P <: TimeSeriesParameter`: `multiplier[name, t] * parameter_column[t]`, and only devices
+    that own the time series named in `get_time_series_names(model)[P]` are constrained.
+
+Mirror of [`add_parameterized_upper_bound_range_constraints`](@ref).
+"""
 function add_parameterized_lower_bound_range_constraints(
     container::OptimizationContainer,
     ::Type{T},
@@ -429,7 +441,7 @@ function add_parameterized_lower_bound_range_constraints(
     P <: ParameterType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     add_parameterized_bound_range_constraints(
         container,
@@ -444,6 +456,18 @@ function add_parameterized_lower_bound_range_constraints(
     return
 end
 
+"""
+Add `array[name, t] <= rhs[name, t]` constraints of type `T`, where `array` is the variable or
+expression `U` and the right-hand side is built from the parameter `P`. The right-hand side
+depends on the parameter family:
+
+  - generic `P`: `multiplier[name, t] * parameter[name, t]`
+  - `P <: EventParameter`: `get_max_active_power(device) * parameter[name, t]`
+  - `P <: TimeSeriesParameter`: `multiplier[name, t] * parameter_column[t]`, and only devices
+    that own the time series named in `get_time_series_names(model)[P]` are constrained.
+
+Mirror of [`add_parameterized_lower_bound_range_constraints`](@ref).
+"""
 function add_parameterized_upper_bound_range_constraints(
     container::OptimizationContainer,
     ::Type{T},
@@ -458,7 +482,7 @@ function add_parameterized_upper_bound_range_constraints(
     P <: ParameterType,
     V <: IS.InfrastructureSystemsComponent,
     W <: AbstractDeviceFormulation,
-    X <: AbstractPowerModel,
+    X <: AbstractNetworkModel,
 }
     add_parameterized_bound_range_constraints(
         container,

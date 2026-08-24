@@ -106,6 +106,7 @@ function DecisionModel{M}(
     calculate_conflict = false,
     direct_mode_optimizer = false,
     store_variable_names = false,
+    system_to_file = true,
     rebuild_model = false,
     export_optimization_model = OptimizationModelExportFormat.NONE,
     check_numerical_bounds = true,
@@ -133,6 +134,7 @@ function DecisionModel{M}(
         direct_mode_optimizer = direct_mode_optimizer,
         check_numerical_bounds = check_numerical_bounds,
         store_variable_names = store_variable_names,
+        system_to_file = system_to_file,
         rebuild_model = rebuild_model,
         export_optimization_model = export_optimization_model,
     )

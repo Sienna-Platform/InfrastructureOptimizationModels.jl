@@ -77,7 +77,14 @@ function add_variables!(
 end
 
 """
-Add variables to the OptimizationContainer for a service.
+Add variables to the OptimizationContainer for a single service and its contributing
+devices.
+
+All services of a given `(VariableType, ServiceType)` share a single sparse container
+keyed by `(service_name, device_name, time)`, rather than one dense container per
+service disambiguated by a `meta = service_name` field. The container is created lazily
+on the first service of a type, and each subsequent call appends that service's slice, so
+separate formulation groups sharing a service type append to the same container.
 """
 function add_service_variables!(
     container::OptimizationContainer,
@@ -94,37 +101,29 @@ function add_service_variables!(
     @assert !isempty(contributing_devices)
     time_steps = get_time_steps(container)
     settings = get_settings(container)
-
     binary = get_variable_binary(T, U, F)
-
-    variable = add_variable_container!(
-        container,
-        T,
-        U,
-        IS.get_name(service),
-        [IS.get_name(d) for d in contributing_devices],
-        time_steps,
+    s_name = IS.get_name(service)
+    device_names = [IS.get_name(d) for d in contributing_devices]
+    variable = lazy_container_addition!(
+        container, T, U, [s_name], device_names, time_steps; sparse = true,
     )
-
+    jump_model = get_jump_model(container)
     for t in time_steps, d in contributing_devices
         name = IS.get_name(d)
-        variable[name, t] = JuMP.@variable(
-            get_jump_model(container),
-            base_name = "$(T)_$(U)_$(IS.get_name(service))_{$(name), $(t)}",
-            binary = binary
+        var = JuMP.@variable(
+            jump_model,
+            base_name = "$(T)_$(U)_{$(s_name), $(name), $(t)}",
+            binary = binary,
         )
-
+        variable[(s_name, name, t)] = var
         ub = get_variable_upper_bound(T, service, d, F)
-        ub !== nothing && JuMP.set_upper_bound(variable[name, t], ub)
-
+        ub !== nothing && JuMP.set_upper_bound(var, ub)
         lb = get_variable_lower_bound(T, service, d, F)
-        lb !== nothing && !binary && JuMP.set_lower_bound(variable[name, t], lb)
-
+        lb !== nothing && !binary && JuMP.set_lower_bound(var, lb)
         if get_warm_start(settings)
             init = get_variable_warm_start_value(T, d, F)
-            init !== nothing && JuMP.set_start_value(variable[name, t], init)
+            init !== nothing && JuMP.set_start_value(var, init)
         end
     end
-
     return
 end

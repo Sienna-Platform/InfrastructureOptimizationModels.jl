@@ -78,7 +78,7 @@ function add_linear_ramp_constraints!(
     U::Type{S},
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
-    ::Type{<:AbstractPowerModel},
+    ::Type{<:AbstractNetworkModel},
 ) where {
     S <: Union{PowerAboveMinimumVariable, ActivePowerVariable},
     V <: IS.InfrastructureSystemsComponent,
@@ -178,7 +178,7 @@ function add_linear_ramp_constraints!(
     U::Type{<:VariableType},
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
-    X::Type{<:AbstractPowerModel},
+    X::Type{<:AbstractNetworkModel},
 ) where {V <: IS.InfrastructureSystemsComponent, W <: AbstractDeviceFormulation}
     return _add_linear_ramp_constraints_impl!(container, T, U, devices, model)
 end
@@ -201,7 +201,7 @@ function add_linear_ramp_constraints!(
     U::Type{ActivePowerVariable},
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
-    X::Type{<:AbstractPowerModel},
+    X::Type{<:AbstractNetworkModel},
 ) where {V <: IS.InfrastructureSystemsComponent, W <: AbstractThermalDispatchFormulation}
 
     # Fallback to generic implementation if OnStatusParameter is not present
@@ -293,7 +293,7 @@ function add_semicontinuous_ramp_constraints!(
     U::Type{S},
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
-    ::Type{<:AbstractPowerModel},
+    ::Type{<:AbstractNetworkModel},
 ) where {
     S <: Union{PowerAboveMinimumVariable, ActivePowerVariable},
     V <: IS.InfrastructureSystemsComponent,
