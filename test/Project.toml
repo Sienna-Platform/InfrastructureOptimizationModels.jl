@@ -18,6 +18,8 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 PowerCoreOpenAPIModels = "b7b40286-e793-417d-a9a0-b1583e4da1cb"
+PowerTimeSeriesOpenAPIModels = "8c2f6a0d-6b0e-4d0a-9d8f-2b5e6a4f9c31"
+InfraStore = "6aee0376-896a-4a59-96ff-12f221c99746"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 SCS = "c946c3f1-0d1f-5ce8-9dea-7daa1f7e2d13"
@@ -30,11 +32,13 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 UnoSolver = "1baa60ac-02f7-4b39-a7a8-2f4f58486b05"
 
 [sources]
-InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "IS4"}
+InfrastructureSystems = {rev = "jd/expose_id", url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl"}
 InfrastructureOptimizationModels = {path = ".."}
 # IS4's own [sources] pin for this is ignored once IS is a dependency rather than the root
 # project; the test env needs its own pin so Pkg can resolve IS4's unregistered OpenAPI dep.
-PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerCoreOpenAPIModels.jl"}
+PowerCoreOpenAPIModels = {rev = "jd/market_components", url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", subdir = "PowerCoreOpenAPIModels.jl"}
+PowerTimeSeriesOpenAPIModels = {rev = "jd/market_components", url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", subdir = "PowerTimeSeriesOpenAPIModels.jl"}
+InfraStore = {rev = "jd/expose_id", url = "https://github.com/QXT-Energy/infrastore.git", subdir = "julia/InfraStore.jl"}
 
 [compat]
 HiGHS = "1"
