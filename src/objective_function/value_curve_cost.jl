@@ -176,15 +176,52 @@ function is_nontrivial_offer(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve})
     lo, hi = IS.get_domain(IS.get_function_data(IS.get_value_curve(curve)))
     return hi > lo
 end
-# A TS-backed offer side is the absent/placeholder side of a one-sided participant
-# (a load with no supply offer, or a generator with no demand offer) when it carries a
-# reserved empty time-series key name. Any non-empty key references a real forecast, so
-# it is a genuine offer. This mirrors the static `ZERO_OFFER_CURVE` placeholder check
-# above (which inspects the curve's x-range) for the time-series-backed case, where the
-# curve data lives in a forecast and cannot be inspected at build time.
+# PRESENCE-ONLY approximation for a bare TS-backed curve: without a component and
+# container the referenced series cannot be resolved, so all this can test is whether the
+# key names a stored series. That is NOT sufficient to prove genuine participation - a
+# one-sided market bid attaches a REAL stored inert series for its absent side (an all-
+# zero-span step function per hour) so a document round-trip's `_require` finds both curve
+# fields. Build-time callers that hold the component should use the 3-argument method
+# below, which resolves the series and applies the same domain test as the static check.
 function is_nontrivial_offer(curve::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve})
     return !isempty(IS.get_name(IS.get_time_series_key(curve)))
 end
+
+"""
+    is_nontrivial_offer(container, component, curve)
+
+Build-context form of the predicate: does this offer side carry any quantity? For a static
+curve the data is in the struct and the plain domain check answers directly. For a
+time-series-backed curve, resolve the referenced series through `component` and test the
+per-hour envelope with the SAME `hi > lo` semantics as the static method: a side whose
+every step function spans zero MW offers nothing (the stored-inert placeholder of a
+one-sided bid), regardless of the key's presence.
+"""
+is_nontrivial_offer(
+    ::OptimizationContainer,
+    ::IS.InfrastructureSystemsComponent,
+    curve,
+) = is_nontrivial_offer(curve)
+
+function is_nontrivial_offer(
+    container::OptimizationContainer,
+    component::IS.InfrastructureSystemsComponent,
+    curve::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve},
+)
+    is_nontrivial_offer(curve) || return false
+    ts_type = get_default_time_series_type(container)
+    ts_name = IS.get_name(IS.get_time_series_key(curve))
+    IS.has_time_series(component, ts_type, ts_name) || return false
+    window = get_time_series_initial_values!(container, ts_type, component, ts_name)
+    return any(_offer_step_span(fd) > 0.0 for fd in window)
+end
+
+function _offer_step_span(fd::IS.PiecewiseStepData)
+    x = IS.get_x_coords(fd)
+    return last(x) - first(x)
+end
+# Unknown window eltype: treat as genuine so callers keep their strict behavior.
+_offer_step_span(::Any) = Inf
 
 #################################################################################
 # Section 5: TimeSeriesValueCurve Objective Formulation (PSY-free)
