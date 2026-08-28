@@ -213,9 +213,7 @@ function is_nontrivial_offer(
     ts_name = IS.get_name(IS.get_time_series_key(curve))
     IS.has_time_series(component, ts_type, ts_name) || return false
     window = get_time_series_initial_values!(container, ts_type, component, ts_name)
-    # != rather than >: legal PiecewiseStepData is ascending (a negative span cannot
-    # occur), but the NaN-first "undefined first breakpoint" form yields a NaN span, and
-    # NaN != 0 keeps that genuine curve form strict (mirrors _offer_step_span(::Any) = Inf).
+    # != not >: a NaN-first curve (legal, "undefined first breakpoint") must stay genuine.
     return any(_offer_step_span(fd) != 0.0 for fd in window)
 end
 
