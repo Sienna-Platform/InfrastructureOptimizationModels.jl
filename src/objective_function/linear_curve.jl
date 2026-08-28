@@ -68,8 +68,12 @@ function add_variable_cost_to_objective!(
         device_base_power = get_base_power(component)
         fuel_curve_per_unit = get_proportional_cost_per_system_unit(
             proportional_term, power_units, base_power, device_base_power)
+        # Split FuelCurve: the scalar `fuel_cost` field is nothing when a time series is
+        # set (the two are mutually exclusive by construction), so the variant path reads
+        # the key from its own field.
         _add_fuel_linear_variable_cost!(
-            container, T, component, fuel_curve_per_unit, fuel_cost)
+            container, T, component, fuel_curve_per_unit,
+            IS.get_fuel_cost_time_series(cost_function))
     end
     return
 end

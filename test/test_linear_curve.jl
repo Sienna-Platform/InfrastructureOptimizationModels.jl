@@ -432,7 +432,12 @@ end
         )
 
         # Create a FuelCurve with a TimeSeriesKey as fuel_cost
+        # Owner-bearing key fields (IS jd/expose_id): any consistent ids work for a
+        # key that is never resolved against a store.
         ts_key = IS.StaticTimeSeriesKey(
+            1,
+            IS.InfraStore.Component,
+            1,
             IS.SingleTimeSeries,
             "fuel_cost",
             Dates.DateTime(2024, 1, 1),
@@ -440,10 +445,10 @@ end
             3,
             Dict{String, Any}(),
         )
-        fuel_curve = IS.FuelCurve(
-            IS.LinearCurve(proportional_term),
-            IS.SystemBaseUnit(),  # already normalized
-            ts_key,
+        fuel_curve = IS.FuelCurve(;
+            value_curve = IS.LinearCurve(proportional_term),
+            power_units = IS.SystemBaseUnit(),  # already normalized
+            fuel_cost_time_series = ts_key,
         )
 
         IOM.add_variable_cost_to_objective!(
