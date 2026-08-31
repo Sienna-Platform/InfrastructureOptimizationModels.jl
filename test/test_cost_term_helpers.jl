@@ -335,17 +335,8 @@ Test types defined in test_utils/test_types.jl.
             # Dispatch requires an IS.TimeSeriesKey argument (unused in the body)
             # Owner-bearing key fields (IS jd/expose_id): any consistent ids work for
             # a key that is never resolved against a store.
-            ts_key = IS.StaticTimeSeriesKey(
-                1,
-                IS.InfraStore.Component,
-                1,
-                IS.SingleTimeSeries,
-                "fuel_cost",
-                Dates.DateTime(2024, 1, 1),
-                Dates.Hour(1),
-                3,
-                Dict{String, Any}(),
-            )
+            # Value-only key (never resolved against a store): the association id is the identity.
+            ts_key = IS.TimeSeriesKey{IS.SingleTimeSeries{Float64, 1}}(1)
 
             IOM._add_time_varying_fuel_variable_cost!(
                 container,

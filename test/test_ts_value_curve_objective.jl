@@ -10,32 +10,20 @@ IOM.objective_function_multiplier(
 ) = 1.0
 IOM._sos_status(::Type, ::Type{TestDeviceFormulation}) = IOM.SOSStatusVariable.NO_VARIABLE
 
-# Helper to create a ForecastKey with sensible defaults
-function _make_forecast_key(name::String)
-    return IS.ForecastKey(;
-        # The owner-bearing key fields (IS jd/expose_id): any consistent ids work for a
-        # key that is never resolved against a store.
-        owner_id = 1,
-        owner_category = IS.InfraStore.Component,
-        association_id = 1,
-        time_series_type = IS.Deterministic,
-        name = name,
-        initial_timestamp = Dates.DateTime("2020-01-01"),
-        resolution = Dates.Hour(1),
-        horizon = Dates.Hour(24),
-        interval = Dates.Hour(24),
-        count = 1,
-        features = Dict{String, Any}(),
-    )
-end
+# Value-only keys (never resolved against a store): under the association-id key world a
+# key is just TimeSeriesKey{T}(association_id), so distinct ids stand in for distinct series.
+_make_forecast_key(association_id::Int = 1) =
+    IS.TimeSeriesKey{IS.Deterministic{IS.PiecewiseStepData, 1}}(association_id)
+# Legacy name-based call sites: a stable id derived from the name keeps distinctness.
+_make_forecast_key(name::AbstractString) = _make_forecast_key(Int(hash(name) % 10^6) + 1)
 
 # Helper to create a CostCurve{TimeSeriesPiecewiseIncrementalCurve}
 function _make_ts_incremental_cost_curve(;
     power_units::IS.AbstractUnitSystem = IS.NaturalUnit(),
 )
-    key = _make_forecast_key("test_forecast")
-    ii_key = _make_forecast_key("initial_input")
-    iaz_key = _make_forecast_key("input_at_zero")
+    key = _make_forecast_key(1)
+    ii_key = _make_forecast_key(2)
+    iaz_key = _make_forecast_key(3)
     vc = IS.TimeSeriesPiecewiseIncrementalCurve(key, ii_key, iaz_key)
     return IS.CostCurve(vc, power_units)
 end
