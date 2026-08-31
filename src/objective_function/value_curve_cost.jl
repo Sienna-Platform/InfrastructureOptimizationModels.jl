@@ -208,7 +208,17 @@ function is_nontrivial_offer(
 )
     is_nontrivial_offer(curve) || return false
     ts_type = get_default_time_series_type(container)
-    ts_name = IS.get_name(IS.get_time_series_key(curve))
+    # A thin key carries only its association id; the name IOM's window cache is keyed by
+    # lives in the owner's metadata catalog.
+    key = IS.get_time_series_key(curve)
+    ts_name = nothing
+    for md in IS.list_time_series_metadata(component)
+        if IS.get_association_id(IS.get_time_series_key(md)) == IS.get_association_id(key)
+            ts_name = IS.get_name(md)
+            break
+        end
+    end
+    ts_name === nothing && return false
     IS.has_time_series(component, ts_type, ts_name) || return false
     window = get_time_series_initial_values!(container, ts_type, component, ts_name)
     # != not >: a NaN-first curve (legal, "undefined first breakpoint") must stay genuine.
