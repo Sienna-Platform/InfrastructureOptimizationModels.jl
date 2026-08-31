@@ -223,6 +223,9 @@ function add_linear_ramp_constraints!(
     # Commitment path from UC as a PARAMETER (fixed 0/1)
     on_param = get_parameter(container, OnStatusParameter, V)
     on_status = on_param.parameter_array  # on_status[name, t] ∈ {0,1} (fixed)
+    # The feedforward parameter path only stores non-must-run units; a name absent from
+    # this axis is must-run and always committed (on_status ≡ 1.0).
+    on_status_names = Set(axes(on_status, 1))
 
     ic_power_by_name = Dict(
         get_component_name(ic) => get_value(ic) for ic in initial_conditions_power
@@ -232,33 +235,55 @@ function add_linear_ramp_constraints!(
         name = IS.get_name(dev)
         ramp_limits = get_ramp_limits(dev)
         power_limits = get_active_power_limits(dev)
-
-        # --- t = 1: Use ic_power to determine starting ramp condition
         ic_power = ic_power_by_name[name]
-        ycur = on_status[name, 1]
-        slack = _get_ramp_slack_vars(container, model, name, 1)
-        # Gate by the initial status as the "previous" status; the old `1 - ycur` gave
-        # big_m = 0 for a unit started at t = 1 from off, infeasible when `Pmin > r_up·dt`.
         y_init = _initial_on_status(ic_power)
-        big_m = power_limits.max * (2 - y_init - ycur)
-        startstop = (up = big_m, down = big_m)
-        cur = (up = variable[name, 1], down = variable[name, 1])
-        add_ramp_constraint_startstop_pair!(
-            jump_model, cons, name, 1,
-            cur, ic_power, ramp_limits, minutes_per_period, startstop, slack)
+        slack_1 = _get_ramp_slack_vars(container, model, name, 1)
 
-        # --- t ≥ 2: gate by previous status y_{t-1}
-        for t in time_steps[2:end]
-            yprev = on_status[name, t - 1]   # 0/1 fixed from UC
-            ycur = on_status[name, t]       # 0/1 fixed from UC
-            slack = _get_ramp_slack_vars(container, model, name, t)
-            big_m = power_limits.max * (2 - yprev - ycur)
+        if name in on_status_names
+            # --- t = 1: Use ic_power to determine starting ramp condition
+            ycur = on_status[name, 1]
+            # Gate by the initial status as the "previous" status; the old `1 - ycur` gave
+            # big_m = 0 for a unit started at t = 1 from off, infeasible when `Pmin > r_up·dt`.
+            big_m = power_limits.max * (2 - y_init - ycur)
             startstop = (up = big_m, down = big_m)
-            cur = (up = variable[name, t], down = variable[name, t])
+            cur = (up = variable[name, 1], down = variable[name, 1])
             add_ramp_constraint_startstop_pair!(
-                jump_model, cons, name, t,
-                cur, variable[name, t - 1], ramp_limits, minutes_per_period, startstop,
-                slack)
+                jump_model, cons, name, 1,
+                cur, ic_power, ramp_limits, minutes_per_period, startstop, slack_1)
+
+            # --- t ≥ 2: gate by previous status y_{t-1}
+            for t in time_steps[2:end]
+                yprev = on_status[name, t - 1]   # 0/1 fixed from UC
+                ycur = on_status[name, t]       # 0/1 fixed from UC
+                slack = _get_ramp_slack_vars(container, model, name, t)
+                big_m = power_limits.max * (2 - yprev - ycur)
+                startstop = (up = big_m, down = big_m)
+                cur = (up = variable[name, t], down = variable[name, t])
+                add_ramp_constraint_startstop_pair!(
+                    jump_model, cons, name, t,
+                    cur, variable[name, t - 1], ramp_limits, minutes_per_period, startstop,
+                    slack)
+            end
+        else
+            # Must-run: commitment is the constant 1.0. At t = 1 this reduces to
+            # power_limits.max * (2 - y_init - 1.0); for t ≥ 2, yprev = ycur = 1.0 makes
+            # big_m = 0 — no start/stop relaxation, only the ramp limits apply.
+            big_m_1 = power_limits.max * (2 - y_init - 1.0)
+            startstop_1 = (up = big_m_1, down = big_m_1)
+            cur_1 = (up = variable[name, 1], down = variable[name, 1])
+            add_ramp_constraint_startstop_pair!(
+                jump_model, cons, name, 1,
+                cur_1, ic_power, ramp_limits, minutes_per_period, startstop_1, slack_1)
+
+            startstop = (up = 0.0, down = 0.0)
+            for t in time_steps[2:end]
+                slack = _get_ramp_slack_vars(container, model, name, t)
+                cur = (up = variable[name, t], down = variable[name, t])
+                add_ramp_constraint_startstop_pair!(
+                    jump_model, cons, name, t,
+                    cur, variable[name, t - 1], ramp_limits, minutes_per_period, startstop,
+                    slack)
+            end
         end
     end
 
