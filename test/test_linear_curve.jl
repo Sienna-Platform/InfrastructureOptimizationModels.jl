@@ -432,14 +432,9 @@ end
         )
 
         # Create a FuelCurve with a TimeSeriesKey as fuel_cost
-        ts_key = IS.StaticTimeSeriesKey(
-            IS.SingleTimeSeries,
-            "fuel_cost",
-            Dates.DateTime(2024, 1, 1),
-            Dates.Hour(1),
-            3,
-            Dict{String, Any}(),
-        )
+        # Store-minted in production; fabricated here because this path reads the price
+        # from the pre-populated FuelCostParameter, never from a store.
+        ts_key = IS.TimeSeriesKey{IS.SingleTimeSeries{Float64}}(1)
         fuel_curve = IS.FuelCurve(
             IS.LinearCurve(proportional_term),
             IS.SystemBaseUnit(),  # already normalized

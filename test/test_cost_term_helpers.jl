@@ -333,14 +333,7 @@ Test types defined in test_utils/test_types.jl.
             )
 
             # Dispatch requires an IS.TimeSeriesKey argument (unused in the body)
-            ts_key = IS.StaticTimeSeriesKey(
-                IS.SingleTimeSeries,
-                "fuel_cost",
-                Dates.DateTime(2024, 1, 1),
-                Dates.Hour(1),
-                3,
-                Dict{String, Any}(),
-            )
+            ts_key = IS.TimeSeriesKey{IS.SingleTimeSeries{Float64}}(1)
 
             IOM._add_time_varying_fuel_variable_cost!(
                 container,

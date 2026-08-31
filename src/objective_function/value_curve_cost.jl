@@ -177,13 +177,15 @@ function is_nontrivial_offer(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve})
     return hi > lo
 end
 # A TS-backed offer side is the absent/placeholder side of a one-sided participant
-# (a load with no supply offer, or a generator with no demand offer) when it carries a
-# reserved empty time-series key name. Any non-empty key references a real forecast, so
-# it is a genuine offer. This mirrors the static `ZERO_OFFER_CURVE` placeholder check
-# above (which inspects the curve's x-range) for the time-series-backed case, where the
-# curve data lives in a forecast and cannot be inspected at build time.
-function is_nontrivial_offer(curve::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve})
-    return !isempty(IS.get_name(IS.get_time_series_key(curve)))
+# (a load with no supply offer, or a generator with no demand offer) when it carries
+# the reserved zero association id — the store mints ids from 1, so a real key can
+# never be zero. Any store-minted key references a real forecast, so it is a genuine
+# offer. This is the TS analog of the static `ZERO_OFFER_CURVE` placeholder check
+# above, until the static-or-TS union offer fields (the convention PSY's ORDC
+# `variable` field already uses) reach the TS bid costs and the absent side becomes
+# the static placeholder itself.
+function is_nontrivial_offer(curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve})
+    return !iszero(IS.get_association_id(IS.get_time_series_key(curve)))
 end
 
 #################################################################################
@@ -201,7 +203,7 @@ function _get_raw_pwl_data(
     container::OptimizationContainer,
     ::Type{T},
     name::String,
-    cost_data::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve},
+    cost_data::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
     time::Int;
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {T <: IS.InfrastructureSystemsComponent}
@@ -239,7 +241,7 @@ function add_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{T},
     component::C,
-    cost_function::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve},
+    cost_function::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
     ::Type{U};
     dir::OfferDirection = IncrementalOffer(),
 ) where {
