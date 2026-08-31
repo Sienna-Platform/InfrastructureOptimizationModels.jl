@@ -183,7 +183,7 @@ end
 # zero-span step function per hour) so a document round-trip's `_require` finds both curve
 # fields. Build-time callers that hold the component should use the 3-argument method
 # below, which resolves the series and applies the same domain test as the static check.
-function is_nontrivial_offer(curve::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve})
+function is_nontrivial_offer(curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve})
     return !isempty(IS.get_name(IS.get_time_series_key(curve)))
 end
 
@@ -206,7 +206,7 @@ is_nontrivial_offer(
 function is_nontrivial_offer(
     container::OptimizationContainer,
     component::IS.InfrastructureSystemsComponent,
-    curve::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve},
+    curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
 )
     is_nontrivial_offer(curve) || return false
     ts_type = get_default_time_series_type(container)
@@ -239,7 +239,7 @@ function _get_raw_pwl_data(
     container::OptimizationContainer,
     ::Type{T},
     name::String,
-    cost_data::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve},
+    cost_data::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
     time::Int;
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {T <: IS.InfrastructureSystemsComponent}
@@ -277,7 +277,7 @@ function add_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{T},
     component::C,
-    cost_function::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve},
+    cost_function::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
     ::Type{U};
     dir::OfferDirection = IncrementalOffer(),
 ) where {
