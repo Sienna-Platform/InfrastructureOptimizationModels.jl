@@ -177,15 +177,13 @@ function is_nontrivial_offer(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve})
     return hi > lo
 end
 # PRESENCE-ONLY approximation for a bare TS-backed curve: without a component and
-# container the referenced series cannot be resolved, so all this can test is whether the
-# key names a stored series. That is NOT sufficient to prove genuine participation - a
-# one-sided market bid attaches a REAL stored inert series for its absent side (an all-
-# zero-span step function per hour) so a document round-trip's `_require` finds both curve
-# fields. Build-time callers that hold the component should use the 3-argument method
-# below, which resolves the series and applies the same domain test as the static check.
-function is_nontrivial_offer(curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve})
-    return !isempty(IS.get_name(IS.get_time_series_key(curve)))
-end
+# container the referenced series cannot be resolved, and a thin key carries nothing to
+# test (the empty-name placeholder sentinel is gone - absent sides attach a REAL stored
+# inert series, an all-zero-span step function per hour). A TS-backed side is therefore
+# always "present" here; build-time callers that hold the component must use the
+# 3-argument method below, which resolves the series and applies the same domain test as
+# the static check.
+is_nontrivial_offer(::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}) = true
 
 """
     is_nontrivial_offer(container, component, curve)
