@@ -56,13 +56,9 @@ function add_variable_cost_to_objective!(
     value_curve = IS.get_value_curve(cost_function)
     power_units = IS.get_power_units(cost_function)
     proportional_term = IS.get_proportional_term(IS.get_function_data(value_curve))
-    fuel_cost = IS.get_fuel_cost(cost_function)
     # Multiplier is not necessary here. There is no negative cost for fuel curves.
-    if fuel_cost isa Float64
-        add_proportional_cost_invariant!(
-            container, T, component, proportional_term, power_units, fuel_cost,
-            FuelCostExpression)
-    else
+    # Exactly one of the FuelCurve's fixed/time-series fuel cost fields is set.
+    if IS.is_time_series_backed(cost_function)
         # Time-varying fuel cost: normalize, then delegate to variant path
         base_power = get_model_base_power(container)
         device_base_power = get_base_power(component)
@@ -74,6 +70,10 @@ function add_variable_cost_to_objective!(
         _add_fuel_linear_variable_cost!(
             container, T, component, fuel_curve_per_unit,
             IS.get_fuel_cost_time_series(cost_function))
+    else
+        add_proportional_cost_invariant!(
+            container, T, component, proportional_term, power_units,
+            IS.get_fuel_cost(cost_function), FuelCostExpression)
     end
     return
 end

@@ -10,29 +10,29 @@ IOM.objective_function_multiplier(
 ) = 1.0
 IOM._sos_status(::Type, ::Type{TestDeviceFormulation}) = IOM.SOSStatusVariable.NO_VARIABLE
 
-# Value-only keys (never resolved against a store): under the association-id key world a
-# key is just TimeSeriesKey{T}(association_id), so distinct ids stand in for distinct series.
-_make_forecast_key(association_id::Int = 1) =
-    IS.TimeSeriesKey{IS.Deterministic{IS.PiecewiseStepData, 1}}(association_id)
-# Legacy name-based call sites: a stable id derived from the name keeps distinctness.
-_make_forecast_key(name::AbstractString) = _make_forecast_key(Int(hash(name) % 10^6) + 1)
+# Keys are store-minted in production; these tests never touch a store (the delta path
+# reads from pre-populated parameter containers), so fabricate typed keys directly. The
+# ids are arbitrary but distinct.
+_make_pwl_forecast_key(id::Int) =
+    IS.TimeSeriesKey{IS.Deterministic{IS.PiecewiseStepData}}(id)
+_make_scalar_forecast_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{Float64}}(id)
 
 # Helper to create a CostCurve{TimeSeriesPiecewiseIncrementalCurve}
 function _make_ts_incremental_cost_curve(;
     power_units::IS.AbstractUnitSystem = IS.NaturalUnit(),
 )
-    key = _make_forecast_key(1)
-    ii_key = _make_forecast_key(2)
-    iaz_key = _make_forecast_key(3)
+    key = _make_pwl_forecast_key(1)
+    ii_key = _make_scalar_forecast_key(2)
+    iaz_key = _make_scalar_forecast_key(3)
     vc = IS.TimeSeriesPiecewiseIncrementalCurve(key, ii_key, iaz_key)
     return IS.CostCurve(vc, power_units)
 end
 
 @testset "TimeSeriesValueCurve Objective Functions" begin
     @testset "TS curve type construction and is_time_series_backed" begin
-        key = _make_forecast_key("test_forecast")
-        ii_key = _make_forecast_key("initial_input")
-        iaz_key = _make_forecast_key("input_at_zero")
+        key = _make_pwl_forecast_key(1)
+        ii_key = _make_scalar_forecast_key(2)
+        iaz_key = _make_scalar_forecast_key(3)
 
         # Construct TimeSeriesPiecewiseIncrementalCurve
         ts_pic = IS.TimeSeriesPiecewiseIncrementalCurve(key, ii_key, iaz_key)
@@ -42,8 +42,9 @@ end
         cc = IS.CostCurve(ts_pic)
         @test IS.is_time_series_backed(cc)
 
-        # Verify the type parameter
-        @test cc isa IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve}
+        # Verify the type parameter (the alias is a UnionAll now that keys carry the
+        # stored time series type, so match covariantly)
+        @test cc isa IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}
     end
 
     @testset "Delta formulation with static parameters" begin

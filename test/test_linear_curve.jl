@@ -432,14 +432,13 @@ end
         )
 
         # Create a FuelCurve with a TimeSeriesKey as fuel_cost
-        # Owner-bearing key fields (IS jd/expose_id): any consistent ids work for a
-        # key that is never resolved against a store.
-        # Value-only key (never resolved against a store): the association id is the identity.
-        ts_key = IS.TimeSeriesKey{IS.SingleTimeSeries{Float64, 1}}(1)
-        fuel_curve = IS.FuelCurve(;
-            value_curve = IS.LinearCurve(proportional_term),
-            power_units = IS.SystemBaseUnit(),  # already normalized
-            fuel_cost_time_series = ts_key,
+        # Store-minted in production; fabricated here because this path reads the price
+        # from the pre-populated FuelCostParameter, never from a store.
+        ts_key = IS.TimeSeriesKey{IS.SingleTimeSeries{Float64}}(1)
+        fuel_curve = IS.FuelCurve(
+            IS.LinearCurve(proportional_term),
+            IS.SystemBaseUnit(),  # already normalized
+            ts_key,
         )
 
         IOM.add_variable_cost_to_objective!(
