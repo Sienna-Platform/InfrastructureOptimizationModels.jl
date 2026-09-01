@@ -552,12 +552,13 @@ end
         @test IOM.is_nontrivial_offer(genuine)
         @test !IOM.is_nontrivial_offer(trivial)
 
-        # TS curve with the reserved empty key name: trivial without resolving
-        empty_key_curve = IS.CostCurve(
+        # A key naming no series the component carries: trivial, since the resolve
+        # finds no matching association id in the metadata catalog.
+        unresolvable_curve = IS.CostCurve(
             IS.TimeSeriesPiecewiseIncrementalCurve(
-                _make_forecast_key(""), nothing, nothing),
+                _make_pwl_forecast_key(999), nothing, nothing),
             IS.NaturalUnit())
-        @test !IOM.is_nontrivial_offer(container, device, empty_key_curve)
+        @test !IOM.is_nontrivial_offer(container, device, unresolvable_curve)
 
         # TS curve with a named key the component does not carry: trivial (no series to
         # resolve). The resolving branch itself (a REAL attached series with zero-span
