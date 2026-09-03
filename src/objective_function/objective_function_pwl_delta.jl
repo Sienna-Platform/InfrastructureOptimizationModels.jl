@@ -208,7 +208,16 @@ function add_pwl_constraint_delta!(
     elseif _include_min_gen_power_in_constraint(T, U, D)
         p1::Float64 = jump_fixed_value(first(break_points))
         on_vars = get_variable(container, OnVariable, T)
-        p1 * on_vars[name, period]
+        # Membership decides the branch, not a device trait: the OnVariable container is
+        # built from the non-must-run devices only, so a name absent from its axis is
+        # must-run and always committed (On === 1), making the offset the constant p1.
+        # Reading the axis keeps this correct for every component type, including those
+        # with no `must_run` field at all.
+        if name in axes(on_vars, 1)
+            p1 * on_vars[name, period]
+        else
+            p1
+        end
     else
         0.0
     end
