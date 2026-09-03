@@ -42,7 +42,25 @@ Breakpoints are **always `Float64`** in practice. `AbstractPiecewiseLinearBreakp
 
 **Why not C**: cost parameters are deliberately walled off from JuMP-parameter storage (the `ObjectiveFunctionParameter` vs `TimeSeriesParameter` split is explicitly commented as such in `offer_curve_types.jl:36-39`). Adopting the recurrent-solve `VariableRef` path for breakpoints would diverge from how every other cost parameter works, enlarge the model, and change what `calculate_parameter_values` returns. Disproportionate to the defect.
 
-## 3. Open question that Task 1 must settle
+## 3. RESOLVED by Task 1: Case 1, padded maximum
+
+Task 1 (commit `3b4a347`) settled this empirically. **`n_segments` is hoisted out of the per-period loop** in `value_curve_cost.jl`'s `_add_ts_incremental_pwl_cost!` and sized once from the parameter array's fixed axis length — the batch-wide maximum, corroborated by `get_max_tranches`'s own docstring ("global maximum over time").
+
+Evidence, from a two-period container with 2 real segments at t=1 and 4 at t=2:
+
+| observation | t=1 | t=2 |
+|---|---|---|
+| delta variable keys created | `("gen1", 1..4, 1)` — **4**, not 2 | `("gen1", 1..4, 2)` — 4 |
+| width rows | blocks 1-2 `<= 0.5` real; blocks 3-4 `<= 0.0` padding | all 4 real |
+| objective slope coefficients | nonzero on 1-2 only | nonzero on all 4 |
+
+**Consequence: `set_normalized_rhs` is sufficient.** Every period already has a row per block up to the global maximum, with surplus blocks pinned to zero width. No structural second defect exists on the code path Task 2 targets, and no loud-error guard is needed there.
+
+The original framing below was correct in substance but imprecise: raw tranche counts *are* computed inside the per-period loop, yet both cited call sites read through fixed-shape padded arrays, so neither ever actually sees raggedness.
+
+### Superseded original text
+
+
 
 Block counts are **ragged**: POM computes `breakpoints, slopes = IOM._get_pwl_data(dir, container, component, t)` inside the `for t in time_steps` loop, so tranche count can differ per period. Meanwhile the parameter *arrays* are padded to a batch-wide maximum via `calc_additional_axes`.
 
@@ -185,3 +203,18 @@ Both must pass with the previously blocked branches now running. A breakpoint-va
 - **PSI**: one method implemented, one comment corrected, several test branches re-enabled.
 - **In-flight IOM work does not collide.** `bf625df` ("Keep must-run units out of the PWL block offer KeyError") touches the same file but only the `min_power_offset` branch of `add_pwl_constraint_delta!`, not the per-block loop. `588e490` (MarketModel container) touches entirely different files. Rebase onto `jd/market_model` rather than `main`, since the branch is 13 commits ahead.
 - **Not fixed, deliberately**: the lambda formulation stores its refs correctly but has no update path at all, and is not reachable from the market-bid flow today. If it is ever wired into a recurrent-solve path it will need the same treatment. Recorded, not in scope.
+
+## 6. A SECOND instance of the same defect, in POM (found by Task 1)
+
+`PowerOperationsModels.jl/src/services_models/reserve_offers.jl`, `add_reserve_offer_costs!`:
+
+```julia
+:94    JuMP.@constraint(jump_model, v <= breakpoints[k + 1] - breakpoints[k])   # ref DISCARDED
+:97    cons[(service_name, dev_name, t)] = JuMP.@constraint(                    # ref stored
+```
+
+Identical shape to the IOM bug: the linking constraint's ref is kept, the per-block width ref is thrown away. This path hand-rolls its own delta variables and width rows inline rather than calling `add_pwl_block_offer_constraints!`, so **the Task 2 fix does not reach it.**
+
+It is also **worse than the IOM case in one respect**: it reads genuinely per-period curves directly via `PSY.get_services_bid` rather than through the padded fixed-shape arrays, so it is truly ragged. That means it is plausibly the Case 2 situation the IOM path turned out not to be — a later period needing more tranches may have no row at all — and a fix there may need the loud-error guard that Task 2 does not require.
+
+**Status: recorded, not scheduled.** It lives in a different repository, on the reserve-offer path rather than the device-offer path, and was not part of the reported defect. It needs its own assessment, including whether the ragged case can actually arise in a built model. Raise with the repository owner before touching it.
