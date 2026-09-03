@@ -76,7 +76,7 @@ function add_linear_ramp_constraints!(
     container::OptimizationContainer,
     T::Type{<:ConstraintType},
     U::Type{S},
-    devices::IS.FlattenIteratorWrapper{V},
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::DeviceModel{V, W},
     ::Type{<:AbstractNetworkModel},
 ) where {
@@ -130,7 +130,7 @@ function _add_linear_ramp_constraints_impl!(
     container::OptimizationContainer,
     T::Type{<:ConstraintType},
     U::Type{<:VariableType},
-    devices::IS.FlattenIteratorWrapper{V},
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::DeviceModel{V, W},
 ) where {V <: IS.InfrastructureSystemsComponent, W <: AbstractDeviceFormulation}
     # common setup for all ramp constraints
@@ -176,7 +176,7 @@ function add_linear_ramp_constraints!(
     container::OptimizationContainer,
     T::Type{<:ConstraintType},
     U::Type{<:VariableType},
-    devices::IS.FlattenIteratorWrapper{V},
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::DeviceModel{V, W},
     X::Type{<:AbstractNetworkModel},
 ) where {V <: IS.InfrastructureSystemsComponent, W <: AbstractDeviceFormulation}
@@ -199,7 +199,7 @@ function add_linear_ramp_constraints!(
     container::OptimizationContainer,
     T::Type{<:ConstraintType},
     U::Type{ActivePowerVariable},
-    devices::IS.FlattenIteratorWrapper{V},
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::DeviceModel{V, W},
     X::Type{<:AbstractNetworkModel},
 ) where {V <: IS.InfrastructureSystemsComponent, W <: AbstractThermalDispatchFormulation}
@@ -316,7 +316,7 @@ function add_semicontinuous_ramp_constraints!(
     container::OptimizationContainer,
     T::Type{<:ConstraintType},
     U::Type{S},
-    devices::IS.FlattenIteratorWrapper{V},
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::DeviceModel{V, W},
     ::Type{<:AbstractNetworkModel},
 ) where {
