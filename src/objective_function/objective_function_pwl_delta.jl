@@ -114,6 +114,18 @@ end
 ##################################################
 
 """
+Map a block-offer linking-constraint type to its paired block-width constraint type.
+
+Mirrors the direction-keyed `_block_width_constraint` mapping in `value_curve_cost.jl`,
+but keyed on the offer-constraint type itself so `add_pwl_constraint_delta!` can resolve
+the width type from its existing `::Type{W}` argument without a new parameter.
+"""
+_block_width_constraint(::Type{PiecewiseLinearBlockIncrementalOfferConstraint}) =
+    PiecewiseLinearBlockIncrementalWidthConstraint
+_block_width_constraint(::Type{PiecewiseLinearBlockDecrementalOfferConstraint}) =
+    PiecewiseLinearBlockDecrementalWidthConstraint
+
+"""
 Add block-offer PWL constraints: linking constraint and per-block upper bounds.
 
     power_var == Σ δ[k] + min_power_offset
@@ -122,6 +134,8 @@ Add block-offer PWL constraints: linking constraint and per-block upper bounds.
 # Arguments
 - `jump_model`: the JuMP model
 - `con_container`: constraint container to store the linking constraint (indexed [name, t])
+- `width_container`: sparse constraint container to store each per-block width row,
+   keyed `(name, block, t)`
 - `name`: component name
 - `t`: time period
 - `power_var`: the power variable being linked
@@ -132,6 +146,7 @@ Add block-offer PWL constraints: linking constraint and per-block upper bounds.
 function add_pwl_block_offer_constraints!(
     jump_model::JuMP.Model,
     con_container,
+    width_container,
     name::String,
     t::Int,
     power_var::JuMPOrFloat,
@@ -143,7 +158,8 @@ function add_pwl_block_offer_constraints!(
     sum_pwl = sum(pwl_vars) + min_power_offset
     con_container[name, t] = JuMP.@constraint(jump_model, power_var == sum_pwl)
     for (ix, var) in enumerate(pwl_vars)
-        JuMP.@constraint(jump_model, var <= breakpoints[ix + 1] - breakpoints[ix])
+        width_container[(name, ix, t)] =
+            JuMP.@constraint(jump_model, var <= breakpoints[ix + 1] - breakpoints[ix])
     end
     return
 end
@@ -201,6 +217,18 @@ function add_pwl_constraint_delta!(
         axes(variables)...;
         meta = meta,
     )
+    # Sparse and keyed (name, block, t): tranche counts vary by call site, so this
+    # mirrors how `pwl_vars` are keyed rather than the dense (name, t) linking axes.
+    width_container = lazy_container_addition!(
+        container,
+        _block_width_constraint(W),
+        T,
+        axes(variables, 1),
+        1:1,
+        axes(variables, 2);
+        sparse = true,
+        meta = meta,
+    )
     name = get_name(component)
 
     min_power_offset = if _include_constant_min_gen_power_in_constraint(T, U, D)
@@ -225,6 +253,7 @@ function add_pwl_constraint_delta!(
     add_pwl_block_offer_constraints!(
         get_jump_model(container),
         const_container,
+        width_container,
         name,
         period,
         variables[name, period],

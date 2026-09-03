@@ -119,6 +119,9 @@ _block_offer_var(::DecrementalOffer) = PiecewiseLinearBlockDecrementalOffer
 _block_offer_constraint(::IncrementalOffer) = PiecewiseLinearBlockIncrementalOfferConstraint
 _block_offer_constraint(::DecrementalOffer) = PiecewiseLinearBlockDecrementalOfferConstraint
 
+_block_width_constraint(::IncrementalOffer) = PiecewiseLinearBlockIncrementalWidthConstraint
+_block_width_constraint(::DecrementalOffer) = PiecewiseLinearBlockDecrementalWidthConstraint
+
 _objective_sign(::IncrementalOffer) = OBJECTIVE_FUNCTION_POSITIVE
 _objective_sign(::DecrementalOffer) = OBJECTIVE_FUNCTION_NEGATIVE
 
