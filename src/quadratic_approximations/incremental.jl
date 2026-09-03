@@ -116,7 +116,7 @@ Binary variables z ensure the incremental property: δᵢ₊₁ ≤ zᵢ ≤ δ�
 - `::T`: Type parameter for the interpolation variables (δ)
 - `::U`: Type parameter for the binary interpolation variables (z)
 - `::V`: Type parameter for the constraint type
-- `devices::IS.FlattenIteratorWrapper{W}`: Collection of devices to apply constraints to
+- `devices::Union{Vector{W}, IS.FlattenIteratorWrapper{W}}`: Collection of devices to apply constraints to
 - `dic_var_bkpts::Dict{String, Vector{Float64}}`: Breakpoints in the domain (x-coordinates) for each device
 - `dic_function_bkpts::Dict{String, Vector{Float64}}`: Function values at breakpoints (y-coordinates) for each device
 - `meta`: Metadata for constraint naming (default: empty)
@@ -141,7 +141,7 @@ function _add_generic_incremental_interpolation_constraint!(
     ::Type{T}, # interpolation var : δ
     ::Type{U}, # binary interpolation var : z
     ::Type{V}, # constraint
-    devices::IS.FlattenIteratorWrapper{W},
+    devices::Union{Vector{W}, IS.FlattenIteratorWrapper{W}},
     dic_var_bkpts::Dict{String, Vector{Float64}},
     dic_function_bkpts::Dict{String, Vector{Float64}};
     meta = CONTAINER_KEY_EMPTY_META,
