@@ -119,6 +119,9 @@ _block_offer_var(::DecrementalOffer) = PiecewiseLinearBlockDecrementalOffer
 _block_offer_constraint(::IncrementalOffer) = PiecewiseLinearBlockIncrementalOfferConstraint
 _block_offer_constraint(::DecrementalOffer) = PiecewiseLinearBlockDecrementalOfferConstraint
 
+_block_width_constraint(::IncrementalOffer) = PiecewiseLinearBlockIncrementalWidthConstraint
+_block_width_constraint(::DecrementalOffer) = PiecewiseLinearBlockDecrementalWidthConstraint
+
 _objective_sign(::IncrementalOffer) = OBJECTIVE_FUNCTION_POSITIVE
 _objective_sign(::DecrementalOffer) = OBJECTIVE_FUNCTION_NEGATIVE
 
@@ -176,17 +179,61 @@ function is_nontrivial_offer(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve})
     lo, hi = IS.get_domain(IS.get_function_data(IS.get_value_curve(curve)))
     return hi > lo
 end
-# A TS-backed offer side is the absent/placeholder side of a one-sided participant
-# (a load with no supply offer, or a generator with no demand offer) when it carries
-# the reserved zero association id — the store mints ids from 1, so a real key can
-# never be zero. Any store-minted key references a real forecast, so it is a genuine
-# offer. This is the TS analog of the static `ZERO_OFFER_CURVE` placeholder check
-# above, until the static-or-TS union offer fields (the convention PSY's ORDC
-# `variable` field already uses) reach the TS bid costs and the absent side becomes
-# the static placeholder itself.
-function is_nontrivial_offer(curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve})
-    return !iszero(IS.get_association_id(IS.get_time_series_key(curve)))
+# PRESENCE-ONLY approximation for a bare TS-backed curve: without a component and
+# container the referenced series cannot be resolved, and a thin key carries nothing to
+# test (the empty-name placeholder sentinel is gone - absent sides attach a REAL stored
+# inert series, an all-zero-span step function per hour). A TS-backed side is therefore
+# always "present" here; build-time callers that hold the component must use the
+# 3-argument method below, which resolves the series and applies the same domain test as
+# the static check.
+is_nontrivial_offer(::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}) = true
+
+"""
+    is_nontrivial_offer(container, component, curve)
+
+Build-context form of the predicate: does this offer side carry any quantity? For a static
+curve the data is in the struct and the plain domain check answers directly. For a
+time-series-backed curve, resolve the referenced series through `component` and test the
+per-hour envelope with the SAME `hi > lo` semantics as the static method: a side whose
+every step function spans zero MW offers nothing (the stored-inert placeholder of a
+one-sided bid), regardless of the key's presence.
+"""
+is_nontrivial_offer(
+    ::OptimizationContainer,
+    ::IS.InfrastructureSystemsComponent,
+    curve,
+) = is_nontrivial_offer(curve)
+
+function is_nontrivial_offer(
+    container::OptimizationContainer,
+    component::IS.InfrastructureSystemsComponent,
+    curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
+)
+    is_nontrivial_offer(curve) || return false
+    ts_type = get_default_time_series_type(container)
+    # A thin key carries only its association id; the name IOM's window cache is keyed by
+    # lives in the owner's metadata catalog.
+    key = IS.get_time_series_key(curve)
+    ts_name = nothing
+    for md in IS.list_time_series_metadata(component)
+        if IS.get_association_id(IS.get_time_series_key(md)) == IS.get_association_id(key)
+            ts_name = IS.get_name(md)
+            break
+        end
+    end
+    ts_name === nothing && return false
+    IS.has_time_series(component, ts_type, ts_name) || return false
+    window = get_time_series_initial_values!(container, ts_type, component, ts_name)
+    # != not >: a NaN-first curve (legal, "undefined first breakpoint") must stay genuine.
+    return any(_offer_step_span(fd) != 0.0 for fd in window)
 end
+
+function _offer_step_span(fd::IS.PiecewiseStepData)
+    x = IS.get_x_coords(fd)
+    return last(x) - first(x)
+end
+# Unknown window eltype: treat as genuine so callers keep their strict behavior.
+_offer_step_span(::Any) = Inf
 
 #################################################################################
 # Section 5: TimeSeriesValueCurve Objective Formulation (PSY-free)

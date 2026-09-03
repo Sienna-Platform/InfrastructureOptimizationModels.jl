@@ -65,6 +65,8 @@ struct ActivePowerRangeExpressionUB <: RangeConstraintUBExpressions end
 # but IOM exports them and POM relies on getting them from IOM)
 struct ActivePowerBalance <: SystemBalanceExpressions end
 struct ReactivePowerBalance <: SystemBalanceExpressions end
+"""Settlement balance built from cleared market-bid quantities only."""
+struct SettlementBalance <: SystemBalanceExpressions end
 struct EmergencyUp <: ExpressionType end
 struct EmergencyDown <: ExpressionType end
 struct RawACE <: ExpressionType end
@@ -80,6 +82,7 @@ should_write_resulting_value(::Type{FuelConsumptionExpression}) = true
 should_write_resulting_value(::Type{RawACE}) = true
 should_write_resulting_value(::Type{ActivePowerBalance}) = true
 should_write_resulting_value(::Type{ReactivePowerBalance}) = true
+should_write_resulting_value(::Type{SettlementBalance}) = true
 should_write_resulting_value(::Type{DCCurrentBalance}) = true
 should_write_resulting_value(::Type{PostContingencyBranchFlow}) = true
 

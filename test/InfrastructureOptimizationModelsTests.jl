@@ -107,6 +107,7 @@ function run_tests()
                     # optimization_container_types.jl: no need for tests
                     include(joinpath(TEST_DIR, "test_optimization_container.jl"))
                     include(joinpath(TEST_DIR, "test_network_model.jl"))
+                    include(joinpath(TEST_DIR, "test_market_model.jl"))
                     include(joinpath(TEST_DIR, "test_external_evaluation.jl"))
                     # optimization_problem_outputs_export.jl: low-complexity
                     include(joinpath(TEST_DIR, "test_optimization_outputs.jl"))
@@ -128,6 +129,7 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_quadratic_curve.jl"))
                     include(joinpath(TEST_DIR, "test_start_up_shut_down.jl"))
                     include(joinpath(TEST_DIR, "test_ts_value_curve_objective.jl"))
+                    include(joinpath(TEST_DIR, "test_pwl_block_width_update.jl"))
                     include(joinpath(TEST_DIR, "test_tranche_axis_helpers.jl"))
 
                     # --- common_models/, utils/, initial_conditions/ ---

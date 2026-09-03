@@ -90,3 +90,22 @@ See the piecewise linear cost functions section for more information.
 """
 struct PiecewiseLinearBlockDecrementalOfferConstraint <:
        AbstractPiecewiseLinearBlockOfferConstraint end
+
+#################################################################################
+# Constraint types: block width
+#################################################################################
+
+"Abstract type for piecewise linear block width constraints"
+abstract type AbstractPiecewiseLinearBlockWidthConstraint <: ConstraintType end
+
+"""
+Struct to create the block-width limit associated with a piecewise-linear incremental offer.
+"""
+struct PiecewiseLinearBlockIncrementalWidthConstraint <:
+       AbstractPiecewiseLinearBlockWidthConstraint end
+
+"""
+Struct to create the block-width limit associated with a piecewise-linear decremental offer.
+"""
+struct PiecewiseLinearBlockDecrementalWidthConstraint <:
+       AbstractPiecewiseLinearBlockWidthConstraint end

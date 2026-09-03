@@ -33,8 +33,9 @@ UnoSolver = "1baa60ac-02f7-4b39-a7a8-2f4f58486b05"
 [sources]
 InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "IS4"}
 InfrastructureOptimizationModels = {path = ".."}
-# IS4's own [sources] pin for this is ignored once IS is a dependency rather than the root
-# project; the test env needs its own pin so Pkg can resolve IS4's unregistered OpenAPI dep.
+# IS4's own [sources] pins for these are ignored once IS is a dependency rather than the
+# root project; the test env needs its own pins so Pkg can resolve IS4's unregistered
+# OpenAPI deps.
 InfrastructureCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "InfrastructureCoreOpenAPIModels.jl"}
 InfrastructureTimeSeriesOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "InfrastructureTimeSeriesOpenAPIModels.jl"}
 
