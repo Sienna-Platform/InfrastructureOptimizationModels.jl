@@ -402,6 +402,9 @@ export AbstractPiecewiseLinearBlockOffer,
 export AbstractPiecewiseLinearBlockOfferConstraint,
     PiecewiseLinearBlockIncrementalOfferConstraint,
     PiecewiseLinearBlockDecrementalOfferConstraint
+export AbstractPiecewiseLinearBlockWidthConstraint,
+    PiecewiseLinearBlockIncrementalWidthConstraint,
+    PiecewiseLinearBlockDecrementalWidthConstraint
 # Logging
 export LOG_GROUP_BUILD_INITIAL_CONDITIONS,
     LOG_GROUP_COST_FUNCTIONS,
