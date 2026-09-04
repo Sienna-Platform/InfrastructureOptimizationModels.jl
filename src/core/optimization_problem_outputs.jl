@@ -103,6 +103,9 @@ get_total_cost(res::OptimizationProblemOutputs) = get_objective_value(res)
 get_optimizer_stats(res::OptimizationProblemOutputs) = res.optimizer_stats
 get_parameter_values(res::OptimizationProblemOutputs) = res.parameter_values
 get_source_data(res::OptimizationProblemOutputs) = res.source_data
+# `get_system` is the power-domain name for the same data; keep the alias here so callers
+# holding an `OptimizationProblemOutputs` need not know which of the two to reach for.
+get_system(res::OptimizationProblemOutputs) = get_source_data(res)
 
 """
 Name of the serialized-system bundle written beside an outputs directory. A bundle is a

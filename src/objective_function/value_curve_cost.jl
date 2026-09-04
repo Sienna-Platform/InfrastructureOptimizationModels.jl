@@ -228,11 +228,53 @@ function is_nontrivial_offer(
     return any(_offer_step_span(fd) != 0.0 for fd in window)
 end
 
+"""
+    is_nontrivial_offer(container, component, curve)
+
+Build-context form of the predicate: does this offer side carry any quantity? A caller
+holding the component and container can resolve a time-series-backed side and test the
+quantity it actually offers, instead of inferring presence from the key alone. Use this
+form wherever both are in scope; the one-argument methods above answer from the key.
+"""
+is_nontrivial_offer(
+    ::OptimizationContainer,
+    ::IS.InfrastructureSystemsComponent,
+    curve,
+) = is_nontrivial_offer(curve)
+
+# A one-sided bid may store a real but inert series on its unoffered side: every step
+# function spans zero MW. The key is genuine, so the key-only check above says "present";
+# resolving the window and applying the static method's own `hi > lo` domain test is what
+# separates an inert side from a real one.
+function is_nontrivial_offer(
+    container::OptimizationContainer,
+    component::IS.InfrastructureSystemsComponent,
+    curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
+)
+    is_nontrivial_offer(curve) || return false
+    ts_type = get_default_time_series_type(container)
+    # A thin key carries only its association id; the name the window cache is keyed by
+    # lives in the owner's metadata catalog.
+    key = IS.get_time_series_key(curve)
+    target = IS.get_association_id(key)
+    for md in IS.list_time_series_metadata(component)
+        IS.get_association_id(IS.get_time_series_key(md)) == target || continue
+        ts_name = IS.get_name(md)
+        IS.has_time_series(component, ts_type, ts_name) || return false
+        window = get_time_series_initial_values!(container, ts_type, component, ts_name)
+        # `!= 0`, not `> 0`: a NaN-first curve is legal ("undefined first breakpoint") and
+        # must stay genuine.
+        return any(_offer_step_span(fd) != 0.0 for fd in window)
+    end
+    return false
+end
+
 function _offer_step_span(fd::IS.PiecewiseStepData)
     x = IS.get_x_coords(fd)
     return last(x) - first(x)
 end
-# Unknown window eltype: treat as genuine so callers keep their strict behavior.
+
+# Unknown window element type: treat as genuine so callers keep their strict behavior.
 _offer_step_span(::Any) = Inf
 
 #################################################################################
