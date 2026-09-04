@@ -191,46 +191,6 @@ is_nontrivial_offer(::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}) = 
 """
     is_nontrivial_offer(container, component, curve)
 
-Build-context form of the predicate: does this offer side carry any quantity? For a static
-curve the data is in the struct and the plain domain check answers directly. For a
-time-series-backed curve, resolve the referenced series through `component` and test the
-per-hour envelope with the SAME `hi > lo` semantics as the static method: a side whose
-every step function spans zero MW offers nothing (the stored-inert placeholder of a
-one-sided bid), regardless of the key's presence.
-"""
-is_nontrivial_offer(
-    ::OptimizationContainer,
-    ::IS.InfrastructureSystemsComponent,
-    curve,
-) = is_nontrivial_offer(curve)
-
-function is_nontrivial_offer(
-    container::OptimizationContainer,
-    component::IS.InfrastructureSystemsComponent,
-    curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
-)
-    is_nontrivial_offer(curve) || return false
-    ts_type = get_default_time_series_type(container)
-    # A thin key carries only its association id; the name IOM's window cache is keyed by
-    # lives in the owner's metadata catalog.
-    key = IS.get_time_series_key(curve)
-    ts_name = nothing
-    for md in IS.list_time_series_metadata(component)
-        if IS.get_association_id(IS.get_time_series_key(md)) == IS.get_association_id(key)
-            ts_name = IS.get_name(md)
-            break
-        end
-    end
-    ts_name === nothing && return false
-    IS.has_time_series(component, ts_type, ts_name) || return false
-    window = get_time_series_initial_values!(container, ts_type, component, ts_name)
-    # != not >: a NaN-first curve (legal, "undefined first breakpoint") must stay genuine.
-    return any(_offer_step_span(fd) != 0.0 for fd in window)
-end
-
-"""
-    is_nontrivial_offer(container, component, curve)
-
 Build-context form of the predicate: does this offer side carry any quantity? A caller
 holding the component and container can resolve a time-series-backed side and test the
 quantity it actually offers, instead of inferring presence from the key alone. Use this
