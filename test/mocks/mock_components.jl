@@ -146,6 +146,11 @@ get_from_bus(b::MockBranch) = b.from_bus
 get_to_bus(b::MockBranch) = b.to_bus
 get_rate(b::MockBranch) = b.rating
 
+# Mock supplemental attribute type for use as the event type parameter of event
+# parameter containers. Real event types (e.g. PSY.FixedForcedOutage) are supplemental
+# attributes, not components.
+struct MockOutageAttribute <: IS.SupplementalAttribute end
+
 # Mock component type for use as type parameter in container keys
 # This replaces PSY.ThermalStandard etc. in tests that don't need real PSY types
 # Subtypes IS.InfrastructureSystemsComponent so it works with VariableKey, ConstraintKey, etc.

@@ -111,7 +111,7 @@ function run_tests()
                     # optimization_problem_outputs_export.jl: low-complexity
                     include(joinpath(TEST_DIR, "test_optimization_outputs.jl"))
                     include(joinpath(TEST_DIR, "test_optimizer_stats.jl"))
-                    # parameter_container.jl: low-complexity
+                    include(joinpath(TEST_DIR, "test_event_parameter_container.jl"))
                     # TODO outputs_by_time.jl
                     # TODO service_model.jl
                     include(joinpath(TEST_DIR, "test_settings.jl"))
