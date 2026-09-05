@@ -101,8 +101,8 @@ function add_variable_value_parameter_container!(
 end
 
 """
-Allocate an event parameter container (`EventParametersAttributes`). `V` is the component type
-whose instances the event affects.
+Allocate an event parameter container (`EventParametersAttributes`). `U` is the component type
+the event affects; `V` is the supplemental-attribute type describing the event itself.
 """
 function add_event_parameter_container!(
     container::OptimizationContainer,
@@ -115,7 +115,7 @@ function add_event_parameter_container!(
 ) where {
     T <: EventParameter,
     U <: IS.InfrastructureSystemsComponent,
-    V <: IS.InfrastructureSystemsComponent,
+    V <: IS.SupplementalAttribute,
 }
     param_key = ParameterKey(T, U, meta)
     attributes = EventParametersAttributes(V, T)

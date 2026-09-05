@@ -183,7 +183,7 @@ end
             container,
             TestEventParameter,
             MockThermalGen,
-            MockThermalGen,
+            MockOutageAttribute,
             names,
             time_steps,
         )

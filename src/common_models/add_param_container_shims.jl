@@ -86,6 +86,6 @@ add_param_container!(
 ) where {
     T <: EventParameter,
     U <: IS.InfrastructureSystemsComponent,
-    V <: IS.InfrastructureSystemsComponent,
+    V <: IS.SupplementalAttribute,
 } = add_event_parameter_container!(
     container, T, U, V, axs...; sparse = sparse, meta = meta)
