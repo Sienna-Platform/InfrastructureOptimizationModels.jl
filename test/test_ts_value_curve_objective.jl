@@ -351,7 +351,7 @@ end
         for (unit_system, expected_slope_factor, expected_bp_factor) in [
             (IS.NaturalUnit(), system_base, 1.0 / system_base),
             (
-                IS.DeviceBaseUnit(),
+                IS.ComponentBaseUnit(),
                 1.0 / (device_base / system_base),
                 device_base / system_base,
             ),

@@ -116,12 +116,14 @@ function run_tests()
                     # TODO outputs_by_time.jl
                     # TODO service_model.jl
                     include(joinpath(TEST_DIR, "test_settings.jl"))
+                    include(joinpath(TEST_DIR, "test_problem_template.jl"))
                     # standard_variables_expressions.jl: low complexity
                     # time_series_parameter_types.jl: low complexity
 
                     # --- objective_function/ subfolder ---
                     # import_export.jl: commented out
                     include(joinpath(TEST_DIR, "test_cost_term_helpers.jl"))
+                    include(joinpath(TEST_DIR, "test_cost_unit_conversion.jl"))
                     include(joinpath(TEST_DIR, "test_linear_curve.jl"))
                     # value_curve_cost.jl: needs more work
                     include(joinpath(TEST_DIR, "test_piecewise_linear.jl"))
