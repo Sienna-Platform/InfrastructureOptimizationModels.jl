@@ -232,7 +232,7 @@ end
             # Cost: 30 $/p.u.h in device base units
             cost_curve = IS.CostCurve(
                 IS.LinearCurve(30.0),
-                IS.DeviceBaseUnit(),
+                IS.ComponentBaseUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -312,7 +312,7 @@ end
             ),
             DEVICE_BASE = IS.CostCurve(
                 IS.LinearCurve(rate * device_base),
-                IS.DeviceBaseUnit(),
+                IS.ComponentBaseUnit(),
             ),
         )
 

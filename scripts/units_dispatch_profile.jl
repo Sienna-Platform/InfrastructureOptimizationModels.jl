@@ -75,13 +75,13 @@ function make_container(devices)
 end
 
 # Build N components, evenly distributed across the 3 unit systems. The cost
-# *curves* are concretely typed (CostCurve{LinearCurve, NaturalUnit/SU/DU}) but
+# *curves* are concretely typed (CostCurve{LinearCurve, NaturalUnit/SU/CU}) but
 # the abstractly-typed `MockThermalGen` storage means upstream callers see a
 # UnionAll. This is the realistic shape of consuming code.
 function make_workload()
     devices = MockThermalGen[]
     curves = Any[]  # heterogeneous on U, simulates abstract field upstream
-    units = (IS.NaturalUnit(), IS.SystemBaseUnit(), IS.DeviceBaseUnit())
+    units = (IS.NaturalUnit(), IS.SystemBaseUnit(), IS.ComponentBaseUnit())
     for i in 1:N_COMPONENTS
         u = units[mod1(i, 3)]
         push!(devices, make_mock_thermal("g$i"; base_power = 50.0 + i))
