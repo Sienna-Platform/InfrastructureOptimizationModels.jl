@@ -122,6 +122,7 @@ function run_tests()
                     # --- objective_function/ subfolder ---
                     # import_export.jl: commented out
                     include(joinpath(TEST_DIR, "test_cost_term_helpers.jl"))
+                    include(joinpath(TEST_DIR, "test_cost_unit_conversion.jl"))
                     include(joinpath(TEST_DIR, "test_linear_curve.jl"))
                     # value_curve_cost.jl: needs more work
                     include(joinpath(TEST_DIR, "test_piecewise_linear.jl"))
