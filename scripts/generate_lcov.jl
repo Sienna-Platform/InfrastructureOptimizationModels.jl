@@ -5,7 +5,7 @@
 #
 # Usage:
 #   1. Run tests with coverage:  julia --project=. -e 'using TestEnv; TestEnv.activate(); include("test/load_tests.jl"); InfrastructureOptimizationModelsTests.run_tests()'
-#   2. Generate lcov:            julia --project=. -e 'using TestEnv; TestEnv.activate(); include("scripts/generate_lcov.jl")'
+#   2. Generate lcov:            julia --project=scripts/coverage -e 'using Pkg; Pkg.instantiate(); include("scripts/generate_lcov.jl")'
 
 using CoverageTools
 using Coverage

@@ -74,6 +74,22 @@ end
 ##################################################
 
 """
+    _system_base_ratio(unit_system, system_base_power, device_base_power) -> Float64
+
+The x-axis ratio `x_from = ratio * x_su` from `unit_system` to the system base, the
+base arithmetic `IS.convert_cost_coefficient` no longer resolves itself.
+"""
+_system_base_ratio(::IS.SystemBaseUnit, ::Float64, ::Float64) = 1.0
+_system_base_ratio(
+    ::IS.ComponentBaseUnit,
+    system_base_power::Float64,
+    device_base_power::Float64,
+) =
+    system_base_power / device_base_power
+_system_base_ratio(::IS.NaturalUnit, system_base_power::Float64, ::Float64) =
+    system_base_power
+
+"""
 Proportional (slope) cost coefficient normalized to system base.
 """
 get_proportional_cost_per_system_unit(
@@ -82,8 +98,8 @@ get_proportional_cost_per_system_unit(
     system_base_power::Float64,
     device_base_power::Float64,
 ) = IS.convert_cost_coefficient(
-    cost_term, unit_system, IS.SU,
-    system_base_power, device_base_power,
+    cost_term,
+    _system_base_ratio(unit_system, system_base_power, device_base_power),
 )
 
 """
@@ -95,8 +111,9 @@ get_quadratic_cost_per_system_unit(
     system_base_power::Float64,
     device_base_power::Float64,
 ) = IS.convert_cost_coefficient(
-    cost_term, unit_system, IS.SU,
-    system_base_power, device_base_power, 2,
+    cost_term,
+    _system_base_ratio(unit_system, system_base_power, device_base_power),
+    2,
 )
 
 """
@@ -110,8 +127,9 @@ function get_piecewise_pointcurve_per_system_unit(
     device_base_power::Float64,
 )
     x_ratio = IS.convert_cost_coefficient(
-        1.0, unit_system, IS.SU,
-        system_base_power, device_base_power, -1,
+        1.0,
+        _system_base_ratio(unit_system, system_base_power, device_base_power),
+        -1,
     )
     points = cost_component.points
     points_normalized = similar(points)
@@ -165,14 +183,9 @@ function get_piecewise_curve_per_system_unit(
     system_base_power::Float64,
     device_base_power::Float64,
 )
-    x_ratio = IS.convert_cost_coefficient(
-        1.0, unit_system, IS.SU,
-        system_base_power, device_base_power, -1,
-    )
-    y_ratio = IS.convert_cost_coefficient(
-        1.0, unit_system, IS.SU,
-        system_base_power, device_base_power, 1,
-    )
+    ratio = _system_base_ratio(unit_system, system_base_power, device_base_power)
+    x_ratio = IS.convert_cost_coefficient(1.0, ratio, -1)
+    y_ratio = IS.convert_cost_coefficient(1.0, ratio, 1)
     return x_coords .* x_ratio, y_coords .* y_ratio
 end
 
