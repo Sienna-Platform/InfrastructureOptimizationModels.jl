@@ -125,7 +125,7 @@ end
 function make_dataframe(
     outputs::OutputsByTime{DenseAxisArray{Float64, 2}},
     timestamp::Dates.DateTime;
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     array = outputs.data[timestamp]
     timestamps = _get_timestamps(outputs, timestamp, get_num_rows(outputs, array))
@@ -135,7 +135,7 @@ end
 function make_dataframe(
     outputs::OutputsByTime{DenseAxisArray{Float64, 3}},
     timestamp::Dates.DateTime;
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     array = outputs.data[timestamp]
     num_timestamps = get_num_rows(outputs, array)
@@ -146,7 +146,7 @@ end
 function make_dataframe(
     outputs::OutputsByTime{Matrix{Float64}},
     timestamp::Dates.DateTime;
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     array = outputs.data[timestamp]
     df_wide = DataFrames.DataFrame(array, outputs.column_names[1])
@@ -168,7 +168,7 @@ end
 
 function make_dataframes(
     outputs::OutputsByTime;
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     return SortedDict(
         k => make_dataframe(outputs, k; table_format = table_format) for

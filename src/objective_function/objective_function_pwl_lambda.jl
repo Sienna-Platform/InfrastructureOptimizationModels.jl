@@ -123,7 +123,7 @@ end
 
 function _determine_bin_lhs(
     container::OptimizationContainer,
-    sos_status::SOSStatusVariable,
+    sos_status::SOSStatusVariable.Value,
     ::Type{T},
     name::String,
     period::Int;
@@ -160,7 +160,7 @@ function _add_pwl_constraint_standard!(
     container::OptimizationContainer,
     component::T,
     break_points::Vector{Float64},
-    sos_status::SOSStatusVariable,
+    sos_status::SOSStatusVariable.Value,
     period::Int,
     power_var::JuMP.VariableRef,
     must_run::Bool = false,
@@ -217,7 +217,7 @@ function _add_pwl_constraint_compact!(
     ::T,
     name::String,
     break_points::Vector{Float64},
-    sos_status::SOSStatusVariable,
+    sos_status::SOSStatusVariable.Value,
     period::Int,
     power_var::JuMP.VariableRef,
     P_min::Float64,

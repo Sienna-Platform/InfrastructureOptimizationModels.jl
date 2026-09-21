@@ -57,7 +57,7 @@ function add_cost_function_parameter_container!(
     ::Type{U},
     variable_types::Tuple{Vararg{Type}},
     axs...;
-    sos_variable::SOSStatusVariable = SOSStatusVariable.NO_VARIABLE,
+    sos_variable::SOSStatusVariable.Value = SOSStatusVariable.NO_VARIABLE,
     uses_compact_power::Bool = false,
     data_type::DataType = Float64,
     sparse = false,
