@@ -256,7 +256,7 @@ Convert a DenseAxisArray containing components to a outputs DataFrame consumable
   The resulting DataFrame will have the column "DateTime" if timestamps is not nothing.
   Otherwise, it will have the column "time_index", representing the index of the time
   dimension.
-- `::Val{TableFormat}`: Format of the table to create.
+- `::Val{TableFormat.Value}`: Format of the table to create.
   If it is TableFormat.LONG, the DataFrame will have the column "name", and, if
   the data has three dimensions, "name2."
   If it is TableFormat.WIDE, the DataFrame will have columns for each component. Wide
@@ -606,7 +606,7 @@ end
 
 function _copy_jump_model_for_export(
     jump_model::JuMP.Model,
-    fmt::OptimizationModelExportFormat,
+    fmt::OptimizationModelExportFormat.Value,
 )
     file_format =
         if fmt == OptimizationModelExportFormat.LP
