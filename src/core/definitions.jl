@@ -174,7 +174,7 @@ Format used to export the optimization model to disk on each solve.
 
 const ENUMS =
     (ModelBuildStatus.Value, SimulationBuildStatus.Value, RunStatus.Value,
-     SOSStatusVariable.Value)
+        SOSStatusVariable.Value)
 
 const ENUM_MAPPINGS = Dict{DataType, Dict{String, Any}}()
 
@@ -209,6 +209,7 @@ end
 #     get_enum_value(SimulationBuildStatus, val)
 # Base.convert(::Type{ModelBuildStatus.Value}, val::String) = get_enum_value(ModelBuildStatus, val)
 # Base.convert(::Type{RunStatus.Value}, val::String) = get_enum_value(RunStatus, val)
-Base.convert(::Type{SOSStatusVariable.Value}, x::String) = get_enum_value(SOSStatusVariable.Value, x)
+Base.convert(::Type{SOSStatusVariable.Value}, x::String) =
+    get_enum_value(SOSStatusVariable.Value, x)
 
 const SYSTEM_TYPE = IS.ComponentContainer
