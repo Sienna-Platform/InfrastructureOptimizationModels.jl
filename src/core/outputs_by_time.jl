@@ -176,6 +176,49 @@ function make_dataframes(
     )
 end
 
+"""
+Restrict a wide-format outputs table to `realized` timestamps, stitching multiple windows
+into one continuous `DataFrame` when necessary.
+
+`table` is either the flat `DataFrame` a single-window outputs type (e.g.
+`OptimizationProblemOutputs`) returns from `read_variable`/`read_key_wide`, or the
+`SortedDict{Dates.DateTime, DataFrame}` that [`make_dataframes`](@ref) returns for a
+multi-window [`OutputsByTime`](@ref) under `TableFormat.WIDE`, one entry per window's own
+start time — what a rolling-horizon `Simulation`'s per-problem results produce, since
+consecutive windows overlap and only each window's non-overlapping prefix is realized.
+`realized` is the target set of timestamps to keep, typically from
+[`get_realized_timestamps`](@ref).
+
+This is the shared implementation behind "give me the realized time series, not the raw
+windows," so every `IS.Outputs`-consuming caller reads through the same stitching logic
+instead of each reimplementing it. Add a method here — not a special case in the caller —
+to support a new windowed shape.
+"""
+function make_realized_dataframe end
+
+function make_realized_dataframe(table::DataFrame, realized)
+    return filter("DateTime" => in(realized), table)
+end
+
+function make_realized_dataframe(
+    table::AbstractDict{Dates.DateTime, <:DataFrame},
+    realized,
+)
+    isempty(table) && return DataFrame()
+    realized_set = Set(realized)
+    window_starts = sort(collect(keys(table)))
+    parts = Vector{DataFrame}(undef, length(window_starts))
+    for (i, window_start) in enumerate(window_starts)
+        # Consecutive windows overlap (each one's look-ahead runs into the next window's
+        # own start), so truncate to [window_start, next_window_start) — the last window
+        # has no successor to truncate against and keeps everything through `realized`.
+        next_start = i < length(window_starts) ? window_starts[i + 1] : nothing
+        in_range(t) = (t in realized_set) && (isnothing(next_start) || t < next_start)
+        parts[i] = filter("DateTime" => in_range, table[window_start])
+    end
+    return sort!(reduce(vcat, parts), "DateTime")
+end
+
 struct OutputsByKeyAndTime
     "Contains all keys stored in the model."
     output_keys::Vector{OptimizationContainerKey}
