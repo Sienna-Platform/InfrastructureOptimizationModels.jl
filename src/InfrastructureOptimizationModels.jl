@@ -526,7 +526,8 @@ export SimulationBuildStatus
 export AbstractOptimizationProblem
 
 # Technology and Requirement Formulations
-export InvestmentTechnologyFormulation, OperationsTechnologyFormulation, FeasibilityTechnologyFormulation
+export InvestmentTechnologyFormulation,
+    OperationsTechnologyFormulation, FeasibilityTechnologyFormulation
 export RequirementFormulation
 
 # Settings and Data Types
@@ -552,7 +553,8 @@ export get_all_indexes, get_time_stamps, get_investment_time_stamps
 export get_inverse_invest_mapping, get_base_date
 export get_total_period_count, get_total_operation_period_count
 export get_total_feasibility_period_count, get_total_investment_period_count
-export get_time_steps, get_operational_time_steps, get_feasibility_time_steps, get_investment_time_steps
+export get_time_steps,
+    get_operational_time_steps, get_feasibility_time_steps, get_investment_time_steps
 export is_feasibility_empty, get_investment_map_to_operational_slices
 export get_initial_condition!
 export set_investment_data!, InvestmentContainerData

@@ -14,7 +14,10 @@ in this package.
 requirement = RequirementModel(PSIP.EnergyShareRequirements, RequirementEnergyShare)
 ```
 """
-mutable struct RequirementModel{D <: IS.InfrastructureSystemsComponent, B <: RequirementFormulation}
+mutable struct RequirementModel{
+    D <: IS.InfrastructureSystemsComponent,
+    B <: RequirementFormulation,
+}
     use_slacks::Bool
     duals::Vector{DataType}
     attributes::Dict{String, Any}
@@ -36,15 +39,18 @@ get_attributes(m::RequirementModel) = m.attributes
 Default (empty) attributes for a requirement model. Override per
 `(requirement_type, formulation)` pair where needed.
 """
-get_default_attributes(::Type{<:IS.InfrastructureSystemsComponent}, ::Type{<:RequirementFormulation}) =
+get_default_attributes(
+    ::Type{<:IS.InfrastructureSystemsComponent},
+    ::Type{<:RequirementFormulation},
+) =
     Dict{String, Any}()
 
 function RequirementModel(
     ::Type{D},
     ::Type{B};
-    use_slacks=false,
-    duals=Vector{DataType}(),
-    attributes=Dict{String, Any}(),
+    use_slacks = false,
+    duals = Vector{DataType}(),
+    attributes = Dict{String, Any}(),
 ) where {D <: IS.InfrastructureSystemsComponent, B <: RequirementFormulation}
     attributes_ = get_default_attributes(D, B)
     for (k, v) in attributes

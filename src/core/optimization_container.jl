@@ -249,7 +249,6 @@ function set_interest_rate!(container::OptimizationContainer, interest_rate::Flo
     return
 end
 
-
 function set_serialization_task!(container::OptimizationContainer, task::Task)
     container.serialization_task = task
     return
@@ -430,7 +429,7 @@ end
 function init_optimization_container!(
     container::OptimizationContainer,
     template::AbstractProblemTemplate,
-    portfolio::IS.InfrastructureSystemsContainer
+    portfolio::IS.InfrastructureSystemsContainer,
 )
     # The order of operations matter
     transport_model = get_transport_model(template)
