@@ -2,7 +2,10 @@
 Minimal service mocks.
 """
 
-struct MockReserve
+struct MockUp end
+struct MockDown end
+
+struct MockReserve{D} <: IS.InfrastructureSystemsComponent
     name::String
     requirement::Float64
     contributing_devices::Vector{Any}

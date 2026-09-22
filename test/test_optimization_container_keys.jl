@@ -99,3 +99,26 @@ IOM.should_write_resulting_value(::Type{MockExpression2}) = false
     )
     @test isa(made_key, VariableKey)
 end
+
+@testset "ComponentPairKey keys" begin
+    up_pair = IOM.ComponentPairKey{MockThermalGen, MockReserve{MockUp}}
+    down_pair = IOM.ComponentPairKey{MockThermalGen, MockReserve{MockDown}}
+
+    up_key = VariableKey(MockVariable, up_pair, "spin")
+    @test IOM.encode_key(up_key) ==
+          Symbol("MockVariable__MockThermalGen__MockReserve__MockUp__spin")
+
+    down_key = VariableKey(MockVariable, down_pair, "spin")
+    @test up_key != down_key
+    @test IOM.encode_key(up_key) != IOM.encode_key(down_key)
+
+    swapped_key = VariableKey(
+        MockVariable,
+        IOM.ComponentPairKey{MockReserve{MockUp}, MockThermalGen},
+        "spin",
+    )
+    @test swapped_key != up_key
+    @test IOM.encode_key(swapped_key) != IOM.encode_key(up_key)
+
+    @test IOM.make_key(VariableKey, MockVariable, up_pair, "spin") == up_key
+end
