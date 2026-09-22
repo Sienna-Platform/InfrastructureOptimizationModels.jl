@@ -1,4 +1,5 @@
-mutable struct InvestmentModel{S <: AbstractOptimizationProblem}  <: AbstractOptimizationModel
+mutable struct InvestmentModel{S <: AbstractOptimizationProblem} <:
+               AbstractOptimizationModel
     name::Symbol
     template::AbstractProblemTemplate
     portfolio::IS.InfrastructureSystemsContainer
@@ -13,7 +14,7 @@ function InvestmentModel{M}(
     ::Type{M},
     portfolio::IS.InfrastructureSystemsContainer,
     settings::Settings,
-    jump_model::Union{Nothing, JuMP.Model}=nothing;
+    jump_model::Union{Nothing, JuMP.Model} = nothing;
 ) where {M <: AbstractOptimizationProblem}
     internal = ModelInternal(OptimizationContainer(portfolio, settings, jump_model))
 
@@ -32,35 +33,35 @@ end
 function InvestmentModel{M}(
     template::AbstractProblemTemplate,
     portfolio::IS.InfrastructureSystemsContainer,
-    jump_model::Union{Nothing, JuMP.Model}=nothing;
-    name=nothing,
-    optimizer=nothing,
-    horizon=UNSET_HORIZON,
-    resolution=UNSET_RESOLUTION,
-    portfolio_to_file=true,
-    optimizer_solve_log_print=false,
-    detailed_optimizer_stats=false,
-    calculate_conflict=false,
-    direct_mode_optimizer=false,
-    store_variable_names=false,
-    check_numerical_bounds=true,
-    initial_time=UNSET_INI_TIME,
-    time_series_cache_size::Int=IS.TIME_SERIES_CACHE_SIZE_BYTES,
+    jump_model::Union{Nothing, JuMP.Model} = nothing;
+    name = nothing,
+    optimizer = nothing,
+    horizon = UNSET_HORIZON,
+    resolution = UNSET_RESOLUTION,
+    portfolio_to_file = true,
+    optimizer_solve_log_print = false,
+    detailed_optimizer_stats = false,
+    calculate_conflict = false,
+    direct_mode_optimizer = false,
+    store_variable_names = false,
+    check_numerical_bounds = true,
+    initial_time = UNSET_INI_TIME,
+    time_series_cache_size::Int = IS.TIME_SERIES_CACHE_SIZE_BYTES,
 ) where {M <: AbstractOptimizationProblem}
     settings = Settings(
         portfolio;
-        initial_time=initial_time,
-        time_series_cache_size=time_series_cache_size,
-        horizon=horizon,
-        resolution=resolution,
-        optimizer=optimizer,
-        direct_mode_optimizer=direct_mode_optimizer,
-        optimizer_solve_log_print=optimizer_solve_log_print,
-        detailed_optimizer_stats=detailed_optimizer_stats,
-        calculate_conflict=calculate_conflict,
-        system_to_file=portfolio_to_file,
-        check_numerical_bounds=check_numerical_bounds,
-        store_variable_names=store_variable_names,
+        initial_time = initial_time,
+        time_series_cache_size = time_series_cache_size,
+        horizon = horizon,
+        resolution = resolution,
+        optimizer = optimizer,
+        direct_mode_optimizer = direct_mode_optimizer,
+        optimizer_solve_log_print = optimizer_solve_log_print,
+        detailed_optimizer_stats = detailed_optimizer_stats,
+        calculate_conflict = calculate_conflict,
+        system_to_file = portfolio_to_file,
+        check_numerical_bounds = check_numerical_bounds,
+        store_variable_names = store_variable_names,
     )
     return InvestmentModel{M}(template, M, portfolio, settings, jump_model)
 end
@@ -91,7 +92,7 @@ function get_timestamps(model::InvestmentModel)
     start_time = get_initial_time(optimization_container)
     resolution = get_resolution(model)
     horizon_count = get_time_steps(optimization_container)[end]
-    return range(start_time; length=horizon_count, step=resolution)
+    return range(start_time; length = horizon_count, step = resolution)
 end
 
 # No Base Power for Portfolio models. Always in Natural Units.

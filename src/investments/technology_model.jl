@@ -69,9 +69,9 @@ function TechnologyModel(
     ::Type{A},
     ::Type{B},
     ::Type{C};
-    use_slacks=false,
-    duals=Vector{DataType}(),
-    attributes=Dict{String, Any}(),
+    use_slacks = false,
+    duals = Vector{DataType}(),
+    attributes = Dict{String, Any}(),
 ) where {
     D <: IS.InfrastructureSystemsComponent,
     A <: InvestmentTechnologyFormulation,

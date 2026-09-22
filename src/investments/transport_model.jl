@@ -4,7 +4,7 @@ mutable struct TransportModel{T <: AbstractTransportAggregation}
     use_slacks::Bool
     function TransportModel(
         ::Type{T};
-        use_slacks=false,
+        use_slacks = false,
     ) where {T <: AbstractTransportAggregation}
         new{T}(use_slacks)
     end

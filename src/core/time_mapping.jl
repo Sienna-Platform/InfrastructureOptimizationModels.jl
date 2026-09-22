@@ -78,7 +78,7 @@ function TimeMapping(
             error()
         end
         slice_length = length(slice)
-        slice_indeces = range(slice_running_count + 1, length=slice_length)
+        slice_indeces = range(slice_running_count + 1; length = slice_length)
         consecutive_slices[sx] = collect(slice_indeces)
         slice_running_count = last(slice_indeces)
         for time_stamp in slice
@@ -91,7 +91,7 @@ function TimeMapping(
         time_stamps,
         consecutive_slices,
         inverse_invest_mapping,
-        collect(range(start=op_index_last_slice + 1, stop=total_slice_count)),
+        collect(range(; start = op_index_last_slice + 1, stop = total_slice_count)),
         collect(range(1, op_index_last_slice)),
     )
 
