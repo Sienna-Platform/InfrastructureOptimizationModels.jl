@@ -72,7 +72,7 @@ get_attribute_key(attr::VariableValueAttributes) = attr.attribute_key
 
 struct CostFunctionAttributes{T} <: ParameterAttributes
     variable_types::Tuple{Vararg{Type}}
-    sos_status::SOSStatusVariable
+    sos_status::SOSStatusVariable.Value
     uses_compact_power::Bool
 end
 

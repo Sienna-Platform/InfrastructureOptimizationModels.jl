@@ -197,7 +197,7 @@ function set_simulation_info!(model::AbstractOptimizationModel, val)
     return
 end
 
-function set_status!(model::AbstractOptimizationModel, status::ModelBuildStatus)
+function set_status!(model::AbstractOptimizationModel, status::ModelBuildStatus.Value)
     set_status!(get_internal(model), status)
     return
 end
@@ -383,7 +383,7 @@ wait_for_serialization!(model::AbstractOptimizationModel) =
 function serialize_optimization_model(
     model::AbstractOptimizationModel,
     save_path::String,
-    fmt::OptimizationModelExportFormat,
+    fmt::OptimizationModelExportFormat.Value,
 )
     container = get_optimization_container(model)
     dest = _copy_jump_model_for_export(get_jump_model(container), fmt)
