@@ -71,6 +71,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     JuMPmodel::JuMP.Model
     time_steps::UnitRange{Int}
     settings::Settings
+    investment_data::Union{Nothing, InvestmentContainerData}
     variables::OrderedDict{VariableKey, JuMPArray}
     aux_variables::OrderedDict{AuxVarKey, JuMPArray}
     duals::OrderedDict{ConstraintKey, JuMPArray}
@@ -122,6 +123,7 @@ function OptimizationContainer(
         isnothing(jump_model) ? JuMP.Model() : jump_model,
         1:1,
         settings,
+        nothing,
         OrderedDict{VariableKey, JuMPArray}(),
         OrderedDict{AuxVarKey, JuMPArray}(),
         OrderedDict{ConstraintKey, JuMPArray}(),
@@ -193,6 +195,60 @@ set_initial_conditions_data!(container::OptimizationContainer, data) =
 get_objective_expression(container::OptimizationContainer) = container.objective_function
 
 get_serialization_task(container::OptimizationContainer) = container.serialization_task
+
+get_investment_data(container::OptimizationContainer) = container.investment_data
+set_investment_data!(container::OptimizationContainer, data::InvestmentContainerData) =
+    container.investment_data = data
+
+get_time_mapping(container::OptimizationContainer) =
+    get_investment_data(container).time_mapping
+get_operational_weights(container::OptimizationContainer) =
+    get_investment_data(container).operational_weights
+get_base_year(container::OptimizationContainer) =
+    get_investment_data(container).base_year
+get_discount_rate(container::OptimizationContainer) =
+    get_investment_data(container).discount_rate
+get_inflation_rate(container::OptimizationContainer) =
+    get_investment_data(container).inflation_rate
+get_interest_rate(container::OptimizationContainer) =
+    get_investment_data(container).interest_rate
+
+function set_time_mapping!(
+    container::OptimizationContainer,
+    time_mapping::TimeMapping,
+)
+    get_investment_data(container).time_mapping = time_mapping
+    return
+end
+
+function set_operational_weights!(
+    container::OptimizationContainer,
+    operational_weights::Union{Nothing, Vector{Float64}},
+)
+    get_investment_data(container).operational_weights = operational_weights
+    return
+end
+
+function set_base_year!(container::OptimizationContainer, base_year::Int)
+    get_investment_data(container).base_year = base_year
+    return
+end
+
+function set_discount_rate!(container::OptimizationContainer, discount_rate::Float64)
+    get_investment_data(container).discount_rate = discount_rate
+    return
+end
+
+function set_inflation_rate!(container::OptimizationContainer, inflation_rate::Float64)
+    get_investment_data(container).inflation_rate = inflation_rate
+    return
+end
+
+function set_interest_rate!(container::OptimizationContainer, interest_rate::Float64)
+    get_investment_data(container).interest_rate = interest_rate
+    return
+end
+
 
 function set_serialization_task!(container::OptimizationContainer, task::Task)
     container.serialization_task = task
@@ -363,6 +419,42 @@ function init_optimization_container!(
             The total number of variables might be larger than 10e6 and could lead to large build or solve times."
         )
     end
+
+    stats = get_optimizer_stats(container)
+    stats.detailed_stats = get_detailed_optimizer_stats(settings)
+
+    finalize_jump_model!(container, settings)
+    return
+end
+
+function init_optimization_container!(
+    container::OptimizationContainer,
+    template::AbstractProblemTemplate,
+    portfolio::IS.InfrastructureSystemsContainer
+)
+    # The order of operations matter
+    transport_model = get_transport_model(template)
+    settings = get_settings(container)
+
+    # Update Time Mapping
+    capital_model = get_capital_model(template)
+    operation_model = get_operation_model(template)
+    feasibility_model = get_feasibility_model(template)
+
+    time_map = TimeMapping(
+        capital_model.investment_years,
+        operation_model.representative_series,
+        feasibility_model.sample_periods,
+    )
+
+    set_time_mapping!(container, time_map)
+    set_operational_weights!(container, operation_model.series_weights)
+
+    # Set Financial Data in Container from Portfolio
+    set_base_year!(container, portfolio.financial_data.base_year)
+    set_discount_rate!(container, portfolio.financial_data.discount_rate)
+    set_inflation_rate!(container, portfolio.financial_data.inflation_rate)
+    set_interest_rate!(container, portfolio.financial_data.interest_rate)
 
     stats = get_optimizer_stats(container)
     stats.detailed_stats = get_detailed_optimizer_stats(settings)
