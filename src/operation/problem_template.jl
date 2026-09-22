@@ -135,11 +135,29 @@ function finalize_template!(template::AbstractProblemTemplate, args...)
     )
 end
 
+"""
+    share_template_references!(template_::AbstractProblemTemplate, template::AbstractProblemTemplate)
+
+Extension point for template types whose build-time copy must share some objects with
+the caller's `template` by reference instead of by `deepcopy` — for instance objects a
+build mutates that callers then inspect on the instance they passed in. The model
+constructors call it on the fresh copy `template_`; the default shares nothing.
+"""
+function share_template_references!(::AbstractProblemTemplate, ::AbstractProblemTemplate)
+    return
+end
+
+function _deepcopy_template(template::AbstractProblemTemplate)
+    template_ = _deepcopy_sharing_network_data(template)
+    share_template_references!(template_, template)
+    return template_
+end
+
 # Deep-copy a template while sharing the network source and derived data by reference:
 # both can hold PNM matrices whose solver caches carry raw factorization handles and
 # deliberately error on deepcopy (PNM #312). Sharing is safe because instantiation
 # replaces the copy's `network_data` outright rather than mutating the original's.
-function _deepcopy_template(template::AbstractProblemTemplate)
+function _deepcopy_sharing_network_data(template::AbstractProblemTemplate)
     network_model = get_network_model(template)
     network_model === nothing && return deepcopy(template)
     source = network_model.network_source

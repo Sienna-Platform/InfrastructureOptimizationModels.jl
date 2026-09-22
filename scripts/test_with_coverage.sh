@@ -14,9 +14,7 @@ julia --project=. --code-coverage -e '
 '
 
 echo "==> Generating lcov.info..."
-julia --project=. -e '
-    using TestEnv; TestEnv.activate()
-    include("scripts/generate_lcov.jl")
-'
+# Coverage.jl caps HTTP at 1.x while the OpenAPI packages need 2.x, so it has its own env.
+julia --project=scripts/coverage -e 'using Pkg; Pkg.instantiate(); include("scripts/generate_lcov.jl")'
 
 echo "==> Done. lcov.info written to $(pwd)/lcov.info"

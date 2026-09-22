@@ -232,7 +232,7 @@ end
             # Cost: 30 $/p.u.h in device base units
             cost_curve = IS.CostCurve(
                 IS.LinearCurve(30.0),
-                IS.DeviceBaseUnit(),
+                IS.ComponentBaseUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -312,7 +312,7 @@ end
             ),
             DEVICE_BASE = IS.CostCurve(
                 IS.LinearCurve(rate * device_base),
-                IS.DeviceBaseUnit(),
+                IS.ComponentBaseUnit(),
             ),
         )
 
@@ -432,14 +432,9 @@ end
         )
 
         # Create a FuelCurve with a TimeSeriesKey as fuel_cost
-        ts_key = IS.StaticTimeSeriesKey(
-            IS.SingleTimeSeries,
-            "fuel_cost",
-            Dates.DateTime(2024, 1, 1),
-            Dates.Hour(1),
-            3,
-            Dict{String, Any}(),
-        )
+        # Store-minted in production; fabricated here because this path reads the price
+        # from the pre-populated FuelCostParameter, never from a store.
+        ts_key = IS.TimeSeriesKey{IS.SingleTimeSeries{Float64}}(1)
         fuel_curve = IS.FuelCurve(
             IS.LinearCurve(proportional_term),
             IS.SystemBaseUnit(),  # already normalized

@@ -318,7 +318,7 @@ end
 
             cost_curve = IS.CostCurve(
                 IS.QuadraticCurve(1.0, 20.0, 0.0),
-                IS.DeviceBaseUnit(),
+                IS.ComponentBaseUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -404,7 +404,7 @@ end
             ),
             DEVICE_BASE = IS.CostCurve(
                 IS.QuadraticCurve(a * device_base^2, b * device_base, 0.0),
-                IS.DeviceBaseUnit(),
+                IS.ComponentBaseUnit(),
             ),
         )
 

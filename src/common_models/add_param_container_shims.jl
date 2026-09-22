@@ -38,7 +38,7 @@ add_param_container!(
     ::Type{T},
     ::Type{U},
     variable_types::Tuple{Vararg{Type}},
-    sos_variable::SOSStatusVariable = SOSStatusVariable.NO_VARIABLE,
+    sos_variable::SOSStatusVariable.Value = SOSStatusVariable.NO_VARIABLE,
     uses_compact_power::Bool = false,
     data_type::DataType = Float64,
     axs...;
@@ -86,6 +86,6 @@ add_param_container!(
 ) where {
     T <: EventParameter,
     U <: IS.InfrastructureSystemsComponent,
-    V <: IS.InfrastructureSystemsComponent,
+    V <: IS.SupplementalAttribute,
 } = add_event_parameter_container!(
     container, T, U, V, axs...; sparse = sparse, meta = meta)

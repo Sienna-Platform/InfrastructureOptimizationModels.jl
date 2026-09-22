@@ -57,7 +57,7 @@ function add_cost_function_parameter_container!(
     ::Type{U},
     variable_types::Tuple{Vararg{Type}},
     axs...;
-    sos_variable::SOSStatusVariable = SOSStatusVariable.NO_VARIABLE,
+    sos_variable::SOSStatusVariable.Value = SOSStatusVariable.NO_VARIABLE,
     uses_compact_power::Bool = false,
     data_type::DataType = Float64,
     sparse = false,
@@ -101,8 +101,8 @@ function add_variable_value_parameter_container!(
 end
 
 """
-Allocate an event parameter container (`EventParametersAttributes`). `V` is the component type
-whose instances the event affects.
+Allocate an event parameter container (`EventParametersAttributes`). `U` is the component type
+the event affects; `V` is the supplemental-attribute type describing the event itself.
 """
 function add_event_parameter_container!(
     container::OptimizationContainer,
@@ -115,7 +115,7 @@ function add_event_parameter_container!(
 ) where {
     T <: EventParameter,
     U <: IS.InfrastructureSystemsComponent,
-    V <: IS.InfrastructureSystemsComponent,
+    V <: IS.SupplementalAttribute,
 }
     param_key = ParameterKey(T, U, meta)
     attributes = EventParametersAttributes(V, T)

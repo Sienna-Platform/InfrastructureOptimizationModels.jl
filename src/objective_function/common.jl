@@ -37,7 +37,7 @@ objective_function_multiplier(::Type{<:VariableType}, ::Type{<:AbstractDeviceFor
 function add_variable_cost!(
     container::OptimizationContainer,
     ::Type{U},
-    devices::IS.FlattenIteratorWrapper{T},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
     ::Type{V},
 ) where {
     T <: IS.InfrastructureSystemsComponent,

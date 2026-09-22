@@ -103,6 +103,9 @@ get_total_cost(res::OptimizationProblemOutputs) = get_objective_value(res)
 get_optimizer_stats(res::OptimizationProblemOutputs) = res.optimizer_stats
 get_parameter_values(res::OptimizationProblemOutputs) = res.parameter_values
 get_source_data(res::OptimizationProblemOutputs) = res.source_data
+# `get_system` is the power-domain name for the same data; keep the alias here so callers
+# holding an `OptimizationProblemOutputs` need not know which of the two to reach for.
+get_system(res::OptimizationProblemOutputs) = get_source_data(res)
 
 """
 Name of the serialized-system bundle written beside an outputs directory. A bundle is a
@@ -383,7 +386,7 @@ function _read_outputs(
     time_ids,
     base_power::Float64,
     base_timestamps::Vector{Dates.DateTime},
-    table_format::TableFormat,
+    table_format::TableFormat.Value,
 )
     existing_keys = keys(output_values)
     container_keys = container_keys === nothing ? existing_keys : container_keys
@@ -501,7 +504,7 @@ Accepts a vector of keys for the return of the values.
   and device type for the desired outputs
 - `start_time::Dates.DateTime`: Start time of the requested outputs
 - `len::Int`: length of outputs
-- `table_format::TableFormat`: Format of the table to be returned. Default is
+- `table_format::TableFormat.Value`: Format of the table to be returned. Default is
   `TableFormat.LONG` where the columns are `DateTime`, `name`, and `value` when the data
   has two dimensions and `DateTime`, `name`, `name2`, and `value` when the data has three
   dimensions.
@@ -526,7 +529,7 @@ function read_variable(
     key::VariableKey;
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     return read_outputs_with_keys(
         res,
@@ -568,7 +571,7 @@ function read_variables(
     variables::Vector{<:OptimizationContainerKey};
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     output_values =
         read_outputs_with_keys(
@@ -616,7 +619,7 @@ function read_dual(
     key::ConstraintKey;
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     return read_outputs_with_keys(
         res,
@@ -658,7 +661,7 @@ function read_duals(
     duals::Vector{<:OptimizationContainerKey};
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     output_values = read_outputs_with_keys(
         res,
@@ -705,7 +708,7 @@ function read_parameter(
     key::ParameterKey;
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     return read_outputs_with_keys(
         res,
@@ -747,7 +750,7 @@ function read_parameters(
     parameters::Vector{<:OptimizationContainerKey};
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     output_values =
         read_outputs_with_keys(
@@ -796,7 +799,7 @@ function read_aux_variable(
     key::AuxVarKey;
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     return read_outputs_with_keys(
         res,
@@ -838,7 +841,7 @@ function read_aux_variables(
     aux_variables::Vector{<:OptimizationContainerKey};
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     output_values =
         read_outputs_with_keys(
@@ -888,7 +891,7 @@ function read_expression(
     key::ExpressionKey;
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     return read_outputs_with_keys(
         res,
@@ -934,7 +937,7 @@ function read_expressions(
     expressions::Vector{<:OptimizationContainerKey};
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     output_values =
         read_outputs_with_keys(
@@ -959,7 +962,7 @@ function read_outputs_with_keys(
     output_keys::Vector{<:OptimizationContainerKey};
     start_time::Union{Nothing, Dates.DateTime} = nothing,
     len::Union{Int, Nothing} = nothing,
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     isempty(output_keys) && return Dict{OptimizationContainerKey, DataFrame}()
     (timestamp_ids, timestamps) = _process_timestamps(res, start_time, len)

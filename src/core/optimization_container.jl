@@ -1423,7 +1423,7 @@ function calculate_aux_variables!(
             @debug "Processing evaluator $(T)"
             evaluate!(data, container, system)
             for key in evaluator_aux_var_keys
-                calculate_aux_variable_value!(container, key, system)
+                calculate_aux_variable_value!(container, key, system, data)
             end
         end
     end

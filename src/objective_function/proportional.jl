@@ -12,7 +12,7 @@ might have time-variant proportional costs.
 function add_proportional_cost!(
     container::OptimizationContainer,
     ::Type{U},
-    devices::IS.FlattenIteratorWrapper{T},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
     ::Type{V},
 ) where {
     T <: IS.InfrastructureSystemsComponent,
@@ -55,7 +55,7 @@ device, formulation pairs.
 function add_proportional_cost_maybe_time_variant!(
     container::OptimizationContainer,
     ::Type{U},
-    devices::IS.FlattenIteratorWrapper{T},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
     ::Type{V},
 ) where {
     T <: IS.InfrastructureSystemsComponent,

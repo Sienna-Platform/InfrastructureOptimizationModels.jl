@@ -21,7 +21,7 @@ _is_time_series_cost(::IS.DeviceParameter) = false
 function add_shut_down_cost!(
     container::OptimizationContainer,
     ::Type{U},
-    devices::IS.FlattenIteratorWrapper{T},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
     ::Type{V},
 ) where {
     T <: IS.InfrastructureSystemsComponent,
@@ -76,7 +76,7 @@ end
 function add_start_up_cost!(
     container::OptimizationContainer,
     ::Type{U},
-    devices::IS.FlattenIteratorWrapper{T},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
     ::Type{V},
 ) where {
     T <: IS.InfrastructureSystemsComponent,

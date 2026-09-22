@@ -242,7 +242,12 @@ function add_variable_cost_to_objective!(
         base_power,
         device_base_power,
     )
-    fuel_cost = IS.get_fuel_cost(cost_function)
+    # Exactly one of the FuelCurve's fixed/time-series fuel cost fields is set.
+    fuel_cost = if IS.is_time_series_backed(cost_function)
+        IS.get_fuel_cost_time_series(cost_function)
+    else
+        IS.get_fuel_cost(cost_function)
+    end
     # No objective_function_multiplier: there is no negative cost for fuel curves
     # (matches the linear fuel path).
     _add_fuel_quadratic_variable_cost!(

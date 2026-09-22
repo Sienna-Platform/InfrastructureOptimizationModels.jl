@@ -197,7 +197,7 @@ function set_simulation_info!(model::AbstractOptimizationModel, val)
     return
 end
 
-function set_status!(model::AbstractOptimizationModel, status::ModelBuildStatus)
+function set_status!(model::AbstractOptimizationModel, status::ModelBuildStatus.Value)
     set_status!(get_internal(model), status)
     return
 end
@@ -329,14 +329,22 @@ function serialize_optimization_model(model::AbstractOptimizationModel)
     return
 end
 
+"""
+Instantiate the template's network model from the template's branch and service models.
+
+Downstream packages implement
+`instantiate_network_model!(network_model, branch_models, service_models, number_of_steps, sys)`
+per network formulation. Service models take part because a service defined over network
+elements can require the network setup to preserve them (for example, the branches a
+service is defined over must survive a network reduction).
+"""
 function instantiate_network_model!(model::AbstractOptimizationModel)
     template = get_template(model)
-    network_model = get_network_model(template)
-    branch_models = get_branch_models(template)
     number_of_steps = get_time_steps(get_optimization_container(model))[end]
     instantiate_network_model!(
-        network_model,
-        branch_models,
+        get_network_model(template),
+        get_branch_models(template),
+        get_service_models(template),
         number_of_steps,
         get_system(model),
     )
@@ -375,7 +383,7 @@ wait_for_serialization!(model::AbstractOptimizationModel) =
 function serialize_optimization_model(
     model::AbstractOptimizationModel,
     save_path::String,
-    fmt::OptimizationModelExportFormat,
+    fmt::OptimizationModelExportFormat.Value,
 )
     container = get_optimization_container(model)
     dest = _copy_jump_model_for_export(get_jump_model(container), fmt)

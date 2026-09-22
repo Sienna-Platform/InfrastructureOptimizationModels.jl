@@ -17,7 +17,7 @@ struct Settings
     export_pwl_vars::Bool
     allow_fails::Bool
     rebuild_model::Bool
-    export_optimization_model::OptimizationModelExportFormat
+    export_optimization_model::OptimizationModelExportFormat.Value
     store_variable_names::Bool
     system_to_file::Bool
     check_numerical_bounds::Bool
@@ -35,18 +35,18 @@ function _wrap_optimizer(opt)
     )
 end
 
-_validate_export_optimization_model(value::OptimizationModelExportFormat) = value
+_validate_export_optimization_model(value::OptimizationModelExportFormat.Value) = value
 
 function _validate_export_optimization_model(value::AbstractString)
     name = uppercase(strip(value))
     isempty(name) && return OptimizationModelExportFormat.NONE
-    for fmt in instances(OptimizationModelExportFormat)
+    for fmt in instances(OptimizationModelExportFormat.Value)
         string(fmt) == name && return fmt
     end
     throw(
         IS.ConflictingInputsError(
             "export_optimization_model must be one of " *
-            join(string.(instances(OptimizationModelExportFormat)), ", ") *
+            join(string.(instances(OptimizationModelExportFormat.Value)), ", ") *
             "; got \"$(value)\".",
         ),
     )

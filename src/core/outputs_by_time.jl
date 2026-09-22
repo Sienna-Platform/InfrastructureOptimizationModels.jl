@@ -55,6 +55,25 @@ function _check_column_consistency(
     end
 end
 
+# 3-D (component, tranche, time) arrays, as time-varying piecewise-linear cost parameters
+# are stored: same generic per-axis walk as the 2-D NTuple method above, which already
+# loops `cols` over however many axes it is given.
+function _check_column_consistency(
+    data::SortedDict{Dates.DateTime, <:DenseAxisArray{Float64, 3}},
+    cols::NTuple{2, Vector{String}},
+)
+    for val in values(data)
+        for (i, col) in enumerate(cols)
+            if axes(val)[i] != col
+                error(
+                    "Mismatch in DenseAxisArray axis $i column names: $(axes(val)[i]) $col",
+                )
+            end
+        end
+    end
+    return
+end
+
 function _check_column_consistency(
     data::SortedDict{Dates.DateTime, DataFrame},
     cols::NTuple{N, Vector{String}},
@@ -106,7 +125,7 @@ end
 function make_dataframe(
     outputs::OutputsByTime{DenseAxisArray{Float64, 2}},
     timestamp::Dates.DateTime;
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     array = outputs.data[timestamp]
     timestamps = _get_timestamps(outputs, timestamp, get_num_rows(outputs, array))
@@ -116,7 +135,7 @@ end
 function make_dataframe(
     outputs::OutputsByTime{DenseAxisArray{Float64, 3}},
     timestamp::Dates.DateTime;
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     array = outputs.data[timestamp]
     num_timestamps = get_num_rows(outputs, array)
@@ -127,7 +146,7 @@ end
 function make_dataframe(
     outputs::OutputsByTime{Matrix{Float64}},
     timestamp::Dates.DateTime;
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     array = outputs.data[timestamp]
     df_wide = DataFrames.DataFrame(array, outputs.column_names[1])
@@ -149,7 +168,7 @@ end
 
 function make_dataframes(
     outputs::OutputsByTime;
-    table_format::TableFormat = TableFormat.LONG,
+    table_format::TableFormat.Value = TableFormat.LONG,
 )
     return SortedDict(
         k => make_dataframe(outputs, k; table_format = table_format) for

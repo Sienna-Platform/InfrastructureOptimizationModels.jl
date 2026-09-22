@@ -206,6 +206,8 @@ end
 """
 Extension point: Calculate auxiliary variable values.
 Concrete implementations in PowerOperationsModels for specific aux variable types.
+Evaluator-bound aux variables get the `AbstractEvaluationData` that produced them
+as a fourth argument, so the implementation does not have to look it up.
 """
 function calculate_aux_variable_value! end
 

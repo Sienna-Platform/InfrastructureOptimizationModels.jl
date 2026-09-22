@@ -72,7 +72,7 @@ get_attribute_key(attr::VariableValueAttributes) = attr.attribute_key
 
 struct CostFunctionAttributes{T} <: ParameterAttributes
     variable_types::Tuple{Vararg{Type}}
-    sos_status::SOSStatusVariable
+    sos_status::SOSStatusVariable.Value
     uses_compact_power::Bool
 end
 
@@ -81,23 +81,28 @@ get_variable_types(attr::CostFunctionAttributes) = attr.variable_types
 get_uses_compact_power(attr::CostFunctionAttributes) = attr.uses_compact_power
 
 struct EventParametersAttributes{
-    T <: IS.InfrastructureSystemsComponent,
+    T <: IS.SupplementalAttribute,
     U <: ParameterType,
 } <: ParameterAttributes
-    affected_devices::Vector{T}
 end
 
 function EventParametersAttributes(
     ::Type{T},
     ::Type{U},
-) where {T <: IS.InfrastructureSystemsComponent, U <: ParameterType}
-    return EventParametersAttributes{T, U}(T[])
+) where {T <: IS.SupplementalAttribute, U <: ParameterType}
+    return EventParametersAttributes{T, U}()
 end
 
 function get_param_type(
     ::EventParametersAttributes{T, U},
-) where {T <: IS.InfrastructureSystemsComponent, U <: ParameterType}
+) where {T <: IS.SupplementalAttribute, U <: ParameterType}
     return U
+end
+
+function get_attribute_type(
+    ::EventParametersAttributes{T, U},
+) where {T <: IS.SupplementalAttribute, U <: ParameterType}
+    return T
 end
 
 #################################################################################

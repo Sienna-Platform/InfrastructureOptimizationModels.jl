@@ -111,16 +111,18 @@ function run_tests()
                     # optimization_problem_outputs_export.jl: low-complexity
                     include(joinpath(TEST_DIR, "test_optimization_outputs.jl"))
                     include(joinpath(TEST_DIR, "test_optimizer_stats.jl"))
-                    # parameter_container.jl: low-complexity
+                    include(joinpath(TEST_DIR, "test_event_parameter_container.jl"))
                     # TODO outputs_by_time.jl
                     # TODO service_model.jl
                     include(joinpath(TEST_DIR, "test_settings.jl"))
+                    include(joinpath(TEST_DIR, "test_problem_template.jl"))
                     # standard_variables_expressions.jl: low complexity
                     # time_series_parameter_types.jl: low complexity
 
                     # --- objective_function/ subfolder ---
                     # import_export.jl: commented out
                     include(joinpath(TEST_DIR, "test_cost_term_helpers.jl"))
+                    include(joinpath(TEST_DIR, "test_cost_unit_conversion.jl"))
                     include(joinpath(TEST_DIR, "test_linear_curve.jl"))
                     # value_curve_cost.jl: needs more work
                     include(joinpath(TEST_DIR, "test_piecewise_linear.jl"))
@@ -128,6 +130,7 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_quadratic_curve.jl"))
                     include(joinpath(TEST_DIR, "test_start_up_shut_down.jl"))
                     include(joinpath(TEST_DIR, "test_ts_value_curve_objective.jl"))
+                    include(joinpath(TEST_DIR, "test_pwl_block_width_update.jl"))
                     include(joinpath(TEST_DIR, "test_tranche_axis_helpers.jl"))
 
                     # --- common_models/, utils/, initial_conditions/ ---
