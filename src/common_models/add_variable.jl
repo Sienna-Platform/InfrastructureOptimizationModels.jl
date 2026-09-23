@@ -77,45 +77,92 @@ function add_variables!(
 end
 
 """
-Add variables to the OptimizationContainer for a single service and its contributing
+Add variables to the OptimizationContainer for every service of a type and their contributing
 devices.
 
-All services of a given `(VariableType, ServiceType)` share a single sparse container
-keyed by `(service_name, device_name, time)`, rather than one dense container per
-service disambiguated by a `meta = service_name` field. The container is created lazily
-on the first service of a type, and each subsequent call appends that service's slice, so
-separate formulation groups sharing a service type append to the same container.
+Each `(device type, service type)` pair gets its own sparse container keyed on
+`ComponentPairKey{D, U}` and indexed by `(service_name, device_name, time)`, holding every
+service of that type. Keying on the pair keeps devices of different types that share a name,
+and services of different types that share a name, apart.
 """
 function add_service_variables!(
     container::OptimizationContainer,
     ::Type{T},
-    service::U,
-    contributing_devices::V,
+    services::Vector{U},
+    model::ServiceModel,
     ::Type{F},
 ) where {
     T <: VariableType,
     U <: IS.InfrastructureSystemsComponent,
-    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
     F <: AbstractServiceFormulation,
-} where {D <: IS.InfrastructureSystemsComponent}
-    @assert !isempty(contributing_devices)
-    time_steps = get_time_steps(container)
+}
+    by_device_type = Dict{DataType, Vector{Tuple{U, Vector}}}()
+    for service in services
+        for (device_type, devices) in
+            get_contributing_devices_map(model, IS.get_name(service))
+            isempty(devices) && continue
+            push!(get!(Vector{Tuple{U, Vector}}, by_device_type, device_type), (service, devices))
+        end
+    end
+    for (device_type, entries) in by_device_type
+        _add_service_variables!(container, T, U, device_type, entries, F)
+    end
+    return
+end
+
+function _add_service_variables!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    ::Type{D},
+    entries::Vector{Tuple{U, Vector}},
+    ::Type{F},
+) where {
+    T <: VariableType,
+    U <: IS.InfrastructureSystemsComponent,
+    D <: IS.InfrastructureSystemsComponent,
+    F <: AbstractServiceFormulation,
+}
+    variable = add_variable_container!(
+        container,
+        T,
+        ComponentPairKey{D, U},
+        String[],
+        String[],
+        Int[],
+        sparse = true,
+    )
+    for (service, devices) in entries
+        _add_service_device_variables!(container, variable, T, service, devices, F)
+    end
+    return
+end
+
+function _add_service_device_variables!(
+    container::OptimizationContainer,
+    variable::SparseAxisArray,
+    ::Type{T},
+    service::U,
+    devices::Vector{D},
+    ::Type{F},
+) where {
+    T <: VariableType,
+    U <: IS.InfrastructureSystemsComponent,
+    D <: IS.InfrastructureSystemsComponent,
+    F <: AbstractServiceFormulation,
+}
     settings = get_settings(container)
     binary = get_variable_binary(T, U, F)
-    s_name = IS.get_name(service)
-    device_names = [IS.get_name(d) for d in contributing_devices]
-    variable = lazy_container_addition!(
-        container, T, U, [s_name], device_names, time_steps; sparse = true,
-    )
+    service_name = IS.get_name(service)
     jump_model = get_jump_model(container)
-    for t in time_steps, d in contributing_devices
-        name = IS.get_name(d)
+    for d in devices, t in get_time_steps(container)
+        device_name = IS.get_name(d)
         var = JuMP.@variable(
             jump_model,
-            base_name = "$(T)_$(U)_{$(s_name), $(name), $(t)}",
+            base_name = "$(T)_$(D)_$(U)_{$(service_name), $(device_name), $(t)}",
             binary = binary,
         )
-        variable[(s_name, name, t)] = var
+        variable[service_name, device_name, t] = var
         ub = get_variable_upper_bound(T, service, d, F)
         ub !== nothing && JuMP.set_upper_bound(var, ub)
         lb = get_variable_lower_bound(T, service, d, F)

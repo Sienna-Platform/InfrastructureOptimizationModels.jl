@@ -122,3 +122,61 @@ end
 
     @test IOM.make_key(VariableKey, MockVariable, up_pair, "spin") == up_key
 end
+
+@testset "add_service_variables! keys on (device type, service type)" begin
+    time_steps = 1:3
+    container = _setup_qa_container(time_steps)
+    bus = MockBus("bus", 1, :PV)
+    thermal = MockThermalGen("g1", true, bus, (min = 0.0, max = 1.0))
+    renewable = MockRenewableGen("g1", true, bus, 1.0)
+    contributors = () -> Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}}(
+        MockThermalGen => [thermal],
+        MockRenewableGen => [renewable],
+    )
+
+    services = Dict(
+        MockReserve{MockUp} => MockReserve{MockUp}("spin", 0.5, Any[]),
+        MockReserve{MockDown} => MockReserve{MockDown}("spin", 0.25, Any[]),
+    )
+    for (S, service) in services
+        model = ServiceModel(
+            S,
+            MockReserveFormulation;
+            contributing_devices_map = Dict("spin" => contributors()),
+        )
+        IOM.add_service_variables!(
+            container,
+            MockVariable,
+            [service],
+            model,
+            MockReserveFormulation,
+        )
+        @test_throws IS.InvalidValue IOM.add_service_variables!(
+            container,
+            MockVariable,
+            [service],
+            model,
+            MockReserveFormulation,
+        )
+    end
+
+    pair_keys = [
+        VariableKey(MockVariable, IOM.ComponentPairKey{D, S})
+        for D in (MockThermalGen, MockRenewableGen), S in keys(services)
+    ]
+    @test length(IOM.get_variable_keys(container)) == 4
+    @test Set(IOM.get_variable_keys(container)) == Set(pair_keys)
+    @test length(unique(IOM.encode_key.(pair_keys))) == 4
+
+    refs = JuMP.VariableRef[]
+    for key in pair_keys
+        var = IOM.get_variable(container, key)
+        @test Set(keys(var.data)) == Set(("spin", "g1", t) for t in time_steps)
+        S = IOM.get_component_type(key).parameters[2]
+        for t in time_steps
+            @test JuMP.upper_bound(var["spin", "g1", t]) == services[S].requirement
+            push!(refs, var["spin", "g1", t])
+        end
+    end
+    @test length(unique(refs)) == 4 * length(time_steps)
+end

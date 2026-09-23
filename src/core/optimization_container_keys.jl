@@ -51,7 +51,7 @@ get_component_type(
 
 # okay to construct AuxVarKey with abstract component type, but not others.
 maybe_throw_if_abstract(::Type{T}, ::Type{U}) where {T <: OptimizationKeyType, U} =
-    isabstracttype(U) && throw(ArgumentError("Type $U can't be abstract"))
+    _is_abstract_component(U) && throw(ArgumentError("Type $U can't be abstract"))
 
 maybe_throw_if_abstract(::Type{<:ConstraintType}, ::Type{U}) where {U} = nothing
 
@@ -66,6 +66,10 @@ struct ComponentPairKey{
     A <: IS.InfrastructureSystemsComponent,
     B <: IS.InfrastructureSystemsComponent,
 } <: IS.InfrastructureSystemsComponent end
+
+_is_abstract_component(::Type{U}) where {U} = isabstracttype(U)
+_is_abstract_component(::Type{ComponentPairKey{A, B}}) where {A, B} =
+    isabstracttype(A) || isabstracttype(B)
 
 function _canonical_type(::Type{U}) where {U <: InfrastructureSystemsType}
     base = U isa UnionAll ? Base.unwrap_unionall(U) : U
