@@ -125,6 +125,20 @@ function write_output!(
     return
 end
 
+function write_output!(
+    store::DecisionModelStore,
+    name::Symbol,
+    key::OptimizationContainerKey,
+    index::DecisionModelIndexType,
+    update_timestamp::Dates.DateTime,
+    array::DenseAxisArray{T, 3, <:Tuple{Vector{String}, Vector{Int}, UnitRange}},
+) where {T}
+    columns = get_column_names_from_axis_array(array)
+    container = getfield(store, get_store_container_type(key))
+    container[key][index] = DenseAxisArray(array.data, columns..., 1:size(array, 3))
+    return
+end
+
 # Sparse expressions (e.g., post-contingency flows keyed by
 # `(outage_id, branch_name, t)`) are pre-allocated as 2D dense storage with
 # the non-time tuple flattened into encoded `"a__b"` columns. Derive the
