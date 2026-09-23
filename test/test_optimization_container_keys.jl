@@ -129,10 +129,11 @@ end
     bus = MockBus("bus", 1, :PV)
     thermal = MockThermalGen("g1", true, bus, (min = 0.0, max = 1.0))
     renewable = MockRenewableGen("g1", true, bus, 1.0)
-    contributors = () -> Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}}(
-        MockThermalGen => [thermal],
-        MockRenewableGen => [renewable],
-    )
+    contributors =
+        () -> Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}}(
+            MockThermalGen => [thermal],
+            MockRenewableGen => [renewable],
+        )
 
     services = Dict(
         MockReserve{MockUp} => MockReserve{MockUp}("spin", 0.5, Any[]),

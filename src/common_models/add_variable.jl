@@ -101,7 +101,10 @@ function add_service_variables!(
         for (device_type, devices) in
             get_contributing_devices_map(model, IS.get_name(service))
             isempty(devices) && continue
-            push!(get!(Vector{Tuple{U, Vector}}, by_device_type, device_type), (service, devices))
+            push!(
+                get!(Vector{Tuple{U, Vector}}, by_device_type, device_type),
+                (service, devices),
+            )
         end
     end
     for (device_type, entries) in by_device_type
@@ -129,7 +132,7 @@ function _add_service_variables!(
         ComponentPairKey{D, U},
         String[],
         String[],
-        Int[],
+        Int[];
         sparse = true,
     )
     for (service, devices) in entries

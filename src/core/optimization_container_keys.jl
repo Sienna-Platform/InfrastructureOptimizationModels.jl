@@ -128,7 +128,9 @@ end
 _encode_type_str(::Type{U}) where {U <: InfrastructureSystemsType} =
     replace(replace(strip_module_name(U), "{" => COMPONENT_NAME_DELIMITER), "}" => "")
 
-_encode_type_str(::Type{ComponentPairKey{A, B}}) where {A <: InfrastructureSystemsType, B <: InfrastructureSystemsType} =
+_encode_type_str(
+    ::Type{ComponentPairKey{A, B}},
+) where {A <: InfrastructureSystemsType, B <: InfrastructureSystemsType} =
     _encode_type_str(A) * COMPONENT_NAME_DELIMITER * _encode_type_str(B)
 
 @generated function encode_symbol(
