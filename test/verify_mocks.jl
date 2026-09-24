@@ -69,7 +69,7 @@ MockComponentType()
 TestDeviceFormulation
 
 # MockReserve
-reserve = MockReserve("reserve", 50.0, [gen])
+reserve = MockReserve{MockUp}("reserve", 50.0, [gen])
 get_name(reserve)
 get_requirement(reserve)
 

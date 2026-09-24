@@ -1421,7 +1421,7 @@ end
     return :($K(T, U, meta))
 end
 
-# note these 3 lazy_container_addition! definitions have different meta handling and adder 
+# note these 3 lazy_container_addition! definitions have different meta handling and adder
 # functions, else we'd collapse into one generated function.
 function lazy_container_addition!(
     container::OptimizationContainer,
