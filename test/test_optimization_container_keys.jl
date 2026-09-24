@@ -152,7 +152,7 @@ end
             model,
             MockReserveFormulation,
         )
-        @test_throws IS.InvalidValue IOM.add_service_variables!(
+        @test_logs (:error, r"already stored") match_mode = :any @test_throws IS.InvalidValue IOM.add_service_variables!(
             container,
             MockVariable,
             [service],
