@@ -123,6 +123,10 @@ function Settings(
     )
 end
 
+# System-less convenience constructor (uses the `nothing`-"system" accessor defaults). Useful for
+# building a bare container (e.g. unit tests) without a domain system object.
+Settings(; kwargs...) = Settings(nothing; kwargs...)
+
 function log_values(settings::Settings)
     text = Vector{String}()
     for (name, type) in zip(fieldnames(Settings), fieldtypes(Settings))

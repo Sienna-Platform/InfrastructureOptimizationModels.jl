@@ -247,6 +247,47 @@ function to_dataframe(
     )
 end
 
+function get_column_names(
+    key::OptimizationContainerKey,
+    ::DenseAxisArray{T, 1, K},
+) where {T, K <: NTuple{1, Any}}
+    return get_column_names(key)
+end
+
+function get_column_names(
+    k::OptimizationContainerKey,
+    array::DenseAxisArray{T, 2, K},
+) where {T, K <: NTuple{2, Any}}
+    return (string.(axes(array)[1]),)
+end
+
+function get_column_names(
+    k::OptimizationContainerKey,
+    array::DenseAxisArray{T, 3, K},
+) where {T, K <: NTuple{3, Any}}
+    return (string.(axes(array)[1]), string.(axes(array)[2]))
+end
+
+function _get_column_names(arr::SparseAxisArray{T, N, K}) where {T, N, K <: NTuple{N, Any}}
+    return sort!(collect(Set(encode_tuple_to_column(k[1:(N - 1)]) for k in keys(arr.data))))
+end
+
+function get_column_names(
+    ::OptimizationContainerKey,
+    array::SparseAxisArray{T, N, K},
+) where {T, N, K <: NTuple{N, Any}}
+    return (get_column_names(array),)
+end
+
+function get_column_names(array::SparseAxisArray{T, N, K}) where {T, N, K <: NTuple{N, Any}}
+    return _get_column_names(array)
+end
+
+function to_dataframe(array::SparseAxisArray{T, N, K}) where {T, N, K <: NTuple{N, Any}}
+    columns = _get_column_names(array)
+    return DataFrames.DataFrame(_to_matrix(array, columns), columns)
+end
+
 """
 Convert a DenseAxisArray containing components to a outputs DataFrame consumable by users.
 
