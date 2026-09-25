@@ -137,6 +137,7 @@ function run_tests()
                     # TODO tests?
                     include(joinpath(TEST_DIR, "test_jump_utils.jl"))
                     include(joinpath(TEST_DIR, "test_pwl_methods.jl"))
+                    include(joinpath(TEST_DIR, "test_start_values.jl"))
                     include(joinpath(TEST_DIR, "test_ramp_constraints.jl"))
                     include(joinpath(TEST_DIR, "test_parameterized_range_constraints.jl"))
                     include(joinpath(TEST_DIR, "test_duration_constraints.jl"))

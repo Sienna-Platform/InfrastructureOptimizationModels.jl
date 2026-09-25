@@ -1,3 +1,23 @@
+"""
+Set `value` as the start value of `variable` when warm start is enabled in the container
+settings. A `nothing` value leaves the variable without a start value.
+
+Every start value in a model built on this package should go through this function, so a
+model built with `warm_start = false` reaches the solver with no start values at all. Some
+solvers treat a partial start as a sub-problem to complete before presolve, so a single
+stray start value can cost as much as a full warm start.
+"""
+function set_start_value!(
+    container::OptimizationContainer,
+    variable::JuMP.VariableRef,
+    value::Union{Nothing, Real},
+)
+    value === nothing && return
+    get_warm_start(get_settings(container)) || return
+    JuMP.set_start_value(variable, value)
+    return
+end
+
 @doc raw"""
 Adds a variable to the optimization model and to the affine expressions contained
 in the optimization_container model according to the specified sign. Based on the inputs, the variable can
@@ -43,18 +63,18 @@ function add_variables!(
 } where {D <: IS.InfrastructureSystemsComponent}
     @assert !isempty(devices)
     time_steps = get_time_steps(container)
-    settings = get_settings(container)
     binary = get_variable_binary(T, D, F)
+    included = [d for d in devices if !skip_variable(T, d, F)]
 
     variable = add_variable_container!(
         container,
         T,
         D,
-        get_name.(devices),
+        String[get_name(d) for d in included],
         time_steps,
     )
 
-    for t in time_steps, d in devices
+    for t in time_steps, d in included
         name = get_name(d)
         variable[name, t] = JuMP.@variable(
             get_jump_model(container),
@@ -67,10 +87,11 @@ function add_variables!(
         lb = get_variable_lower_bound(T, d, F)
         lb !== nothing && JuMP.set_lower_bound(variable[name, t], lb)
 
-        if get_warm_start(settings)
-            init = get_variable_warm_start_value(T, d, F)
-            init !== nothing && JuMP.set_start_value(variable[name, t], init)
-        end
+        set_start_value!(
+            container,
+            variable[name, t],
+            get_variable_warm_start_value(T, d, F),
+        )
     end
 
     return
@@ -154,7 +175,6 @@ function _add_service_device_variables!(
     D <: IS.InfrastructureSystemsComponent,
     F <: AbstractServiceFormulation,
 }
-    settings = get_settings(container)
     binary = get_variable_binary(T, U, F)
     service_name = IS.get_name(service)
     jump_model = get_jump_model(container)
@@ -170,10 +190,7 @@ function _add_service_device_variables!(
         ub !== nothing && JuMP.set_upper_bound(var, ub)
         lb = get_variable_lower_bound(T, service, d, F)
         lb !== nothing && !binary && JuMP.set_lower_bound(var, lb)
-        if get_warm_start(settings)
-            init = get_variable_warm_start_value(T, d, F)
-            init !== nothing && JuMP.set_start_value(var, init)
-        end
+        set_start_value!(container, var, get_variable_warm_start_value(T, d, F))
     end
     return
 end
