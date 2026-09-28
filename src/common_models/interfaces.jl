@@ -77,6 +77,12 @@ get_variable_upper_bound(
 ) = nothing
 
 """
+Extension point: whether `add_variables!` creates no variable for this device. A skipped
+device is left off the variable container's axis.
+"""
+skip_variable(::Type{<:VariableType}, ::IS.InfrastructureSystemsComponent, ::Type) = false
+
+"""
 Extension point: Get variable warm start value.
 """
 get_variable_warm_start_value(
