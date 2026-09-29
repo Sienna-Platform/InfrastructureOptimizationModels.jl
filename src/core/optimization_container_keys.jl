@@ -51,18 +51,29 @@ get_component_type(
 
 # okay to construct AuxVarKey with abstract component type, but not others.
 maybe_throw_if_abstract(::Type{T}, ::Type{U}) where {T <: OptimizationKeyType, U} =
-    isabstracttype(U) && throw(ArgumentError("Type $U can't be abstract"))
+    _is_abstract_component(U) && throw(ArgumentError("Type $U can't be abstract"))
 
 maybe_throw_if_abstract(::Type{<:ConstraintType}, ::Type{U}) where {U} = nothing
 
 const CONTAINER_KEY_EMPTY_META = ""
 
-# Strip units before making keys for parametric structs
-@generated function canonical_component_type(
-    ::Type{U},
-) where {U <: InfrastructureSystemsType}
+"""
+Component type for keying a container on two component types. Used downstream to disambiguate
+service variables where the contributing devices on a service can have the same name, or one device
+can contribute to multiple services with the same name.
+"""
+struct ComponentPairKey{
+    A <: IS.InfrastructureSystemsComponent,
+    B <: IS.InfrastructureSystemsComponent,
+} <: IS.InfrastructureSystemsComponent end
+
+_is_abstract_component(::Type{U}) where {U} = isabstracttype(U)
+_is_abstract_component(::Type{ComponentPairKey{A, B}}) where {A, B} =
+    isabstracttype(A) || isabstracttype(B)
+
+function _canonical_type(::Type{U}) where {U <: InfrastructureSystemsType}
     base = U isa UnionAll ? Base.unwrap_unionall(U) : U
-    base isa DataType || return :($U)
+    base isa DataType || return U
     params = collect(base.parameters)
     n = length(params)
     while n > 0 && (
@@ -71,10 +82,19 @@ const CONTAINER_KEY_EMPTY_META = ""
     )
         n -= 1
     end
-    n == length(params) && return :($U)
+    n == length(params) && return U
     kept = params[1:n]
-    stripped = isempty(kept) ? base.name.wrapper : base.name.wrapper{kept...}
-    return :($stripped)
+    return isempty(kept) ? base.name.wrapper : base.name.wrapper{kept...}
+end
+
+_canonical_type(::Type{ComponentPairKey{A, B}}) where {A, B} =
+    ComponentPairKey{_canonical_type(A), _canonical_type(B)}
+
+# Strip units before making keys for parametric structs
+@generated function canonical_component_type(
+    ::Type{U},
+) where {U <: InfrastructureSystemsType}
+    return :($(_canonical_type(U)))
 end
 
 # see https://discourse.julialang.org/t/parametric-constructor-where-type-being-constructed-is-parameter/129866/3
@@ -105,14 +125,21 @@ end
 
 ### Encoding keys ###
 
+_encode_type_str(::Type{U}) where {U <: InfrastructureSystemsType} =
+    replace(replace(strip_module_name(U), "{" => COMPONENT_NAME_DELIMITER), "}" => "")
+
+_encode_type_str(
+    ::Type{ComponentPairKey{A, B}},
+) where {A <: InfrastructureSystemsType, B <: InfrastructureSystemsType} =
+    _encode_type_str(A) * COMPONENT_NAME_DELIMITER * _encode_type_str(B)
+
 @generated function encode_symbol(
     ::Type{T},
     ::Type{U},
     meta::String = CONTAINER_KEY_EMPTY_META,
 ) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType}
     meta_str = :meta
-    U_str =
-        replace(replace(strip_module_name(U), "{" => COMPONENT_NAME_DELIMITER), "}" => "")
+    U_str = _encode_type_str(U)
     T_str = strip_module_name(T)
 
     :(Symbol(

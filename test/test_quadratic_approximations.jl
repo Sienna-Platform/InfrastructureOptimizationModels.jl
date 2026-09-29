@@ -1,4 +1,3 @@
-const MOI = JuMP.MOI
 const TEST_META = "TestVar"
 
 @testset "Quadratic Approximations" begin

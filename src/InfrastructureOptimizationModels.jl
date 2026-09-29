@@ -323,6 +323,7 @@ export ConstraintKey
 export ParameterKey
 export ExpressionKey
 export AuxVarKey
+export ComponentPairKey
 
 # Abstract Key Types (from InfrastructureSystems.Optimization)
 export VariableType

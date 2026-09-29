@@ -73,24 +73,26 @@ function _eval_quadratic_overestimator(
     tolerance::Float64;
     expr_type = IOM.QuadraticExpression,
 )
+    setup = _setup_qa_test(["g"], 1:1)
+    x = setup.var_container["g", 1]
+    JuMP.fix(x, first(sample_points); force = true)
+    IOM._add_quadratic_approx!(
+        cfg,
+        setup.container,
+        MockThermalGen,
+        ["g"],
+        1:1,
+        setup.var_container,
+        [(min = 0.0, max = delta)],
+        TOL_META,
+    )
+    expr = IOM.get_expression(setup.container, expr_type, MockThermalGen, TOL_META)
+    JuMP.@objective(setup.jump_model, Min, expr["g", 1])
+    JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+    JuMP.set_silent(setup.jump_model)
     gaps = Float64[]
     for x0 in sample_points
-        setup = _setup_qa_test(["g"], 1:1)
-        JuMP.fix(setup.var_container["g", 1], x0; force = true)
-        IOM._add_quadratic_approx!(
-            cfg,
-            setup.container,
-            MockThermalGen,
-            ["g"],
-            1:1,
-            setup.var_container,
-            [(min = 0.0, max = delta)],
-            TOL_META,
-        )
-        expr = IOM.get_expression(setup.container, expr_type, MockThermalGen, TOL_META)
-        JuMP.@objective(setup.jump_model, Min, expr["g", 1])
-        JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-        JuMP.set_silent(setup.jump_model)
+        JuMP.fix(x, x0)
         JuMP.optimize!(setup.jump_model)
         status = JuMP.termination_status(setup.jump_model)
         @assert status == JuMP.OPTIMAL "quadratic solve at x=$(x0) returned $(status)"
@@ -118,29 +120,35 @@ function _eval_bilinear(
     delta_y::Float64,
     tolerance::Float64,
 )
+    setup = _setup_bilinear_test(["d"], 1:1)
+    x = setup.x_var_container["d", 1]
+    y = setup.y_var_container["d", 1]
+    x_init, y_init = first(sample_points)
+    JuMP.fix(x, x_init; force = true)
+    JuMP.fix(y, y_init; force = true)
+    IOM._add_bilinear_approx!(
+        cfg,
+        setup.container,
+        MockThermalGen,
+        ["d"],
+        1:1,
+        setup.x_var_container,
+        setup.y_var_container,
+        [(min = 0.0, max = delta_x)],
+        [(min = 0.0, max = delta_y)],
+        TOL_META,
+    )
+    expr = IOM.get_expression(
+        setup.container, IOM.BilinearProductExpression, MockThermalGen, TOL_META,
+    )
+    JuMP.@objective(setup.jump_model, Min, expr["d", 1])
+    JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+    JuMP.set_silent(setup.jump_model)
     gaps = Float64[]
     for (x0, y0) in sample_points, sense in (JuMP.MIN_SENSE, JuMP.MAX_SENSE)
-        setup = _setup_bilinear_test(["d"], 1:1)
-        JuMP.fix(setup.x_var_container["d", 1], x0; force = true)
-        JuMP.fix(setup.y_var_container["d", 1], y0; force = true)
-        IOM._add_bilinear_approx!(
-            cfg,
-            setup.container,
-            MockThermalGen,
-            ["d"],
-            1:1,
-            setup.x_var_container,
-            setup.y_var_container,
-            [(min = 0.0, max = delta_x)],
-            [(min = 0.0, max = delta_y)],
-            TOL_META,
-        )
-        expr = IOM.get_expression(
-            setup.container, IOM.BilinearProductExpression, MockThermalGen, TOL_META,
-        )
-        JuMP.@objective(setup.jump_model, sense, expr["d", 1])
-        JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
-        JuMP.set_silent(setup.jump_model)
+        JuMP.fix(x, x0)
+        JuMP.fix(y, y0)
+        JuMP.set_objective_sense(setup.jump_model, sense)
         JuMP.optimize!(setup.jump_model)
         status = JuMP.termination_status(setup.jump_model)
         @assert status == JuMP.OPTIMAL "bilinear solve at (x, y)=($(x0), $(y0)), sense=$(sense) returned $(status)"
