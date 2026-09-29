@@ -30,15 +30,10 @@ function get_pwl_cost_expression_lambda(
     V <: AbstractDeviceFormulation,
 }
     value_curve = IS.get_value_curve(cost_function)
-    power_units = IS.get_power_units(cost_function)
     cost_component = IS.get_function_data(value_curve)
-    base_power = get_model_base_power(container)
-    device_base_power = get_base_power(component)
     cost_data_normalized = get_piecewise_pointcurve_per_system_unit(
         cost_component,
-        power_units,
-        base_power,
-        device_base_power,
+        get_model_base_power(container),
     )
     resolution = get_resolution(container)
     dt = Dates.value(resolution) / MILLISECONDS_IN_HOUR
@@ -94,16 +89,11 @@ function add_pwl_term_lambda!(
     name = get_name(component)
     value_curve = IS.get_value_curve(cost_function)
     cost_component = IS.get_function_data(value_curve)
-    base_power = get_model_base_power(container)
-    device_base_power = get_base_power(component)
-    power_units = IS.get_power_units(cost_function)
 
     # Normalize data
     data = get_piecewise_pointcurve_per_system_unit(
         cost_component,
-        power_units,
-        base_power,
-        device_base_power,
+        get_model_base_power(container),
     )
 
     if all(iszero.((point -> point.y).(IS.get_points(data))))
@@ -264,11 +254,9 @@ Creates piecewise linear cost function using a sum of variables and expression w
   - component_name::String: The component_name of the variable container
   - cost_function::Union{IS.CostCurve{IS.PiecewiseIncrementalCurve}, IS.CostCurve{IS.PiecewiseAverageCurve}}: container for piecewise linear cost
 """
-_rebuild_with_value_curve(c::IS.CostCurve, vc) =
-    IS.CostCurve(; value_curve = vc, power_units = IS.get_power_units(c))
+_rebuild_with_value_curve(::IS.CostCurve, vc) = IS.CostCurve(vc)
 _rebuild_with_value_curve(c::IS.FuelCurve, vc) = IS.FuelCurve(;
     value_curve = vc,
-    power_units = IS.get_power_units(c),
     fuel_cost = IS.get_fuel_cost(c),
     fuel_cost_time_series = IS.get_fuel_cost_time_series(c),
 )

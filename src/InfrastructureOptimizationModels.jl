@@ -19,7 +19,7 @@ import InfrastructureSystems.InfrastructureMatrices:
     AbstractInfrastructureNetworkMatrix, AbstractInfrastructureNetworkReductionData
 import InfrastructureSystems: @assert_op, TableFormat, list_recorder_events, get_name
 import InfrastructureSystems:
-    get_value_curve, get_power_units, get_function_data, get_proportional_term,
+    get_value_curve, get_function_data, get_proportional_term,
     get_quadratic_term, get_fuel_cost
 
 import InfrastructureSystems.Simulation:

@@ -69,10 +69,9 @@ function _add_vom_cost_to_objective!(
     C <: IS.InfrastructureSystemsComponent,
 }
     variable_cost_data = variable_cost(op_cost, T, C, U)
-    power_units = IS.get_power_units(variable_cost_data)
     cost_term = IS.get_proportional_term(IS.get_vom_cost(variable_cost_data))
     add_proportional_cost_invariant!(
-        container, T, component, cost_term, power_units, 1.0, VOMCostExpression)
+        container, T, component, cost_term, 1.0, VOMCostExpression)
     return
 end
 

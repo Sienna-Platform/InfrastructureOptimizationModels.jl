@@ -70,11 +70,9 @@ end
     dispatch_mw = 90.0
 
     # The width constraint's RHS lives in system per-unit, the same conversion
-    # `_fill_pwl_data_from_arrays!` applies at build time (`NaturalUnit`, device and
-    # system base powers equal here, so this is dividing by `base_power`).
-    to_pu_breakpoints(bp) = first(
-        IOM.get_piecewise_curve_per_system_unit(
-            bp, slopes, IS.NaturalUnit(), base_power, base_power))
+    # `_fill_pwl_data_from_arrays!` applies at build time.
+    to_pu_breakpoints(bp) =
+        first(IOM.get_piecewise_curve_per_system_unit(bp, slopes, base_power))
 
     container = make_test_container(time_steps; base_power = base_power)
     add_test_variable!(container, TestVariableType, MockThermalGen, "gen1", 1)

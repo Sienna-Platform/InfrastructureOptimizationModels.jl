@@ -713,14 +713,14 @@ Test types defined in test_utils/test_types.jl.
                 add_test_expression!(container, E, MockThermalGen, ["gen1"], ts)
             end
             device = make_mock_thermal("gen1"; base_power = 100.0)
-            cost_term = 7.0
+            cost_term = 0.07  # \$/MWh
             multiplier = 1.0
-            # SYSTEM_BASE → no normalization; dt = 1 hour → rate = cost_term * multiplier.
+            # 100 MW system base → 7.0 \$/p.u.h; dt = 1 hour → rate = 7.0 * multiplier.
             IOM.add_proportional_cost_invariant!(
                 container, TestCostVariable, device, cost_term,
-                IS.SystemBaseUnit(), multiplier, IOM.FuelCostExpression,
+                multiplier, IOM.FuelCostExpression,
             )
-            expected = cost_term * multiplier
+            expected = 7.0 * multiplier
             for t in ts
                 @test _expr_coef(
                     container, IOM.FuelCostExpression,

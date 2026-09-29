@@ -188,16 +188,15 @@ end
 """
 Add a proportional (linear) cost to the invariant objective across all time steps.
 
-Normalizes `cost_term` from `power_units` to system per-unit, multiplies by `dt` and
+Normalizes `cost_term` (\$/MWh) to system per-unit, multiplies by `dt` and
 `multiplier`, then adds `variable * rate` to the target expression `E` and the invariant
 objective for each time step.
 
 # Arguments
 - `container`: the optimization container
 - `T`: variable type (caller provides)
-- `component`: the component (used for name, base power, and variable lookup)
+- `component`: the component (used for name and variable lookup)
 - `cost_term`: raw proportional cost (e.g., \$/MWh before normalization)
-- `power_units`: unit system of `cost_term`
 - `multiplier`: additional scalar (e.g., `objective_function_multiplier`, fuel cost)
 - `E`: target cost expression type (e.g., `FuelCostExpression`, `VOMCostExpression`).
   Constituent types auto-propagate into `ProductionCostExpression` via
@@ -208,15 +207,12 @@ function add_proportional_cost_invariant!(
     ::Type{T},
     component::C,
     cost_term::Float64,
-    power_units::IS.AbstractUnitSystem,
     multiplier::Float64,
     ::Type{E},
 ) where {T <: VariableType, C <: IS.InfrastructureSystemsComponent, E <: CostExpressions}
     iszero(cost_term) && return
-    base_power = get_model_base_power(container)
-    device_base_power = get_base_power(component)
-    cost_per_unit = get_proportional_cost_per_system_unit(
-        cost_term, power_units, base_power, device_base_power)
+    cost_per_unit =
+        get_proportional_cost_per_system_unit(cost_term, get_model_base_power(container))
     dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
     name = get_name(component)
     rate = cost_per_unit * multiplier * dt

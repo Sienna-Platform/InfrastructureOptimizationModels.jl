@@ -74,7 +74,7 @@ function _get_pwl_data end
 """
     _get_raw_pwl_data(direction, container, ComponentType, name, cost_data, time)
 
-Return `(breakpoint_cost, slope_cost, unit_system)`. The IS-backed TS method
+Return `(breakpoint_cost, slope_cost)` in natural units. The IS-backed TS method
 lives here in IOM; the static `CostCurve{PiecewiseIncrementalCurve}` method is
 provided by POM.
 """
@@ -248,14 +248,13 @@ _offer_step_span(::Any) = Inf
 
 # TS-backed PWL data retrieval. Parameter containers for Slope/Breakpoint are
 # allocated with axes `(names, segments|points, times)`, so the 3-index lookup
-# mirrors `_fill_pwl_data_from_arrays!`. The parameter values carry the units
-# declared on the `CostCurve`, so we forward those through (don't hardcode).
+# mirrors `_fill_pwl_data_from_arrays!`.
 function _get_raw_pwl_data(
     dir::OfferDirection,
     container::OptimizationContainer,
     ::Type{T},
     name::String,
-    cost_data::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
+    ::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve},
     time::Int;
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {T <: IS.InfrastructureSystemsComponent}
@@ -280,7 +279,7 @@ function _get_raw_pwl_data(
     end
 
     @assert_op length(slope_cost_component) == length(breakpoint_cost_component) - 1
-    return breakpoint_cost_component, slope_cost_component, IS.get_power_units(cost_data)
+    return breakpoint_cost_component, slope_cost_component
 end
 
 """
@@ -301,10 +300,7 @@ function add_variable_cost_to_objective!(
     C <: IS.InfrastructureSystemsComponent,
     U <: AbstractDeviceFormulation,
 }
-    power_units = IS.get_power_units(cost_function)
-    device_base_power = get_base_power(component)
-    _add_ts_incremental_pwl_cost!(dir, container, component, T, U,
-        power_units, device_base_power)
+    _add_ts_incremental_pwl_cost!(dir, container, component, T, U)
     return
 end
 
@@ -320,8 +316,6 @@ function _add_ts_incremental_pwl_cost!(
     component::C,
     ::Type{T},
     ::Type{U},
-    power_units::IS.AbstractUnitSystem,
-    device_base_power::Float64,
 ) where {
     D <: OfferDirection,
     C <: IS.InfrastructureSystemsComponent,
@@ -355,8 +349,7 @@ function _add_ts_incremental_pwl_cost!(
     for t in get_time_steps(container)
         _fill_pwl_data_from_arrays!(
             slopes, breakpoints, slope_arr, slope_mult, bp_arr, bp_mult,
-            seg_axis, point_axis, name, t,
-            power_units, model_base_power, device_base_power)
+            seg_axis, point_axis, name, t, model_base_power)
         pwl_vars = add_pwl_variables_delta!(
             container, W, C, name, t, n_segments; upper_bound = Inf)
         add_pwl_constraint_delta!(
@@ -392,9 +385,7 @@ function _fill_pwl_data_from_arrays!(
     point_axis::UnitRange{Int64},
     name::String,
     time::Int,
-    power_units::IS.AbstractUnitSystem,
     model_base_power::Float64,
-    device_base_power::Float64,
 )
     # Read raw values from parameter arrays
     for (i, seg) in enumerate(seg_axis)
@@ -404,8 +395,8 @@ function _fill_pwl_data_from_arrays!(
         breakpoints[i] = bp_arr[name, pt, time] * bp_mult[name, pt, time]
     end
     # Convert to system per-unit
-    converted_bp, converted_slopes = get_piecewise_curve_per_system_unit(
-        breakpoints, slopes, power_units, model_base_power, device_base_power)
+    converted_bp, converted_slopes =
+        get_piecewise_curve_per_system_unit(breakpoints, slopes, model_base_power)
     copyto!(slopes, converted_slopes)
     copyto!(breakpoints, converted_bp)
     return

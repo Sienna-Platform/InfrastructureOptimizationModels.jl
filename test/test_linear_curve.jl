@@ -58,7 +58,7 @@ function setup_container_with_variables(
 end
 
 @testset "Linear Curve Objective Functions" begin
-    @testset "add_proportional_cost_invariant! with NATURAL_UNITS" begin
+    @testset "add_proportional_cost_invariant! normalizes to system base" begin
         time_steps = 1:4
         device = make_mock_thermal("gen1"; base_power = 50.0)
         container =
@@ -72,7 +72,6 @@ end
             TestActivePowerVariable,
             device,
             25.0,
-            IS.NaturalUnit(),
             1.0,
             IOM.ProductionCostExpression,
         )
@@ -97,14 +96,13 @@ end
                 resolution = Dates.Minute(15),
             )
 
-        # Cost: 20.0 $/MWh in system base, multiplier = 2.0
+        # Cost: 0.2 $/MWh, i.e. 20.0 $/p.u.h at 100 MW system base; multiplier = 2.0
         # dt = 0.25, so coefficient = 20.0 * 2.0 * 0.25 = 10.0
         InfrastructureOptimizationModels.add_proportional_cost_invariant!(
             container,
             TestActivePowerVariable,
             device,
-            20.0,
-            IS.SystemBaseUnit(),
+            0.2,
             2.0,
             IOM.ProductionCostExpression,
         )
@@ -130,7 +128,6 @@ end
             TestActivePowerVariable,
             device,
             0.0,
-            IS.NaturalUnit(),
             1.0,
             IOM.ProductionCostExpression,
         )
