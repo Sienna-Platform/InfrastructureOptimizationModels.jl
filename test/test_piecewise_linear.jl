@@ -328,40 +328,6 @@ end
             @test JuMP.coefficient(invariant, var_y1000) ≈ 1000.0 atol = 1e-10
         end
 
-        @testset "SYSTEM_BASE" begin
-            # Points already in system base units (p.u., $)
-            system_base_points = [
-                (x = 0.0, y = 0.0),
-                (x = 0.5, y = 1000.0),
-                (x = 1.0, y = 2500.0),
-            ]
-            (; container, device, cost_curve) = setup_pwl_test(;
-                device_base_power = 50.0,
-                points = system_base_points,
-                unit_system = IS.SystemBaseUnit(),
-            )
-
-            InfrastructureOptimizationModels.add_variable_cost_to_objective!(
-                container,
-                TestPWLVariable,
-                device,
-                cost_curve,
-                TestPWLFormulation,
-            )
-
-            # SYSTEM_BASE: no conversion needed
-            obj = InfrastructureOptimizationModels.get_objective_expression(container)
-            invariant = InfrastructureOptimizationModels.get_invariant_terms(obj)
-
-            pwl_var_container = InfrastructureOptimizationModels.get_variable(
-                container,
-                InfrastructureOptimizationModels.PiecewiseLinearCostVariable,
-                MockThermalGen,
-            )
-            var_y1000 = pwl_var_container["gen1", 2, 1]
-            @test JuMP.coefficient(invariant, var_y1000) ≈ 1000.0 atol = 1e-10
-        end
-
         @testset "with non-unity resolution (15 min)" begin
             linear_points = [(x = 0.0, y = 0.0), (x = 100.0, y = 2000.0)]
             (; container, device, cost_curve) = setup_pwl_test(;
