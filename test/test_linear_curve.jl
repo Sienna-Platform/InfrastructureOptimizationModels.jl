@@ -143,7 +143,7 @@ end
     end
 
     @testset "add_variable_cost_to_objective! with CostCurve{LinearCurve}" begin
-        @testset "NATURAL_UNITS" begin
+        @testset "30 \$/MWh" begin
             time_steps = 1:3
             # Device with 50 MW base power, system has 100 MW base
             device = make_mock_thermal("gen1"; base_power = 50.0)
@@ -153,11 +153,8 @@ end
                 resolution = Dates.Hour(1),
             )
 
-            # Cost: 30 $/MWh in natural units (MW)
-            cost_curve = IS.CostCurve(
-                IS.LinearCurve(30.0),
-                IS.NaturalUnit(),
-            )
+            # Cost: 30 $/MWh
+            cost_curve = IS.CostCurve(IS.LinearCurve(30.0))
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
                 container,
@@ -167,7 +164,7 @@ end
                 TestLinearFormulation,
             )
 
-            # NATURAL_UNITS: cost is in $/MW, variable is in p.u. (system base)
+            # Cost is in $/MWh, variable is in p.u. (system base)
             # proportional_term_per_unit = 30.0 * 100.0 (system_base) = 3000.0
             # With dt = 1.0, coefficient = 3000.0
             expected_coef = 30.0 * 100.0 * 1.0
@@ -180,7 +177,7 @@ end
             )
         end
 
-        @testset "SYSTEM_BASE" begin
+        @testset "0.3 \$/MWh" begin
             time_steps = 1:3
             device = make_mock_thermal("gen1"; base_power = 50.0)
             container = setup_container_with_variables(
@@ -189,11 +186,8 @@ end
                 resolution = Dates.Hour(1),
             )
 
-            # Cost: 30 $/p.u.h in system base units
-            cost_curve = IS.CostCurve(
-                IS.LinearCurve(30.0),
-                IS.SystemBaseUnit(),
-            )
+            # Cost: 0.3 $/MWh, i.e. 30 $/p.u.h at the 100 MW system base
+            cost_curve = IS.CostCurve(IS.LinearCurve(0.3))
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
                 container,
@@ -203,8 +197,7 @@ end
                 TestLinearFormulation,
             )
 
-            # SYSTEM_BASE: cost is already in $/p.u., no conversion needed
-            # proportional_term_per_unit = 30.0
+            # proportional_term_per_unit = 0.3 * 100.0 = 30.0
             # With dt = 1.0, coefficient = 30.0
             expected_coef = 30.0 * 1.0
             @test verify_objective_coefficients(
@@ -216,7 +209,7 @@ end
             )
         end
 
-        @testset "DEVICE_BASE" begin
+        @testset "0.6 \$/MWh" begin
             time_steps = 1:3
             # Device with 50 MW base power, system has 100 MW base
             device = make_mock_thermal("gen1"; base_power = 50.0)
@@ -226,11 +219,8 @@ end
                 resolution = Dates.Hour(1),
             )
 
-            # Cost: 30 $/p.u.h in device base units
-            cost_curve = IS.CostCurve(
-                IS.LinearCurve(30.0),
-                IS.ComponentBaseUnit(),
-            )
+            # Cost: 0.6 $/MWh, i.e. 30 $ per device p.u. (50 MW) per hour
+            cost_curve = IS.CostCurve(IS.LinearCurve(0.6))
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
                 container,
@@ -240,11 +230,9 @@ end
                 TestLinearFormulation,
             )
 
-            # DEVICE_BASE: cost is in $/device_p.u., variable is in system p.u.
-            # To convert: cost * (system_base / device_base)
-            # proportional_term_per_unit = 30.0 * (100/50) = 60.0
+            # Only the system base enters: 0.6 * 100.0 = 60.0
             # With dt = 1.0, coefficient = 60.0
-            expected_coef = 30.0 * (100.0 / 50.0) * 1.0
+            expected_coef = 60.0 * 1.0
             @test verify_objective_coefficients(
                 container,
                 TestActivePowerVariable,
@@ -264,11 +252,8 @@ end
                 resolution = Dates.Minute(15),
             )
 
-            # Cost: 20 $/MWh in natural units
-            cost_curve = IS.CostCurve(
-                IS.LinearCurve(20.0),
-                IS.NaturalUnit(),
-            )
+            # Cost: 20 $/MWh
+            cost_curve = IS.CostCurve(IS.LinearCurve(20.0))
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
                 container,
@@ -278,7 +263,7 @@ end
                 TestLinearFormulation,
             )
 
-            # NATURAL_UNITS with 15-min resolution:
+            # 15-min resolution:
             # proportional_term_per_unit = 20.0 * 100.0 = 2000.0
             # dt = 15 minutes / 60 = 0.25 hours
             # coefficient = 2000.0 * 0.25 = 500.0
@@ -308,7 +293,6 @@ end
         # Total cost: 8.0 * 5.0 = 40.0 $/MWh
         fuel_curve = IS.FuelCurve(
             IS.LinearCurve(8.0),  # MMBTU/MWh
-            IS.NaturalUnit(),
             5.0,  # $/MMBTU
         )
 
@@ -320,7 +304,7 @@ end
             TestLinearFormulation,
         )
 
-        # NATURAL_UNITS: fuel_curve_per_unit = 8.0 * 100.0 (system_base) = 800.0
+        # fuel_curve_per_unit = 8.0 * 100.0 (system_base) = 800.0
         # Total cost coefficient = fuel_curve_per_unit * fuel_cost * dt
         #                        = 800.0 * 5.0 * 1.0 = 4000.0
         expected_coef = 8.0 * 100.0 * 5.0 * 1.0
@@ -385,11 +369,8 @@ end
         # Store-minted in production; fabricated here because this path reads the price
         # from the pre-populated FuelCostParameter, never from a store.
         ts_key = IS.TimeSeriesKey{IS.SingleTimeSeries{Float64}}(1)
-        fuel_curve = IS.FuelCurve(
-            IS.LinearCurve(proportional_term),
-            IS.SystemBaseUnit(),  # already normalized
-            ts_key,
-        )
+        # 0.08 MMBTU/MWh = `proportional_term` MMBTU/p.u.h at the 100 MW system base.
+        fuel_curve = IS.FuelCurve(IS.LinearCurve(0.08), ts_key)
 
         IOM.add_variable_cost_to_objective!(
             container,

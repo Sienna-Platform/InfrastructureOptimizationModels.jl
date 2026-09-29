@@ -223,7 +223,7 @@ end
     end
 
     @testset "add_variable_cost_to_objective! with CostCurve{QuadraticCurve}" begin
-        @testset "NATURAL_UNITS" begin
+        @testset "0.5 \$/MW²h, 20 \$/MWh" begin
             time_steps = 1:3
             device = make_mock_thermal(
                 "gen1";
@@ -237,7 +237,6 @@ end
             # Cost: quadratic=0.5, linear=20 in natural units (MW)
             cost_curve = IS.CostCurve(
                 IS.QuadraticCurve(0.5, 20.0, 0.0),  # (quadratic, linear, constant)
-                IS.NaturalUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -248,7 +247,7 @@ end
                 TestQuadraticFormulation,
             )
 
-            # NATURAL_UNITS conversion:
+            # Conversion to system base:
             # linear_per_unit = linear * system_base = 20.0 * 100.0 = 2000.0
             # quadratic_per_unit = quadratic * system_base^2 = 0.5 * 100.0^2 = 5000.0
             # With dt = 1.0
@@ -265,7 +264,7 @@ end
             )
         end
 
-        @testset "SYSTEM_BASE" begin
+        @testset "0.0002 \$/MW²h, 0.3 \$/MWh" begin
             time_steps = 1:3
             device = make_mock_thermal(
                 "gen1";
@@ -276,11 +275,8 @@ end
                 time_steps, device; resolution = Dates.Hour(1),
             )
 
-            # Cost in system base units - no conversion needed
-            cost_curve = IS.CostCurve(
-                IS.QuadraticCurve(2.0, 30.0, 0.0),
-                IS.SystemBaseUnit(),
-            )
+            # Cost: 2.0 $/p.u.²h and 30 $/p.u.h at the 100 MW system base
+            cost_curve = IS.CostCurve(IS.QuadraticCurve(0.0002, 0.3, 0.0))
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
                 container,
@@ -290,7 +286,7 @@ end
                 TestQuadraticFormulation,
             )
 
-            # SYSTEM_BASE: no conversion
+            # linear: 0.3 * 100.0 = 30.0; quadratic: 0.0002 * 100.0^2 = 2.0
             expected_linear = 30.0 * 1.0
             expected_quadratic = 2.0 * 1.0
 
@@ -304,7 +300,7 @@ end
             )
         end
 
-        @testset "DEVICE_BASE" begin
+        @testset "0.0004 \$/MW²h, 0.4 \$/MWh" begin
             time_steps = 1:3
             # Device with 50 MW base, system has 100 MW base
             device = make_mock_thermal(
@@ -316,10 +312,8 @@ end
                 time_steps, device; resolution = Dates.Hour(1),
             )
 
-            cost_curve = IS.CostCurve(
-                IS.QuadraticCurve(1.0, 20.0, 0.0),
-                IS.ComponentBaseUnit(),
-            )
+            # Cost: 1.0 $/device p.u.²h and 20 $/device p.u.h at the 50 MW device base
+            cost_curve = IS.CostCurve(IS.QuadraticCurve(0.0004, 0.4, 0.0))
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
                 container,
@@ -329,11 +323,10 @@ end
                 TestQuadraticFormulation,
             )
 
-            # DEVICE_BASE conversion:
-            # linear: cost * (system_base / device_base) = 20.0 * (100/50) = 40.0
-            # quadratic: cost * (system_base / device_base)^2 = 1.0 * (100/50)^2 = 4.0
-            expected_linear = 20.0 * (100.0 / 50.0) * 1.0
-            expected_quadratic = 1.0 * (100.0 / 50.0)^2 * 1.0
+            # Only the system base enters:
+            # linear: 0.4 * 100.0 = 40.0; quadratic: 0.0004 * 100.0^2 = 4.0
+            expected_linear = 40.0 * 1.0
+            expected_quadratic = 4.0 * 1.0
 
             @test verify_quadratic_objective_coefficients(
                 container,
@@ -357,10 +350,7 @@ end
                 time_steps, device; resolution = Dates.Minute(15),
             )
 
-            cost_curve = IS.CostCurve(
-                IS.QuadraticCurve(2.0, 40.0, 0.0),
-                IS.NaturalUnit(),
-            )
+            cost_curve = IS.CostCurve(IS.QuadraticCurve(2.0, 40.0, 0.0))
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
                 container,
@@ -370,7 +360,7 @@ end
                 TestQuadraticFormulation,
             )
 
-            # NATURAL_UNITS with 15-min resolution (dt = 0.25):
+            # 15-min resolution (dt = 0.25):
             # linear_per_unit = 40.0 * 100.0 = 4000.0, then * 0.25 = 1000.0
             # quadratic_per_unit = 2.0 * 100.0^2 = 20000.0, then * 0.25 = 5000.0
             expected_linear = 40.0 * 100.0 * 0.25
@@ -435,7 +425,6 @@ end
         # Fuel cost: 4.0 $/MMBTU
         fuel_curve = IS.FuelCurve(
             IS.QuadraticCurve(0.02, 7.0, 0.0),  # (quadratic, linear, constant)
-            IS.NaturalUnit(),
             4.0,  # $/MMBTU
         )
 
@@ -447,7 +436,7 @@ end
             TestQuadraticFormulation,
         )
 
-        # NATURAL_UNITS conversion:
+        # Conversion to system base:
         # linear_per_unit = 7.0 * 100.0 (system_base) = 700.0
         # quadratic_per_unit = 0.02 * 100.0^2 = 200.0
         # With fuel_cost = 4.0 and dt = 1.0:

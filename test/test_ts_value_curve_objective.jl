@@ -18,14 +18,12 @@ _make_pwl_forecast_key(id::Int) =
 _make_scalar_forecast_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{Float64}}(id)
 
 # Helper to create a CostCurve{TimeSeriesPiecewiseIncrementalCurve}
-function _make_ts_incremental_cost_curve(;
-    power_units::IS.AbstractUnitSystem = IS.NaturalUnit(),
-)
+function _make_ts_incremental_cost_curve()
     key = _make_pwl_forecast_key(1)
     ii_key = _make_scalar_forecast_key(2)
     iaz_key = _make_scalar_forecast_key(3)
     vc = IS.TimeSeriesPiecewiseIncrementalCurve(key, ii_key, iaz_key)
-    return IS.CostCurve(vc, power_units)
+    return IS.CostCurve(vc)
 end
 
 @testset "TimeSeriesValueCurve Objective Functions" begin
@@ -328,36 +326,23 @@ end
         end
     end
 
-    @testset "Unit system conversion" begin
-        # Use system_base_power=100, device_base_power=50 to make conversions visible.
-        # Input data (slopes and breakpoints) is in the given unit system.
-        # Expected output is always in system per-unit.
-        #
-        # NATURAL_UNITS: breakpoints in MW, slopes in $/MW
+    @testset "Conversion to system base" begin
+        # Use system_base_power=100, device_base_power=50: only the system base enters.
+        # Breakpoints in MW and slopes in $/MWh normalize to system per-unit:
         #   bp_pu = bp / system_base   slopes_pu = slopes * system_base
-        # DEVICE_BASE: breakpoints in device p.u., slopes in $/device_p.u.
-        #   ratio = device_base / system_base = 0.5
-        #   bp_pu = bp * ratio          slopes_pu = slopes / ratio
-        # SYSTEM_BASE: already in system p.u.
-        #   bp_pu = bp                  slopes_pu = slopes
 
         system_base = 100.0
         device_base = 50.0
         time_steps = 1:1
         names = ["gen1"]
-        raw_slopes = [10.0, 20.0]
-        raw_breakpoints = [0.0, 50.0, 100.0]
 
-        for (unit_system, expected_slope_factor, expected_bp_factor) in [
-            (IS.NaturalUnit(), system_base, 1.0 / system_base),
-            (
-                IS.ComponentBaseUnit(),
-                1.0 / (device_base / system_base),
-                device_base / system_base,
-            ),
-            (IS.SystemBaseUnit(), 1.0, 1.0),
+        # (slopes in $/MWh, breakpoints in MW, expected slopes in $/p.u.h)
+        for (raw_slopes, raw_breakpoints, expected_slopes) in [
+            ([10.0, 20.0], [0.0, 50.0, 100.0], [1000.0, 2000.0]),
+            ([0.2, 0.4], [0.0, 2500.0, 5000.0], [20.0, 40.0]),
+            ([0.1, 0.2], [0.0, 5000.0, 10000.0], [10.0, 20.0]),
         ]
-            @testset "$unit_system" begin
+            @testset "slopes $raw_slopes" begin
                 container = make_test_container(time_steps; base_power = system_base)
                 for t in time_steps
                     add_test_variable!(
@@ -372,7 +357,7 @@ end
                 setup_delta_pwl_parameters!(
                     container, MockThermalGen, names, slopes_mat, bp_mat, time_steps)
 
-                cost_fn = _make_ts_incremental_cost_curve(; power_units = unit_system)
+                cost_fn = _make_ts_incremental_cost_curve()
                 device = make_mock_thermal("gen1"; base_power = device_base)
 
                 IOM.add_variable_cost_to_objective!(
@@ -387,11 +372,10 @@ end
                 obj = IOM.get_objective_expression(container)
                 variant = IOM.get_variant_terms(obj)
 
-                for (k, s) in enumerate(raw_slopes)
+                for (k, s) in enumerate(expected_slopes)
                     coeff = JuMP.coefficient(
                         variant, delta_var_container[("gen1", k, 1)])
-                    expected = s * expected_slope_factor * dt
-                    @test isapprox(coeff, expected; atol = 1e-10)
+                    @test isapprox(coeff, s * dt; atol = 1e-10)
                 end
             end
         end

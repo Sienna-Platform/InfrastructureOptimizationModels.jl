@@ -89,7 +89,6 @@ function setup_pwl_test(;
     device_base_power = 100.0,
     resolution = Dates.Hour(1),
     points = CONVEX_PWL_POINTS,
-    unit_system = IS.NaturalUnit(),
     fuel_cost = nothing,  # If set, creates FuelCurve instead of CostCurve
 )
     # When fuel_cost is provided, the device's operation_cost must also have it
@@ -108,16 +107,9 @@ function setup_pwl_test(;
     pwl_data = IS.PiecewiseLinearData(points)
 
     if isnothing(fuel_cost)
-        cost_curve = IS.CostCurve(
-            IS.InputOutputCurve(pwl_data),
-            unit_system,
-        )
+        cost_curve = IS.CostCurve(IS.InputOutputCurve(pwl_data))
     else
-        cost_curve = IS.FuelCurve(
-            IS.InputOutputCurve(pwl_data),
-            unit_system,
-            fuel_cost,
-        )
+        cost_curve = IS.FuelCurve(IS.InputOutputCurve(pwl_data), fuel_cost)
     end
 
     return (; container, device, cost_curve, pwl_data)
@@ -292,11 +284,10 @@ end
             (x = 100.0, y = 2500.0),
         ]
 
-        @testset "NATURAL_UNITS" begin
+        @testset "x normalized to system base" begin
             (; container, device, cost_curve) = setup_pwl_test(;
                 device_base_power = 50.0,
                 points = natural_points,
-                unit_system = IS.NaturalUnit(),
             )
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
@@ -315,7 +306,7 @@ end
             )
             @test !isnothing(pwl_var_container)
 
-            # NATURAL_UNITS: x_coords / base_power, y_coords unchanged
+            # x_coords / system base power, y_coords unchanged
             # For 100 MW system base, points become (0, 0), (0.5, 1000), (1.0, 2500)
             # dt = 1.0
             obj = InfrastructureOptimizationModels.get_objective_expression(container)
@@ -437,10 +428,7 @@ end
             [0.0, 50.0, 100.0],     # x_coords
             [20.0, 30.0],           # slopes
         )
-        cost_curve = IS.CostCurve(
-            incremental_curve,  # Already an IncrementalCurve
-            IS.NaturalUnit(),
-        )
+        cost_curve = IS.CostCurve(incremental_curve)
 
         InfrastructureOptimizationModels.add_variable_cost_to_objective!(
             container,
@@ -774,11 +762,7 @@ end
             [0.0, 50.0, 100.0],
             [8.0, 10.0],
         )
-        fuel_curve = IS.FuelCurve(
-            incremental_curve,
-            IS.NaturalUnit(),
-            fuel_cost,
-        )
+        fuel_curve = IS.FuelCurve(incremental_curve, fuel_cost)
         op_cost = MockOperationCost(0.0, false, fuel_cost)
         device =
             make_mock_thermal("gen_fc_inc"; base_power = 100.0, operation_cost = op_cost)
