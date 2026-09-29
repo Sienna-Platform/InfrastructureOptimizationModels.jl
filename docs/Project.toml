@@ -9,7 +9,8 @@ Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 
 [sources]
-InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "IS4"}
+# rh/natural-unit-costs set: revert to the base branches once these merge.
+InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl.git", rev = "rh/natural-unit-costs"}
 
 [compat]
 Documenter = "^1.0"
