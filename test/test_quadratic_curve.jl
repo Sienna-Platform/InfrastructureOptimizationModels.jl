@@ -312,7 +312,7 @@ end
                 time_steps, device; resolution = Dates.Hour(1),
             )
 
-            # Cost: 1.0 $/device p.u.²h and 20 $/device p.u.h at the 50 MW device base
+            # Cost: 0.0004 $/MW²h and 0.4 $/MWh on a 50 MW device
             cost_curve = IS.CostCurve(IS.QuadraticCurve(0.0004, 0.4, 0.0))
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(

@@ -219,7 +219,7 @@ end
                 resolution = Dates.Hour(1),
             )
 
-            # Cost: 0.6 $/MWh, i.e. 30 $ per device p.u. (50 MW) per hour
+            # Cost: 0.6 $/MWh on a 50 MW device
             cost_curve = IS.CostCurve(IS.LinearCurve(0.6))
 
             InfrastructureOptimizationModels.add_variable_cost_to_objective!(
