@@ -556,6 +556,7 @@ export InitialConditionsData
 # Time Mapping
 export TimeMapping, OperationalPeriods, InvestmentIntervals
 export get_consecutive_slices, get_operational_indexes, get_feasibility_indexes
+export get_operational_weights
 export get_all_indexes, get_time_stamps, get_investment_time_stamps
 export get_inverse_invest_mapping, get_base_date
 export get_total_period_count, get_total_operation_period_count

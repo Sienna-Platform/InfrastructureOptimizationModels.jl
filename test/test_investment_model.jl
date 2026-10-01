@@ -116,4 +116,8 @@ end
     @test IOM.get_total_investment_period_count(tmap) == 1
     @test IOM.get_base_date(tmap) == Date(2030, 1, 1)
     @test IOM.get_total_operation_period_count(tmap) == 2
+    # Operational weights from operation_model.series_weights flow onto the TimeMapping,
+    # reachable both from the mapping and via the container convenience accessor.
+    @test IOM.get_operational_weights(tmap) == [1.0]
+    @test IOM.get_operational_weights(container) == [1.0]
 end

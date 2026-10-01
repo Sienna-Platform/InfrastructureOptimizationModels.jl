@@ -83,4 +83,31 @@ using Dates
         feas = Vector{Vector{DateTime}}()
         @test_throws Exception IOM.TimeMapping(invest, ops, feas)
     end
+
+    @testset "Operational weights" begin
+        invest = [(Date(2030, 1, 1), Date(2030, 12, 31))]
+        ops = [[DateTime(2030, 1, 1, 0)], [DateTime(2030, 6, 1, 0)]]
+        feas = Vector{Vector{DateTime}}()
+
+        # Default: uniform 1.0 per operational slice.
+        tm = IOM.TimeMapping(invest, ops, feas)
+        @test IOM.get_operational_weights(tm) == [1.0, 1.0]
+
+        # Explicit weights are stored and indexed by operational slice.
+        tm_w = IOM.TimeMapping(invest, ops, feas; operational_weights = [90.0, 275.0])
+        w = IOM.get_operational_weights(tm_w)
+        @test w == [90.0, 275.0]
+        @test [w[op_ix] for op_ix in IOM.get_operational_indexes(tm_w)] == [90.0, 275.0]
+
+        # Empty mapping has empty weights.
+        @test isempty(IOM.get_operational_weights(IOM.TimeMapping(nothing)))
+
+        # Length mismatch is rejected.
+        @test_throws ErrorException IOM.TimeMapping(
+            invest,
+            ops,
+            feas;
+            operational_weights = [1.0],
+        )
+    end
 end

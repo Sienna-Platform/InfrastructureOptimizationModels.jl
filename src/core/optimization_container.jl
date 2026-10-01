@@ -197,14 +197,19 @@ get_objective_expression(container::OptimizationContainer) = container.objective
 get_serialization_task(container::OptimizationContainer) = container.serialization_task
 
 # Generic (domain-neutral) time abstraction stored directly on the container.
-# Investment-specific data (financial parameters, operational weights) lives in the
-# downstream package (e.g. PSINV), not in this container.
+# Financial parameters (base year, discount/inflation/interest rates) are domain-specific
+# and live in the downstream package (e.g. PSINV), not in this container.
 get_time_mapping(container::OptimizationContainer) = container.time_mapping
 
 function set_time_mapping!(container::OptimizationContainer, time_mapping::TimeMapping)
     container.time_mapping = time_mapping
     return
 end
+
+# Operational (representative-period) weights are per-operational-slice metadata carried
+# by the TimeMapping; expose them off the container for convenience.
+get_operational_weights(container::OptimizationContainer) =
+    get_operational_weights(get_time_mapping(container))
 
 function set_serialization_task!(container::OptimizationContainer, task::Task)
     container.serialization_task = task
@@ -399,14 +404,15 @@ function init_optimization_container!(
     time_map = TimeMapping(
         capital_model.investment_years,
         operation_model.representative_series,
-        feasibility_model.sample_periods,
+        feasibility_model.sample_periods;
+        operational_weights = operation_model.series_weights,
     )
 
     set_time_mapping!(container, time_map)
 
-    # NOTE: Operational weights and financial parameters (base year, discount/inflation/
-    # interest rates) are domain-specific and are stored by the downstream package
-    # (e.g. PSINV), not on this domain-neutral container.
+    # NOTE: Financial parameters (base year, discount/inflation/interest rates) are
+    # domain-specific and are stored by the downstream package (e.g. PSINV), not on this
+    # domain-neutral container.
 
     stats = get_optimizer_stats(container)
     stats.detailed_stats = get_detailed_optimizer_stats(settings)
