@@ -64,6 +64,17 @@ get_feasibility_formulation(
     C <: FeasibilityTechnologyFormulation,
 } = C
 
+"""
+Default (empty) attributes for a technology model. Override per
+`(technology_type, investment, operations, feasibility)` formulation tuple where needed.
+"""
+get_default_attributes(
+    ::Type{<:IS.InfrastructureSystemsComponent},
+    ::Type{<:InvestmentTechnologyFormulation},
+    ::Type{<:OperationsTechnologyFormulation},
+    ::Type{<:FeasibilityTechnologyFormulation},
+) = Dict{String, Any}()
+
 function TechnologyModel(
     ::Type{D},
     ::Type{A},
