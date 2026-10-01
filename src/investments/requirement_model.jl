@@ -2,17 +2,6 @@
 Establishes the model for a particular requirement (policy) specified by type and
 formulation. Mirrors `ServiceModel` in PowerSimulations.jl and `TechnologyModel`
 in this package.
-
-# Arguments
-
-  - `::Type{D}`: A `PSIP.Requirement` subtype (e.g. `PSIP.EnergyShareRequirements`)
-  - `::Type{B}`: A `RequirementFormulation` subtype (e.g. `RequirementEnergyShare`)
-
-# Example
-
-```julia
-requirement = RequirementModel(PSIP.EnergyShareRequirements, RequirementEnergyShare)
-```
 """
 mutable struct RequirementModel{
     D <: IS.InfrastructureSystemsComponent,

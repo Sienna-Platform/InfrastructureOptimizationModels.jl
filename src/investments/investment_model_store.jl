@@ -50,7 +50,7 @@ function initialize_storage!(
             end
             @debug "Adding $(encode_key_as_string(key)) to InvestmentModelStore" _group =
                 LOG_GROUP_MODEL_STORE
-            column_names = get_column_names(key, field_container)
+            column_names = get_column_names_from_axis_array(key, field_container)
             data = OrderedDict{Dates.DateTime, DenseAxisArray{Float64, 2}}()
             data[base_timestamp] =
                 fill!(DenseAxisArray{Float64}(undef, column_names..., 1:count), NaN)
@@ -81,7 +81,7 @@ end
 
 function get_column_names(store::InvestmentModelStore, key::OptimizationContainerKey)
     container = getfield(store, get_store_container_type(key))
-    return get_column_names(key, first(values(container[key])))
+    return get_column_names_from_axis_array(key, first(values(container[key])))
 end
 
 is_operation_entry(::Type{<:OperationsExpressionType}) = true

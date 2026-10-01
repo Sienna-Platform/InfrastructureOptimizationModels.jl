@@ -16,7 +16,9 @@ function InvestmentModel{M}(
     settings::Settings,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
 ) where {M <: AbstractOptimizationProblem}
-    internal = ModelInternal(OptimizationContainer(portfolio, settings, jump_model))
+    internal = ModelInternal(
+        OptimizationContainer(portfolio, settings, jump_model, IS.SingleTimeSeries),
+    )
 
     model = InvestmentModel{M}(
         :CEM,

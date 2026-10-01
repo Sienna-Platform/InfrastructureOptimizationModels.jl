@@ -1,4 +1,11 @@
-struct InvestmentIntervals
+# Can also use abstract super types, goal is to have the container mapping the different time intervals
+# Can also be applied to things like day-ahead and real-time operational periods
+
+# Naming needs to reflects the different time scales (high scale, high resolution, etc.)
+
+# HybridSystems can be a good example of the markets stuff
+
+struct InvestmentIntervals #Generalize these terms for any non-continuous time models
     time_stamps::Vector{NTuple{2, Dates.Date}}
     map_to_operational_slices::Dict{Int, Vector{Int}}
     map_to_feasibility_slices::Dict{Int, Vector{Int}}
@@ -30,6 +37,8 @@ function OperationalPeriods(::Nothing)
     )
 end
 
+# How do we know if a quantity is in the upper or lower level of the time resolution?
+# Also generalize the storage and the mapping between the layers
 struct TimeMapping
     investment::InvestmentIntervals
     operation::OperationalPeriods

@@ -119,6 +119,12 @@ function run_tests()
                     # standard_variables_expressions.jl: low complexity
                     # time_series_parameter_types.jl: low complexity
 
+                    # --- investments/ subfolder + core/time_mapping.jl ---
+                    include(joinpath(TEST_DIR, "test_time_mapping.jl"))
+                    include(joinpath(TEST_DIR, "test_investment_models.jl"))
+                    include(joinpath(TEST_DIR, "test_investment_model_store.jl"))
+                    include(joinpath(TEST_DIR, "test_investment_model.jl"))
+
                     # --- objective_function/ subfolder ---
                     # import_export.jl: commented out
                     include(joinpath(TEST_DIR, "test_cost_term_helpers.jl"))
