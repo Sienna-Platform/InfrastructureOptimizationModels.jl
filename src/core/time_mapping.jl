@@ -25,6 +25,10 @@ struct OperationalPeriods
     inverse_invest_mapping::Vector{Int}
     feasibility_indexes::Vector{Int}
     operational_indexes::Vector{Int}
+    # Representative-period weights, one per operational slice, indexed by
+    # `operational_indexes`. Encodes how many real periods each representative slice
+    # stands for; defaults to 1.0 (no reweighting) when a model doesn't supply them.
+    operational_weights::Vector{Float64}
 end
 
 function OperationalPeriods(::Nothing)
@@ -34,6 +38,7 @@ function OperationalPeriods(::Nothing)
         Vector{Int}(),
         Vector{Int}(),
         Vector{Int}(),
+        Vector{Float64}(),
     )
 end
 
@@ -47,11 +52,19 @@ end
 function TimeMapping(
     investment_intervals::Vector{NTuple{2, Dates.Date}},
     operational_periods::Vector{Vector{Dates.DateTime}},
-    feasibility_periods::Vector{Vector{Dates.DateTime}},
+    feasibility_periods::Vector{Vector{Dates.DateTime}};
+    operational_weights::Vector{Float64} = ones(length(operational_periods)),
 )
     # TODO:
     # Validation of the dates to avoid overlaps
     # Validation of the dates to avoid gaps in the operational periods
+
+    if length(operational_weights) != length(operational_periods)
+        error(
+            "operational_weights length ($(length(operational_weights))) must match the " *
+            "number of operational slices ($(length(operational_periods)))",
+        )
+    end
 
     op_index_last_slice = length(operational_periods)
     all_operation_slices = [operational_periods; feasibility_periods]
@@ -102,6 +115,7 @@ function TimeMapping(
         inverse_invest_mapping,
         collect(range(; start = op_index_last_slice + 1, stop = total_slice_count)),
         collect(range(1, op_index_last_slice)),
+        operational_weights,
     )
 
     inv_periods = InvestmentIntervals(
@@ -115,6 +129,7 @@ end
 
 get_consecutive_slices(tm::TimeMapping) = tm.operation.consecutive_slices
 get_operational_indexes(tm::TimeMapping) = tm.operation.operational_indexes
+get_operational_weights(tm::TimeMapping) = tm.operation.operational_weights
 get_feasibility_indexes(tm::TimeMapping) = tm.operation.feasibility_indexes
 get_all_indexes(tm::TimeMapping) =
     [tm.operation.operational_indexes; tm.operation.feasibility_indexes]
