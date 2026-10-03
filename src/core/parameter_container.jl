@@ -109,58 +109,6 @@ end
 # Parameter Container - holds parameter arrays and their attributes
 #################################################################################
 
-"Reference to a product row `y - v * x == 0`."
-const ProductConstraintRef = JuMP.ConstraintRef{
-    JuMP.Model,
-    MOI.ConstraintIndex{MOI.ScalarAffineFunction{Float64}, MOI.EqualTo{Float64}},
-    JuMP.ScalarShape,
-}
-
-"""
-The coefficients one LHS parameter writes, stored column-wise so each refresh reuses the same
-vectors. Entry `i` sets `constraints[i]`'s normalized coefficient on `variables[i]` to
-`-(parameter[param_rows[i], time_steps[i]] * multiplier[mult_rows[i], time_steps[i]])`. The rows
-index the underlying dense storage of the parameter container the bindings are filed under;
-`coefficients` is the refresh buffer.
-"""
-struct CoefficientBindings
-    constraints::Vector{ProductConstraintRef}
-    variables::Vector{JuMP.VariableRef}
-    param_rows::Vector{Int}
-    mult_rows::Vector{Int}
-    time_steps::Vector{Int}
-    coefficients::Vector{Float64}
-end
-
-CoefficientBindings() = CoefficientBindings(
-    ProductConstraintRef[],
-    JuMP.VariableRef[],
-    Int[],
-    Int[],
-    Int[],
-    Float64[],
-)
-
-Base.length(bindings::CoefficientBindings) = length(bindings.constraints)
-Base.isempty(bindings::CoefficientBindings) = isempty(bindings.constraints)
-
-function add_binding!(
-    bindings::CoefficientBindings,
-    constraint::ProductConstraintRef,
-    variable::JuMP.VariableRef,
-    param_row::Int,
-    mult_row::Int,
-    t::Int,
-)
-    push!(bindings.constraints, constraint)
-    push!(bindings.variables, variable)
-    push!(bindings.param_rows, param_row)
-    push!(bindings.mult_rows, mult_row)
-    push!(bindings.time_steps, t)
-    push!(bindings.coefficients, 0.0)
-    return
-end
-
 struct ParameterContainer{T <: AbstractArray, U <: AbstractArray, A <: ParameterAttributes}
     attributes::A
     parameter_array::T

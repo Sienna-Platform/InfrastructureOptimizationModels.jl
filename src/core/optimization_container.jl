@@ -78,7 +78,6 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     objective_function::ObjectiveFunction
     expressions::OrderedDict{ExpressionKey, JuMPArray}
     parameters::OrderedDict{ParameterKey, ParameterContainer}
-    coefficient_bindings::OrderedDict{ParameterKey, CoefficientBindings}
     primal_values_cache::PrimalValuesCache
     initial_conditions::OrderedDict{InitialConditionKey, Vector{<:InitialCondition}}
     initial_conditions_data::InitialConditionsData
@@ -130,7 +129,6 @@ function OptimizationContainer(
         ObjectiveFunction(),
         OrderedDict{ExpressionKey, JuMPArray}(),
         OrderedDict{ParameterKey, ParameterContainer}(),
-        OrderedDict{ParameterKey, CoefficientBindings}(),
         PrimalValuesCache(),
         # Match the field's exact type (UnionAll value): stored IC vectors are
         # concretely union-typed and must be kept by reference (callers fill them
@@ -377,7 +375,6 @@ function reset_optimization_model!(container::OptimizationContainer)
     for field in [:variables, :aux_variables, :constraints, :expressions, :duals]
         empty!(getfield(container, field))
     end
-    empty!(container.coefficient_bindings)
     empty!(container.evaluator_aux_var_keys)
     empty!(container.standalone_aux_var_keys)
     container.initial_conditions_data = InitialConditionsData()

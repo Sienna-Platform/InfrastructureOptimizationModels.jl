@@ -333,10 +333,8 @@ export OnStatusParameter
 # optimization_container.jl refactor
 # parameter container builders
 export TimeSeriesLHSParameter, LeftHandSideParameter
-export ParameterizedProductVariable, ParameterizedProductConstraint
-export add_parameterized_product_constraint!,
-    apply_coefficient_bindings!,
-    has_lhs_parameter_component
+export get_lhs_parameter_values, has_lhs_parameter_component
+export get_rebuild_model_setting, set_rebuild_model!
 export add_time_series_parameter_container!,
     add_cost_function_parameter_container!,
     add_variable_value_parameter_container!,
@@ -599,7 +597,7 @@ include("core/outputs_by_time.jl")
 # Order Required
 include("operation/problem_template.jl")
 include("core/optimization_container.jl")
-include("core/coefficient_bindings.jl")
+include("core/lhs_parameters.jl")
 include("core/dual_processing.jl")
 
 # Standard variable and expression types (after OptimizationContainer is defined)
