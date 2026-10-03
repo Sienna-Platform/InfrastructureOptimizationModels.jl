@@ -15,11 +15,6 @@ struct OnVariable <: VariableType end
 struct StartVariable <: VariableType end
 struct StopVariable <: VariableType end
 
-"Product `v * x` of an LHS parameter value `v` and a decision variable `x`."
-struct ParameterizedProductVariable <: VariableType end
-# Restates `v * x` for an award already written in its own units.
-should_write_resulting_value(::Type{ParameterizedProductVariable}) = false
-
 # Reservation Variable (used in range_constraint for reserve bounds)
 struct ReservationVariable <: VariableType end
 

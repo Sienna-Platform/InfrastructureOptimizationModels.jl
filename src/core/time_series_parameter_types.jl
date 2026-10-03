@@ -1,7 +1,8 @@
 """
 Time-series parameter whose value multiplies a decision variable. Its containers always hold
-`Float64`, and its values reach the model only through
-[`add_parameterized_product_constraint!`](@ref).
+`Float64`, and formulations read its values with [`get_lhs_parameter_values`](@ref) and write
+them into constraints as fixed coefficients. A model holding one is rebuilt every simulation
+step, so the coefficients follow the refreshed values.
 """
 abstract type TimeSeriesLHSParameter <: LeftHandSideParameter end
 

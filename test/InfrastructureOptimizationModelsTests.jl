@@ -112,7 +112,7 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_optimization_outputs.jl"))
                     include(joinpath(TEST_DIR, "test_optimizer_stats.jl"))
                     include(joinpath(TEST_DIR, "test_event_parameter_container.jl"))
-                    include(joinpath(TEST_DIR, "test_coefficient_bindings.jl"))
+                    include(joinpath(TEST_DIR, "test_lhs_parameters.jl"))
                     # TODO outputs_by_time.jl
                     # TODO service_model.jl
                     include(joinpath(TEST_DIR, "test_settings.jl"))
