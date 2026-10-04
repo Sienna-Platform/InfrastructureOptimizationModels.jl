@@ -83,7 +83,7 @@ function EmulationModel{M}(
     check_numerical_bounds = true,
     store_variable_names = false,
     system_to_file = true,
-    rebuild_model::Union{Nothing, Bool} = nothing,
+    rebuild_model = false,
     initial_time = UNSET_INI_TIME,
     time_series_cache_size::Int = IS.TIME_SERIES_CACHE_SIZE_BYTES,
 ) where {M <: AbstractOptimizationProblem}

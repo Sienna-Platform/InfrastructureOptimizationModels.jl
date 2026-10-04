@@ -16,8 +16,7 @@ struct Settings
     deserialize_initial_conditions::Bool
     export_pwl_vars::Bool
     allow_fails::Bool
-    # `nothing` until the user or a formulation's requirements decide it.
-    rebuild_model::Base.RefValue{Union{Nothing, Bool}}
+    rebuild_model::Base.RefValue{Bool}
     export_optimization_model::OptimizationModelExportFormat.Value
     store_variable_names::Bool
     system_to_file::Bool
@@ -82,7 +81,7 @@ function Settings(
     export_pwl_vars::Bool = false,
     allow_fails::Bool = false,
     check_numerical_bounds = true,
-    rebuild_model::Union{Nothing, Bool} = nothing,
+    rebuild_model::Bool = false,
     export_optimization_model = OptimizationModelExportFormat.NONE,
     store_variable_names = false,
     system_to_file = true,
@@ -115,7 +114,7 @@ function Settings(
         deserialize_initial_conditions,
         export_pwl_vars,
         allow_fails,
-        Base.RefValue{Union{Nothing, Bool}}(rebuild_model),
+        Ref(rebuild_model),
         export_optimization_model_,
         store_variable_names,
         system_to_file,
@@ -157,11 +156,7 @@ get_calculate_conflict(settings::Settings) = settings.calculate_conflict
 get_detailed_optimizer_stats(settings::Settings) = settings.detailed_optimizer_stats
 get_direct_mode_optimizer(settings::Settings) = settings.direct_mode_optimizer
 get_store_variable_names(settings::Settings) = settings.store_variable_names
-"Whether the model is rebuilt every simulation step. An unset choice means no."
-get_rebuild_model(settings::Settings) = something(settings.rebuild_model[], false)
-
-"The user's or the formulations' `rebuild_model` choice, or `nothing` while unset."
-get_rebuild_model_setting(settings::Settings) = settings.rebuild_model[]
+get_rebuild_model(settings::Settings) = settings.rebuild_model[]
 
 function set_rebuild_model!(settings::Settings, rebuild_model::Bool)
     settings.rebuild_model[] = rebuild_model

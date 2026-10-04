@@ -35,7 +35,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
     feedforwards::Vector{AbstractAffectFeedforward}
     use_slacks::Bool
     duals::Vector{DataType}
-    time_series_names::Dict{Type{<:ParameterType}, String}
+    time_series_names::Dict{Type{<:TimeSeriesParameter}, String}
     attributes::Dict{String, Any}
     # Per service: service name -> device type -> contributing devices.
     contributing_devices_map::Dict{

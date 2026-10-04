@@ -31,7 +31,7 @@ function add_time_series_parameter_container!(
     sparse = false,
     meta = CONTAINER_KEY_EMPTY_META,
 ) where {
-    T <: Union{TimeSeriesParameter, TimeSeriesLHSParameter},
+    T <: TimeSeriesParameter,
     U <: IS.InfrastructureSystemsComponent,
     V <: IS.TimeSeriesData,
 }

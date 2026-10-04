@@ -107,7 +107,7 @@ function DecisionModel{M}(
     direct_mode_optimizer = false,
     store_variable_names = false,
     system_to_file = true,
-    rebuild_model::Union{Nothing, Bool} = nothing,
+    rebuild_model = false,
     export_optimization_model = OptimizationModelExportFormat.NONE,
     check_numerical_bounds = true,
     initial_time = UNSET_INI_TIME,

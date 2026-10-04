@@ -1,15 +1,15 @@
 """
 Unit tests for left-hand-side (coefficient) parameters.
 
-An LHS parameter's value multiplies a decision variable, so formulations write it into
-constraints as a fixed number. Its containers hold `Float64` in every build mode, and a model
-holding one is rebuilt every simulation step to pick up refreshed values.
+An LHS parameter is a time series whose value multiplies a decision variable, so formulations
+write it into constraints as a fixed number. Its containers hold `Float64` in every build mode,
+and a model holding one is rebuilt every simulation step to pick up refreshed values.
 """
 
 struct MockLHSParameter <: IOM.TimeSeriesLHSParameter end
 struct MockRHSParameter <: IOM.TimeSeriesParameter end
 
-function _make_lhs_container(time_steps; rebuild_model = nothing)
+function _make_lhs_container(time_steps; rebuild_model = false)
     mock_sys = MockSystem(100.0)
     settings = IOM.Settings(
         mock_sys;
@@ -49,9 +49,9 @@ function _lhs_fixture(values::Vector{Float64}; multiplier = 0.5, recurrent = fal
 end
 
 @testset "LHS parameters" begin
-    @testset "LHS types sit under LeftHandSideParameter" begin
-        @test IOM.TimeSeriesLHSParameter <: IOM.LeftHandSideParameter
-        @test !(IOM.TimeSeriesLHSParameter <: IOM.TimeSeriesParameter)
+    @testset "LHS time series are time series parameters" begin
+        @test IOM.TimeSeriesLHSParameter <: IOM.TimeSeriesParameter
+        @test supertype(IOM.VariableValueParameter) === IOM.ParameterType
     end
 
     @testset "LHS containers hold Float64 even for recurrent solves" begin
@@ -93,25 +93,16 @@ end
         @test_throws ArgumentError IOM.get_lhs_parameter_values(container, key, "c2")
     end
 
-    @testset "rebuild_model distinguishes unset from an explicit choice" begin
-        unset = IOM.get_settings(_make_lhs_container(1:2))
-        @test IOM.get_rebuild_model_setting(unset) === nothing
-        @test IOM.get_rebuild_model(unset) === false
-
-        explicit_false = IOM.get_settings(_make_lhs_container(1:2; rebuild_model = false))
-        @test IOM.get_rebuild_model_setting(explicit_false) === false
-        @test IOM.get_rebuild_model(explicit_false) === false
-
-        explicit_true = IOM.get_settings(_make_lhs_container(1:2; rebuild_model = true))
-        @test IOM.get_rebuild_model_setting(explicit_true) === true
-        @test IOM.get_rebuild_model(explicit_true) === true
-
-        IOM.set_rebuild_model!(unset, true)
-        @test IOM.get_rebuild_model_setting(unset) === true
-        @test IOM.get_rebuild_model(unset) === true
+    @testset "rebuild_model defaults to false and can be switched on" begin
+        settings = IOM.get_settings(_make_lhs_container(1:2))
+        @test IOM.get_rebuild_model(settings) === false
+        IOM.set_rebuild_model!(settings, true)
+        @test IOM.get_rebuild_model(settings) === true
+        explicit = IOM.get_settings(_make_lhs_container(1:2; rebuild_model = true))
+        @test IOM.get_rebuild_model(explicit) === true
     end
 
-    @testset "Recurrent eltype follows the resolved rebuild setting" begin
+    @testset "Recurrent eltype follows the rebuild setting" begin
         container = _make_lhs_container(1:2)
         container.built_for_recurrent_solves = true
         @test IOM.get_param_eltype(container) == JuMP.VariableRef
@@ -120,7 +111,7 @@ end
     end
 
     @testset "ServiceModel accepts LHS keys in time_series_names" begin
-        names = Dict{Type{<:IOM.ParameterType}, String}(MockLHSParameter => "profile")
+        names = Dict{Type{<:IOM.TimeSeriesParameter}, String}(MockLHSParameter => "profile")
         model = IOM.ServiceModel(
             MockReserve{MockUp},
             MockReserveFormulation;
