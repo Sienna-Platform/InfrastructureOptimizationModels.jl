@@ -330,7 +330,7 @@ export OnStatusParameter
 # core folder exports
 # optimization_container.jl refactor
 # parameter container builders
-export TimeSeriesLHSParameter
+export LeftHandSideTimeSeriesParameter
 export get_lhs_parameter_values, has_lhs_parameter_component
 export set_rebuild_model!
 export add_time_series_parameter_container!,

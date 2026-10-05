@@ -6,7 +6,7 @@ write it into constraints as a fixed number. Its containers hold `Float64` in ev
 and a model holding one is rebuilt every simulation step to pick up refreshed values.
 """
 
-struct MockLHSParameter <: IOM.TimeSeriesLHSParameter end
+struct MockLHSParameter <: IOM.LeftHandSideTimeSeriesParameter end
 struct MockRHSParameter <: IOM.TimeSeriesParameter end
 
 function _make_lhs_container(time_steps; rebuild_model = false)
@@ -50,7 +50,7 @@ end
 
 @testset "LHS parameters" begin
     @testset "LHS time series are time series parameters" begin
-        @test IOM.TimeSeriesLHSParameter <: IOM.TimeSeriesParameter
+        @test IOM.LeftHandSideTimeSeriesParameter <: IOM.TimeSeriesParameter
         @test supertype(IOM.VariableValueParameter) === IOM.ParameterType
     end
 
@@ -123,6 +123,6 @@ end
     @testset "LHS entry points are documented" begin
         @test Base.Docs.hasdoc(IOM, :add_time_series_parameter_container!)
         @test Base.Docs.hasdoc(IOM, :get_lhs_parameter_values)
-        @test Base.Docs.hasdoc(IOM, :TimeSeriesLHSParameter)
+        @test Base.Docs.hasdoc(IOM, :LeftHandSideTimeSeriesParameter)
     end
 end

@@ -4,7 +4,7 @@ Time-series parameter whose value multiplies a decision variable. Its containers
 them into constraints as fixed coefficients. A model holding one is rebuilt every simulation
 step, so the coefficients follow the refreshed values.
 """
-abstract type TimeSeriesLHSParameter <: TimeSeriesParameter end
+abstract type LeftHandSideTimeSeriesParameter <: TimeSeriesParameter end
 
 """
 Time series parameter types for optimization models.

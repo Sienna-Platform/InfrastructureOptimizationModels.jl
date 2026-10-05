@@ -8,7 +8,7 @@ contribute a fixed coefficient chosen by the formulation.
 """
 function has_lhs_parameter_component(
     container::OptimizationContainer,
-    key::ParameterKey{<:TimeSeriesLHSParameter},
+    key::ParameterKey{<:LeftHandSideTimeSeriesParameter},
     name::AbstractString,
 )
     attributes = get_attributes(get_parameter(container, key))
@@ -22,7 +22,7 @@ rebuilt every simulation step, so each build reads the refreshed values.
 """
 function get_lhs_parameter_values(
     container::OptimizationContainer,
-    key::ParameterKey{<:TimeSeriesLHSParameter},
+    key::ParameterKey{<:LeftHandSideTimeSeriesParameter},
     name::AbstractString,
 )::Vector{Float64}
     has_lhs_parameter_component(container, key, name) ||

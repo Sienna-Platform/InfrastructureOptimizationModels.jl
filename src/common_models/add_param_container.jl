@@ -8,14 +8,17 @@ Legacy `add_param_container!` shims live in `add_param_container_shims.jl`.
 
 _time_series_param_eltype(container::OptimizationContainer, ::Type{<:TimeSeriesParameter}) =
     get_param_eltype(container)
-_time_series_param_eltype(::OptimizationContainer, ::Type{<:TimeSeriesLHSParameter}) =
+_time_series_param_eltype(
+    ::OptimizationContainer,
+    ::Type{<:LeftHandSideTimeSeriesParameter},
+) =
     Float64
 
 """
 Allocate a time-series parameter container (`TimeSeriesAttributes`). Parameter and multiplier
 arrays may have different first axes, so this is the only builder using the split-axes allocator.
 
-A [`TimeSeriesLHSParameter`](@ref) container always holds `Float64`: its values are constraint
+A [`LeftHandSideTimeSeriesParameter`](@ref) container always holds `Float64`: its values are constraint
 coefficients, never JuMP parameters.
 """
 function add_time_series_parameter_container!(
