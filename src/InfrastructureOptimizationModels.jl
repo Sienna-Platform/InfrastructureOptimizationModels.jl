@@ -13,7 +13,7 @@ import JuMP: optimizer_with_attributes
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
 import MathOptInterface
 import LinearAlgebra
-import JSON3
+import JSON
 import InfrastructureSystems
 import InfrastructureSystems.InfrastructureMatrices:
     AbstractInfrastructureNetworkMatrix, AbstractInfrastructureNetworkReductionData
