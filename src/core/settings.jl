@@ -16,7 +16,7 @@ struct Settings
     deserialize_initial_conditions::Bool
     export_pwl_vars::Bool
     allow_fails::Bool
-    rebuild_model::Bool
+    rebuild_model::Base.RefValue{Bool}
     export_optimization_model::OptimizationModelExportFormat.Value
     store_variable_names::Bool
     system_to_file::Bool
@@ -81,7 +81,7 @@ function Settings(
     export_pwl_vars::Bool = false,
     allow_fails::Bool = false,
     check_numerical_bounds = true,
-    rebuild_model = false,
+    rebuild_model::Bool = false,
     export_optimization_model = OptimizationModelExportFormat.NONE,
     store_variable_names = false,
     system_to_file = true,
@@ -114,7 +114,7 @@ function Settings(
         deserialize_initial_conditions,
         export_pwl_vars,
         allow_fails,
-        rebuild_model,
+        Ref(rebuild_model),
         export_optimization_model_,
         store_variable_names,
         system_to_file,
@@ -156,7 +156,12 @@ get_calculate_conflict(settings::Settings) = settings.calculate_conflict
 get_detailed_optimizer_stats(settings::Settings) = settings.detailed_optimizer_stats
 get_direct_mode_optimizer(settings::Settings) = settings.direct_mode_optimizer
 get_store_variable_names(settings::Settings) = settings.store_variable_names
-get_rebuild_model(settings::Settings) = settings.rebuild_model
+get_rebuild_model(settings::Settings) = settings.rebuild_model[]
+
+function set_rebuild_model!(settings::Settings, rebuild_model::Bool)
+    settings.rebuild_model[] = rebuild_model
+    return
+end
 get_export_optimization_model(settings::Settings) = settings.export_optimization_model
 get_system_to_file(settings::Settings) = settings.system_to_file
 use_time_series_cache(settings::Settings) = settings.time_series_cache_size > 0
