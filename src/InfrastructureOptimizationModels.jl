@@ -487,6 +487,10 @@ export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariabl
 # intended for these to stay internal, but needed for POM due to moving
 # add_reserve_range_constraints! into POM (because it needs FooPowerVariableLimitsConstraint)
 export UpperBound, LowerBound, BoundDirection, get_bound_direction
+export FlowDirection, FromTo, ToFrom, DirectionalMinMax
+export get_directional_value, reverse_directions, effective_limit
+export add_directional_limit_constraints!
+export validate_directional_limits, validate_directional_limit_values
 export EventParameter
 
 # External evaluation abstraction (replaces the PowerFlows-specific shims)
@@ -611,6 +615,7 @@ include("common_models/set_expression.jl")
 include("common_models/get_time_series.jl")
 # PWL interpolation methods moved to quadratic_approximations/
 include("common_models/constraint_helpers.jl")
+include("common_models/directional_limits.jl")
 include("common_models/range_constraint.jl")
 include("common_models/duration_constraints.jl")
 include("common_models/rateofchange_constraints.jl")
