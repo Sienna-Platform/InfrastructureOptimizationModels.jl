@@ -1,7 +1,7 @@
 # Key types are imported from InfrastructureSystems.Optimization in the main module:
 # - AbstractOptimizationContainer, OptimizationKeyType
 # - VariableType, ConstraintType, AuxVariableType, ParameterType, InitialConditionType, ExpressionType
-# - RightHandSideParameter, ObjectiveFunctionParameter, TimeSeriesParameter
+# - ObjectiveFunctionParameter, TimeSeriesParameter
 # - ConstructStage, ArgumentConstructStage, ModelConstructStage
 
 # Utility functions for the imported types

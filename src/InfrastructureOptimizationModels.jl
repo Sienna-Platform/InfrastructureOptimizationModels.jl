@@ -44,7 +44,6 @@ import InfrastructureSystems.Optimization:
     ParameterType,
     InitialConditionType,
     ExpressionType,
-    RightHandSideParameter,
     ObjectiveFunctionParameter,
     TimeSeriesParameter,
     ConstructStage,
@@ -341,6 +340,9 @@ export OnStatusParameter
 # core folder exports
 # optimization_container.jl refactor
 # parameter container builders
+export LeftHandSideTimeSeriesParameter
+export get_lhs_parameter_values, has_lhs_parameter_component
+export set_rebuild_model!
 export add_time_series_parameter_container!,
     add_cost_function_parameter_container!,
     add_variable_value_parameter_container!,
@@ -605,6 +607,7 @@ include("core/outputs_by_time.jl")
 # Order Required
 include("operation/problem_template.jl")
 include("core/optimization_container.jl")
+include("core/lhs_parameters.jl")
 include("core/dual_processing.jl")
 
 # Standard variable and expression types (after OptimizationContainer is defined)

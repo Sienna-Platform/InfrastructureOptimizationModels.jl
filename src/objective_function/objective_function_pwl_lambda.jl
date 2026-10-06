@@ -25,7 +25,7 @@
 ##################################################
 
 # might belong in POM, but here for now.
-abstract type VariableValueParameter <: RightHandSideParameter end
+abstract type VariableValueParameter <: ParameterType end
 """
 Parameter to define unit commitment status updated from the system state
 """
