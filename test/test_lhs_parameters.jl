@@ -181,6 +181,29 @@ end
         @test got[24] == vec(links[48, :, :])
     end
 
+    @testset "a transformed SingleTimeSeries read as Deterministic keeps its axes" begin
+        # Fresh data: the shared fixture's stored forecasts block the transform.
+        sd = IS.SystemData()
+        owner = IS.TestComponent("c1", 1)
+        IS.add_component!(sd, owner)
+        IS.add_time_series!(
+            sd,
+            owner,
+            IS.SingleTimeSeries("links", t0, Hour(1), links;
+                value_axes = [IS.TimeSeriesAxis("block", [1, 2]),
+                    IS.TimeSeriesAxis("product", ["a", "b", "c"])]),
+        )
+        IS.transform_single_time_series!(
+            sd, IS.DeterministicSingleTimeSeries, Hour(24), Hour(24))
+        container = _axes_container(t0 + Hour(24))
+        got = IOM.get_time_series_initial_values!(
+            container, IS.Deterministic, owner, "links")
+        @test length(got) == 24
+        @test eltype(first(got)) == Int64
+        @test got[1] == vec(links[25, :, :])
+        @test got[24] == vec(links[48, :, :])
+    end
+
     @testset "unaxed series are unchanged" begin
         container = _axes_container(t0)
         got = IOM.get_time_series_initial_values!(
