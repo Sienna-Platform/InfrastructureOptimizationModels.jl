@@ -205,3 +205,39 @@ end
     @test IOM.get_value_length([IS.TimeSeriesAxis("block", [1, 2]),
         IS.TimeSeriesAxis("product", ["a", "b", "c"])]) == 6
 end
+
+# Component "c1" in row "hash1" of a container with a 6-long extra axis over 2 steps.
+function _lhs_axis_fixture()
+    container = _make_lhs_container(1:2)
+    pc = IOM.add_time_series_parameter_container!(container, MockLHSParameter,
+        MockThermalGen, MockDeterministic, "links", ["hash1"], ["c1"], (1:6,), 1:2)
+    for k in 1:6, t in 1:2
+        IOM.get_parameter_array(pc)["hash1", k, t] = 10.0 * k + t
+        IOM.get_multiplier_array(pc)["c1", k, t] = 1.0
+    end
+    IOM.add_component_name!(IOM.get_attributes(pc), "c1", "hash1")
+    return container, pc, IOM.ParameterKey(MockLHSParameter, MockThermalGen)
+end
+
+@testset "LHS values of a container with an extra axis" begin
+    container, pc, key = _lhs_axis_fixture()
+    got = IOM.get_lhs_parameter_values(container, key, "c1")
+    @test got isa Matrix{Float64}
+    @test size(got) == (6, 2)
+    @test got[4, 2] == 42.0
+    IOM.get_multiplier_array(pc)["c1", 4, 2] = 0.5
+    @test IOM.get_lhs_parameter_values(container, key, "c1")[4, 2] == 21.0
+
+    axes = [IS.TimeSeriesAxis("block", [1, 2]), IS.TimeSeriesAxis("product", ["a", "b"])]
+    shaped = IOM.get_lhs_parameter_values(container, key, "c1", axes)
+    @test size(shaped) == (2, 2, 2)
+    @test shaped[2, 1, 1] == 21.0     # position 2 = block 2, product a
+    @test shaped[1, 2, 2] == 32.0     # position 3 = block 1, product b
+
+    flat, _, flat_key = _lhs_fixture([0.2, 0.4])
+    @test_throws ArgumentError IOM.get_lhs_parameter_values(flat, flat_key, "c1", axes)
+end
+
+@testset "LHS docstring covers selecting a variable" begin
+    @test occursin("selects", string(@doc IOM.LeftHandSideTimeSeriesParameter))
+end
