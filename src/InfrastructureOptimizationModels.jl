@@ -158,6 +158,7 @@ using DocStringExtensions
 # Base Models
 export DecisionModel
 export EmulationModel
+export InvestmentModel, InvestmentModelStore
 export AbstractProblemTemplate
 export ServicesModelContainer, DevicesModelContainer, BranchModelContainer
 export InitialCondition
@@ -190,6 +191,9 @@ export FixedOutput
 export get_device_cache
 export AbstractEventModel, AbstractEventKey
 export get_events, set_event_model!
+export TechnologyModel
+export RequirementModel
+export TransportModel, AbstractTransportAggregation
 
 # Parameter Container Infrastructure
 export ParameterContainer
@@ -473,6 +477,11 @@ export NetActivePower
 export DCCurrentBalance
 export HVDCPowerBalance
 
+export InvestmentExpressionType
+export OperationsExpressionType
+export FeasibilityExpressionType
+export CumulativeInvestmentExpressionType
+
 # Standard Variable Types (used in IOM infrastructure code, consumed by POM)
 export ActivePowerVariable, ActivePowerInVariable, ActivePowerOutVariable
 export PowerAboveMinimumVariable
@@ -481,6 +490,11 @@ export ReservationVariable
 export PiecewiseLinearCostVariable
 export RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown
 export DCVoltage
+
+# Standard Variable Types (used in IOM infrastructure code, consumed by PSIN)
+export InvestmentVariableType, OperationsVariableType, FeasibilityVariableType
+export BuildInvestmentVariableType
+
 # Abstract types needed by POM for type hierarchy
 export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariableType
 
@@ -517,6 +531,11 @@ export SimulationBuildStatus
 # Problem Types
 export AbstractOptimizationProblem
 
+# Technology and Requirement Formulations
+export InvestmentTechnologyFormulation,
+    OperationsTechnologyFormulation, FeasibilityTechnologyFormulation
+export RequirementFormulation
+
 # Settings and Data Types
 export Settings
 export get_warm_start
@@ -533,6 +552,19 @@ export use_time_series_cache
 export set_horizon!, set_initial_time!, set_warm_start!
 export log_values
 export InitialConditionsData
+
+# Time Mapping
+export TimeMapping, OperationalPeriods, InvestmentIntervals
+export get_consecutive_slices, get_operational_indexes, get_feasibility_indexes
+export get_operational_weights
+export get_all_indexes, get_time_stamps, get_investment_time_stamps
+export get_inverse_invest_mapping, get_base_date
+export get_total_period_count, get_total_operation_period_count
+export get_total_feasibility_period_count, get_total_investment_period_count
+export get_time_steps,
+    get_operational_time_steps, get_feasibility_time_steps, get_investment_time_steps
+export is_feasibility_empty, get_investment_map_to_operational_slices
+export get_time_mapping, set_time_mapping!
 
 # Constants
 export COST_EPSILON
@@ -594,6 +626,7 @@ include("core/outputs_by_time.jl")
 
 # Order Required
 include("operation/problem_template.jl")
+include("core/time_mapping.jl")
 include("core/optimization_container.jl")
 include("core/lhs_parameters.jl")
 include("core/dual_processing.jl")
@@ -672,6 +705,12 @@ include("operation/problem_outputs.jl")
 include("operation/time_series_interface.jl")
 include("operation/optimization_debugging.jl")
 include("operation/model_numerical_analysis_utils.jl")
+
+include("investments/technology_model.jl")
+include("investments/requirement_model.jl")
+include("investments/investment_model_store.jl")
+include("investments/investment_model.jl")
+include("investments/transport_model.jl")
 
 include("initial_conditions/calculate_initial_condition.jl")
 
