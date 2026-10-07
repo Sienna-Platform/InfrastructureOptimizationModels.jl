@@ -126,3 +126,82 @@ end
         @test Base.Docs.hasdoc(IOM, :LeftHandSideTimeSeriesParameter)
     end
 end
+
+# A real IS store: the mock time series registry holds no data.
+function _axes_fixture()
+    data = IS.SystemData()
+    component = IS.TestComponent("c1", 1)
+    IS.add_component!(data, component)
+    t0 = DateTime("2024-01-01T00:00:00")
+    links = reshape(collect(Int64, 1:(48 * 2 * 3)), 48, 2, 3)
+    IS.add_time_series!(
+        data,
+        component,
+        IS.SingleTimeSeries("links", t0, Hour(1), links;
+            value_axes = [IS.TimeSeriesAxis("block", [1, 2]),
+                IS.TimeSeriesAxis("product", ["a", "b", "c"])]),
+    )
+    shares = reshape(collect(Float64, 1:(24 * 3)), 24, 3)
+    IS.add_time_series!(
+        data,
+        component,
+        IS.Deterministic("shares",
+            Dict(t0 => shares), Hour(1), Hour(24);
+            value_axes = [IS.TimeSeriesAxis("bus", [10, 20, 30])]),
+    )
+    IS.add_time_series!(data, component,
+        IS.Deterministic("plain", Dict(t0 => collect(1.0:24.0)), Hour(1), Hour(24)))
+    return component, t0, links, shares
+end
+
+function _axes_container(t0; steps = 24)
+    container = _make_lhs_container(1:steps)
+    IOM.set_initial_time!(IOM.get_settings(container), t0)
+    return container
+end
+
+@testset "Series with value axes read as flattened steps" begin
+    component, t0, links, shares = _axes_fixture()
+
+    @testset "a Deterministic matrix gives one vector per step" begin
+        container = _axes_container(t0)
+        got = IOM.get_time_series_initial_values!(
+            container, IS.Deterministic, component, "shares")
+        @test length(got) == 24
+        @test all(got[t] == shares[t, :] for t in 1:24)
+    end
+
+    @testset "a rank-3 SingleTimeSeries is flattened column-major and keeps Int64" begin
+        container = _axes_container(t0 + Hour(24))
+        got = IOM.get_time_series_initial_values!(
+            container, IS.SingleTimeSeries, component, "links")
+        @test length(got) == 24
+        @test eltype(first(got)) == Int64
+        @test got[1] == vec(links[25, :, :])
+        @test got[24] == vec(links[48, :, :])
+    end
+
+    @testset "unaxed series are unchanged" begin
+        container = _axes_container(t0)
+        got = IOM.get_time_series_initial_values!(
+            container, IS.Deterministic, component, "plain")
+        @test collect(got) == collect(1.0:24.0)
+    end
+
+    @testset "only Deterministic and SingleTimeSeries carry value axes" begin
+        @test IOM._value_axes(
+            MockDeterministic("x", Float64[], Hour(1), DateTime("2024-01-01T00:00:00")),
+        ) === nothing
+    end
+end
+
+@testset "LHS steps are padded onto the extra axis" begin
+    @test IOM.unwrap_for_param(MockLHSParameter(), [1, 2], (1:4,)) == [1.0, 2.0, 0.0, 0.0]
+    @test IOM.unwrap_for_param(MockLHSParameter(), [1, 2], (1:4,)) isa Vector{Float64}
+    @test_throws ArgumentError IOM.unwrap_for_param(MockLHSParameter(), [1, 2, 3], (1:2,))
+    # A parameter that is not left-hand-side keeps the identity.
+    step = [1.0, 2.0]
+    @test IOM.unwrap_for_param(MockRHSParameter(), step, (1:4,)) === step
+    @test IOM.get_value_length([IS.TimeSeriesAxis("block", [1, 2]),
+        IS.TimeSeriesAxis("product", ["a", "b", "c"])]) == 6
+end
