@@ -1516,8 +1516,9 @@ _value_axes(series::Union{IS.Deterministic, IS.SingleTimeSeries}) =
 _initial_values(component, forecast, ::Nothing, initial_time, len) =
     IS.get_time_series_values(component, forecast; start_time = initial_time, len = len)
 
-# A series with value axes gives one flattened (column-major) vector per time step: the
-# layout of a parameter's positional extra axis. IS's TimeArray read holds 2 dims at most.
+# A series with value axes gives one flattened (column-major) vector per time step, so a
+# series of any rank fills a 3-D (owner, position, time) container and reuses the 3-D
+# parameter code. IS's TimeArray read holds 2 dims at most.
 function _initial_values(
     ::IS.InfrastructureSystemsComponent,
     forecast::IS.Deterministic,
