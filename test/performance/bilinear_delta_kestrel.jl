@@ -25,7 +25,7 @@ For the sequential (local + CI/CD) runner, see `bilinear_delta_local.jl`.
 include("bilinear_delta_common.jl")
 
 using ArgParse
-using JSON3
+using JSON
 using Ipopt
 using UnoSolver
 
@@ -165,9 +165,7 @@ function run_benchmark_parallel(;
         outfile =
             joinpath(res_dir, "$(SLURM_JOB_ID)_$(replace(label, " " => "_"))_R$(ref).json")
         if isfile(outfile)
-            d = open(outfile) do io
-                JSON3.read(io, Dict{String, Any})
-            end
+            d = JSON.parsefile(outfile; dicttype = Dict{String, Any})
             push!(mip_results, from_dict(d))
         else
             @warn "Missing results for $label R=$ref"
@@ -239,7 +237,7 @@ function run_worker(parsed)
 
         mkpath(dirname(outfile))
         open(outfile, "w") do io
-            JSON3.write(io, to_dict(r))
+            JSON.json(io, to_dict(r))
         end
 
         @info "Worker done: $label R=$ref status=$(r.status) obj=$(r.obj) log=$worker_log_path"
