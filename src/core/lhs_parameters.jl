@@ -16,22 +16,44 @@ function has_lhs_parameter_component(
 end
 
 """
-Per-time-step values of the LHS parameter `key` for component `name`, as parameter times
-multiplier. Formulations write these into constraints as fixed coefficients; the model is
-rebuilt every simulation step, so each build reads the refreshed values.
+Values of the LHS parameter `key` for component `name`, as parameter times multiplier: a
+vector over time steps, or a `(position, time)` matrix when the container has an extra axis.
+Formulations write these into constraints as fixed coefficients; the model is rebuilt every
+simulation step, so each build reads the refreshed values.
 """
 function get_lhs_parameter_values(
     container::OptimizationContainer,
     key::ParameterKey{<:LeftHandSideTimeSeriesParameter},
     name::AbstractString,
-)::Vector{Float64}
+)
     has_lhs_parameter_component(container, key, name) ||
         throw(ArgumentError("$key has no time series row for component $name"))
     param_container = get_parameter(container, key)
     values = get_parameter_column_refs(param_container, name)
-    multipliers = get_multiplier_array(param_container)[name, :]
-    return [values[t] * multipliers[t] for t in get_time_steps(container)]
+    multipliers = get_multiplier_array(param_container)
+    return values.data .* multipliers[expand_ixs((name,), multipliers)...].data
 end
+
+"""
+Values of the LHS parameter `key` for component `name` in the shape of its series: `(length
+of each value axis..., time)`. The container's extra axis holds each step flattened
+column-major; positions past the component's own values are padding and are dropped.
+"""
+function get_lhs_parameter_values(
+    container::OptimizationContainer,
+    key::ParameterKey{<:LeftHandSideTimeSeriesParameter},
+    name::AbstractString,
+    value_axes::Vector{IS.TimeSeriesAxis},
+)
+    values = get_lhs_parameter_values(container, key, name)
+    _check_extra_axis(values, key)
+    dims = Tuple(length(axis.labels) for axis in value_axes)
+    return reshape(values[1:get_value_length(value_axes), :], dims..., size(values, 2))
+end
+
+_check_extra_axis(::Matrix{Float64}, _) = nothing
+_check_extra_axis(::AbstractArray, key) =
+    throw(ArgumentError("$key has no extra axis to shape by value axes"))
 
 """
 Number of values in one time step of a series with `value_axes`. A left-hand-side parameter
