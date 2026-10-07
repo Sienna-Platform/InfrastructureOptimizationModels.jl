@@ -32,3 +32,30 @@ function get_lhs_parameter_values(
     multipliers = get_multiplier_array(param_container)[name, :]
     return [values[t] * multipliers[t] for t in get_time_steps(container)]
 end
+
+"""
+Number of values in one time step of a series with `value_axes`. A left-hand-side parameter
+holds each step flattened column-major along one positional extra axis, sized to the longest
+owner of its batch.
+"""
+get_value_length(value_axes::Vector{IS.TimeSeriesAxis}) =
+    prod(axis -> length(axis.labels), value_axes)
+
+# One flattened step as Float64, padded with zeros to the batch's extra axis.
+function unwrap_for_param(
+    ::LeftHandSideTimeSeriesParameter,
+    ts_elem::AbstractVector{<:Real},
+    expected_axs::Tuple{AbstractVector},
+)
+    max_len = length(only(expected_axs))
+    if length(ts_elem) > max_len
+        throw(
+            ArgumentError(
+                "A time step holds $(length(ts_elem)) values; the parameter axis has $max_len.",
+            ),
+        )
+    end
+    out = zeros(max_len)
+    copyto!(out, ts_elem)
+    return out
+end

@@ -1503,13 +1503,43 @@ function get_time_series_initial_values!(
         interval = _to_is_interval(interval),
         resolution = _to_is_resolution(resolution),
     )
-    ts_values = IS.get_time_series_values(
-        component,
-        forecast;
-        start_time = initial_time,
-        len = length(time_steps),
+    return _initial_values(
+        component, forecast, _value_axes(forecast), initial_time, length(time_steps),
     )
-    return ts_values
+end
+
+# Only these two series types carry value axes; any other forecast keeps the TimeArray read.
+_value_axes(::Any) = nothing
+_value_axes(series::Union{IS.Deterministic, IS.SingleTimeSeries}) =
+    IS.get_value_axes(series)
+
+_initial_values(component, forecast, ::Nothing, initial_time, len) =
+    IS.get_time_series_values(component, forecast; start_time = initial_time, len = len)
+
+# A series with value axes gives one flattened (column-major) vector per time step: the
+# layout of a parameter's positional extra axis. IS's TimeArray read holds 2 dims at most.
+function _initial_values(
+    ::IS.InfrastructureSystemsComponent,
+    forecast::IS.Deterministic,
+    ::Vector{IS.TimeSeriesAxis},
+    ::Dates.DateTime,
+    len::Int,
+)
+    window = only(values(IS.get_data(forecast)))
+    return [vec(collect(selectdim(window, 1, t))) for t in 1:len]
+end
+
+function _initial_values(
+    ::IS.InfrastructureSystemsComponent,
+    series::IS.SingleTimeSeries,
+    ::Vector{IS.TimeSeriesAxis},
+    initial_time::Dates.DateTime,
+    len::Int,
+)
+    first_row =
+        length(IS.get_initial_timestamp(series):IS.get_resolution(series):initial_time)
+    array = IS.get_array(series)
+    return [vec(collect(selectdim(array, 1, first_row + t - 1))) for t in 1:len]
 end
 
 """

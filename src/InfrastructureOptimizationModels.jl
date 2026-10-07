@@ -341,7 +341,7 @@ export OnStatusParameter
 # optimization_container.jl refactor
 # parameter container builders
 export LeftHandSideTimeSeriesParameter
-export get_lhs_parameter_values, has_lhs_parameter_component
+export get_lhs_parameter_values, has_lhs_parameter_component, get_value_length
 export set_rebuild_model!
 export add_time_series_parameter_container!,
     add_cost_function_parameter_container!,
