@@ -95,7 +95,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     # `UnionAll`), the unparameterized name. The constructor rejects abstract
     # types; this covers IS time series types and duck-typed mocks alike.
     default_time_series_type::Type
-    evaluations::EvaluationContainer
+    network_model::Union{Nothing, NetworkModel}
     serialization_task::Union{Nothing, Task}
 end
 
@@ -145,7 +145,7 @@ function OptimizationContainer(
         AuxVarKey[],
         OptimizationContainerMetadata(),
         T,
-        EvaluationContainer(),
+        nothing,
         nothing,
     )
 end
@@ -184,7 +184,28 @@ get_jump_model(container::OptimizationContainer) = container.JuMPmodel
 get_metadata(container::OptimizationContainer) = container.metadata
 get_optimizer_stats(container::OptimizationContainer) = container.optimizer_stats
 get_parameters(container::OptimizationContainer) = container.parameters
-get_evaluations(container::OptimizationContainer) = container.evaluations
+"""
+The `NetworkModel` the container was initialized with. Post-solve code reads network
+state (evaluators, the derived network matrices) through it.
+"""
+function get_network_model(container::OptimizationContainer)
+    network_model = container.network_model
+    if isnothing(network_model)
+        error(
+            "The OptimizationContainer has no NetworkModel. " *
+            "Call init_optimization_container! before reading network state.",
+        )
+    end
+    return network_model
+end
+
+function set_network_model!(container::OptimizationContainer, network_model::NetworkModel)
+    container.network_model = network_model
+    return
+end
+
+get_evaluations(container::OptimizationContainer) =
+    get_evaluations(get_network_model(container))
 get_resolution(container::OptimizationContainer) = get_resolution(container.settings)
 get_settings(container::OptimizationContainer) = container.settings
 get_time_steps(container::OptimizationContainer) = container.time_steps
@@ -324,6 +345,7 @@ function init_optimization_container!(
     network_model::NetworkModel{T},
     sys::IS.InfrastructureSystemsContainer,
 ) where {T <: AbstractNetworkModel}
+    set_network_model!(container, network_model)
     # The order of operations matter
     # stateful unit system is being phased out; POM should no longer need this.
     # temp_set_units_base_system!(sys, "SYSTEM_BASE")
