@@ -11,6 +11,81 @@ const ISOPT = InfrastructureSystems.Optimization
 struct MockConstraintType <: ISOPT.ConstraintType end
 struct MockExpressionType <: ISOPT.ExpressionType end
 
+# Aux variables that record a primal value and a dual value read after the solve.
+struct PrimalProbeAux <: ISOPT.AuxVariableType end
+struct DualProbeAux <: ISOPT.AuxVariableType end
+
+function IOM.calculate_aux_variable_value!(
+    container::IOM.OptimizationContainer,
+    key::IOM.AuxVarKey{PrimalProbeAux, MockComponentType},
+    ::IS.InfrastructureSystemsContainer,
+)
+    p = IOM.lookup_value(container, TestVariableType, MockComponentType)
+    IOM.get_aux_variable(container, key)["g1", 1] = p["g1", 1]
+    return
+end
+
+function IOM.calculate_aux_variable_value!(
+    container::IOM.OptimizationContainer,
+    key::IOM.AuxVarKey{DualProbeAux, MockComponentType},
+    ::IS.InfrastructureSystemsContainer,
+)
+    dual_key = IOM.ConstraintKey(TestConstraintType, MockComponentType)
+    IOM.get_aux_variable(container, key)["g1", 1] =
+        IOM.get_duals(container)[dual_key]["g1", 1]
+    return
+end
+
+# min 3p + 10b  s.t.  p >= 2 (dual 3),  p <= 5b,  b binary.  Optimum p = 2, b = 1.
+# `dual_optimizer` is the optimizer used for the LP re-solve that computes the duals.
+function _build_milp_with_duals_container(dual_optimizer)
+    mock_sys = MockSystem(100.0)
+    settings = IOM.Settings(
+        mock_sys;
+        horizon = Dates.Hour(1),
+        resolution = Dates.Hour(1),
+        time_series_cache_size = 0,
+        optimizer = dual_optimizer,
+    )
+    container = IOM.OptimizationContainer(
+        mock_sys,
+        settings,
+        JuMP.Model(HiGHS_optimizer),
+        MockDeterministic,
+    )
+    IOM.set_time_steps!(container, 1:1)
+    model = IOM.get_jump_model(container)
+    names = ["g1"]
+
+    p_var = IOM.add_variable_container!(
+        container, TestVariableType, MockComponentType, names, 1:1)
+    b_var = IOM.add_variable_container!(
+        container, TestVariableType2, MockComponentType, names, 1:1)
+    p = p_var["g1", 1] = JuMP.@variable(model, lower_bound = 0.0)
+    b = b_var["g1", 1] = JuMP.@variable(model, binary = true)
+
+    demand = IOM.add_constraints_container!(
+        container, TestConstraintType, MockComponentType, names, 1:1)
+    demand["g1", 1] = JuMP.@constraint(model, p >= 2.0)
+    JuMP.@constraint(model, p <= 5.0 * b)
+    IOM.add_dual_container!(container, TestConstraintType, MockComponentType, names, 1:1)
+
+    cost = IOM.add_expression_container!(
+        container, MockExpressionType, MockComponentType, names, 1:1)
+    cost["g1", 1] = JuMP.@expression(model, 3.0 * p)
+    JuMP.@objective(model, Min, 3.0 * p + 10.0 * b)
+
+    IOM.add_aux_variable_container!(
+        container,
+        PrimalProbeAux,
+        MockComponentType,
+        names,
+        1:1,
+    )
+    IOM.add_aux_variable_container!(container, DualProbeAux, MockComponentType, names, 1:1)
+    return container
+end
+
 @testset "OptimizationContainer with MockSystem" begin
     @testset "Container creation" begin
         # Create mock system
@@ -367,6 +442,47 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         @test !JuMP.is_fixed(v)
         @test JuMP.has_lower_bound(v) && JuMP.lower_bound(v) == 0.0
         @test JuMP.has_upper_bound(v) && JuMP.upper_bound(v) == 5.0
+    end
+
+    @testset "execute_optimizer! computes aux variables after MILP duals" begin
+        container = _build_milp_with_duals_container(HiGHS_optimizer)
+        primal_key = IOM.AuxVarKey(PrimalProbeAux, MockComponentType)
+        dual_key = IOM.AuxVarKey(DualProbeAux, MockComponentType)
+
+        @test IOM.execute_optimizer!(container, MockSystem(100.0)) ==
+              IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+        # Undoing the MILP dual relaxation leaves JuMP without primal values.
+        @test !JuMP.has_values(IOM.get_jump_model(container))
+        @test IOM.get_aux_variable(container, primal_key)["g1", 1] ≈ 2.0
+        @test IOM.get_aux_variable(container, dual_key)["g1", 1] ≈ 3.0
+        p_key = IOM.VariableKey(TestVariableType, MockComponentType)
+        @test IOM.lookup_value(container, p_key)["g1", 1] ≈ 2.0
+        @test IOM.lookup_value(container, TestVariableType, MockComponentType)["g1", 1] ≈
+              2.0
+        e_key = IOM.ExpressionKey(MockExpressionType, MockComponentType)
+        @test IOM.lookup_value(container, e_key)["g1", 1] ≈ 6.0
+        @test IOM.get_optimizer_stats(container).objective_value ≈ 16.0
+    end
+
+    @testset "execute_optimizer! fails when the MILP dual computation fails" begin
+        infeasible_lp_optimizer = JuMP.optimizer_with_attributes() do
+            mock = MOI.Utilities.MockOptimizer(
+                MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),
+            )
+            MOI.Utilities.set_mock_optimize!(
+                mock,
+                m -> MOI.Utilities.mock_optimize!(m, MOI.INFEASIBLE),
+            )
+            return mock
+        end
+        container = _build_milp_with_duals_container(infeasible_lp_optimizer)
+        status =
+            @test_logs (:error, r"during dual calculation") match_mode = :any IOM.execute_optimizer!(
+                container,
+                MockSystem(100.0),
+            )
+        @test status == IOM.RunStatus.FAILED
     end
 
     @testset "Key-based InitialCondition constructor (Task 2.4)" begin

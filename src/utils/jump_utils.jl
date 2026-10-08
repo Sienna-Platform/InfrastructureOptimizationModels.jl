@@ -14,7 +14,9 @@ function get_hinted_aff_expr(size::Int)
 end
 
 function write_data(base_power::Float64, save_path::String)
-    JSON3.write(joinpath(save_path, "base_power.json"), JSON3.json(base_power))
+    open(joinpath(save_path, "base_power.json"), "w") do io
+        JSON.json(io, base_power)
+    end
     return
 end
 

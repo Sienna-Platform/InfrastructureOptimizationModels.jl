@@ -10,8 +10,10 @@ function PrimalValuesCache()
     )
 end
 
-function Base.isempty(pvc::PrimalValuesCache)
-    return isempty(pvc.variables_cache) && isempty(pvc.expressions_cache)
+function Base.empty!(pvc::PrimalValuesCache)
+    empty!(pvc.variables_cache)
+    empty!(pvc.expressions_cache)
+    return pvc
 end
 
 mutable struct ObjectiveFunction
@@ -430,6 +432,7 @@ function execute_optimizer!(
     system::IS.InfrastructureSystemsContainer,
 )
     optimizer_stats = get_optimizer_stats(container)
+    empty!(container.primal_values_cache)
 
     jump_model = get_jump_model(container)
 
@@ -463,16 +466,17 @@ function execute_optimizer!(
         end
     end
 
-    # Order is important because if a dual is needed then it could move the outputs to the
-    # temporary primal container
-    _, optimizer_stats.timed_calculate_aux_variables =
-        @timed calculate_aux_variables!(container, system)
-
-    # Needs to be called here to avoid issues when getting duals from MILPs
+    # The optimizer stats read the objective value, which the MILP dual computation makes
+    # unreadable, so they are written first. Aux variables are computed last so they can
+    # read dual values; primal values must be read through `lookup_value`.
     write_optimizer_stats!(container)
 
-    _, optimizer_stats.timed_calculate_dual_variables =
+    dual_status, optimizer_stats.timed_calculate_dual_variables =
         @timed calculate_dual_variables!(container, system, is_milp(container))
+    dual_status == RunStatus.FAILED && return RunStatus.FAILED
+
+    _, optimizer_stats.timed_calculate_aux_variables =
+        @timed calculate_aux_variables!(container, system)
 
     return RunStatus.SUCCESSFULLY_FINALIZED
 end
@@ -1129,7 +1133,8 @@ get_expression(
 
 function read_expressions(container::OptimizationContainer)
     return Dict(
-        k => to_dataframe(jump_value.(v), k) for (k, v) in get_expressions(container) if
+        k => to_dataframe(lookup_value(container, k), k) for
+        k in keys(get_expressions(container)) if
         !(get_entry_type(k) <: SystemBalanceExpressions)
     )
 end
@@ -1211,6 +1216,8 @@ function write_initial_conditions_data!(
                 LOG_GROUP_SERVICE_CONSTUCTORS
             if field == STORE_CONTAINER_PARAMETERS
                 ic_data_dict[key] = ic_container_dict[key]
+            elseif field == STORE_CONTAINER_VARIABLES
+                ic_data_dict[key] = lookup_value(ic_container, key)
             else
                 ic_data_dict[key] = jump_value.(field_container)
             end
@@ -1400,11 +1407,10 @@ function calculate_dual_variables!(
 )
     isempty(get_duals(container)) && return RunStatus.SUCCESSFULLY_FINALIZED
     if is_milp
-        status = _calculate_dual_variables_discrete_model!(container, sys)
+        return _calculate_dual_variables_discrete_model!(container, sys)
     else
-        status = _calculate_dual_variables_continous_model!(container, sys)
+        return _calculate_dual_variables_continous_model!(container, sys)
     end
-    return
 end
 
 ########################### Helper Functions to get keys ###################################
@@ -1538,14 +1544,44 @@ function get_column_names(
     end
 end
 
-lookup_value(
-    container::OptimizationContainer,
-    key::OptimizationContainerKey{T, U},
-) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType} =
-    _get_entry(container, key)
-# ParameterKey special case: unwrap ParameterContainer via calculate_parameter_values
-lookup_value(
-    container::OptimizationContainer,
-    key::OptimizationContainerKey{T, U},
-) where {T <: ParameterType, U <: InfrastructureSystemsType} =
+"""
+    lookup_value(container, key)
+    lookup_value(container, T, U, meta = CONTAINER_KEY_EMPTY_META)
+
+Return the solved values of the variable, expression, aux variable, or parameter stored
+under `key` as a `Float64` array with the same axes as the stored container.
+
+Post-solve code must read primal values through this function rather than calling
+`jump_value` on the JuMP objects. Computing duals for a MILP fixes the discrete variables,
+re-solves, and restores the model, after which JuMP no longer reports primal values; the
+values from the original solve remain available here.
+
+Constraint primal values are not available after that dual computation.
+"""
+function lookup_value(container::OptimizationContainer, key::VariableKey)
+    cache = container.primal_values_cache.variables_cache
+    haskey(cache, key) && return cache[key]
+    return jump_value.(get_variable(container, key))
+end
+
+function lookup_value(container::OptimizationContainer, key::ExpressionKey)
+    cache = container.primal_values_cache.expressions_cache
+    haskey(cache, key) && return cache[key]
+    return jump_value.(get_expression(container, key))
+end
+
+lookup_value(container::OptimizationContainer, key::AuxVarKey) =
+    get_aux_variable(container, key)
+
+lookup_value(container::OptimizationContainer, key::ParameterKey) =
     calculate_parameter_values(get_parameter(container, key))
+
+lookup_value(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    meta::String = CONTAINER_KEY_EMPTY_META,
+) where {
+    T <: Union{VariableType, ExpressionType, AuxVariableType, ParameterType},
+    U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
+} = lookup_value(container, key_for_type(T)(T, U, meta))
