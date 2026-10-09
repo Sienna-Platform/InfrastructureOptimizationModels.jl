@@ -1,8 +1,9 @@
 """
-Time-series parameter whose value multiplies a decision variable. Its containers always hold
-`Float64`, and formulations read its values with [`get_lhs_parameter_values`](@ref) and write
-them into constraints as fixed coefficients. A model holding one is rebuilt every simulation
-step, so the coefficients follow the refreshed values.
+Time-series parameter whose value multiplies or selects a decision variable. Its containers
+always hold `Float64`, and formulations read its values with [`get_lhs_parameter_values`](@ref)
+and write them into constraints as fixed coefficients or use them to choose the variables of a
+row. A model holding one is rebuilt every simulation step, so the rows follow the refreshed
+values.
 """
 abstract type LeftHandSideTimeSeriesParameter <: TimeSeriesParameter end
 
