@@ -93,3 +93,86 @@ end
         @test isempty(axes(var)[1])
     end
 end
+
+struct RelaxableBinaryTestVariable <: IOM.VariableType end
+
+IOM.get_variable_binary(
+    ::Type{RelaxableBinaryTestVariable},
+    ::Type{MockThermalGen},
+    ::Type{TestDeviceFormulation},
+) = true
+
+struct BoundedContinuousTestVariable <: IOM.VariableType end
+
+IOM.get_variable_binary(
+    ::Type{BoundedContinuousTestVariable},
+    ::Type{MockThermalGen},
+    ::Type{TestDeviceFormulation},
+) = false
+IOM.get_variable_lower_bound(
+    ::Type{BoundedContinuousTestVariable},
+    d::MockThermalGen,
+    ::Type{TestDeviceFormulation},
+) = d.active_power_limits.min
+IOM.get_variable_upper_bound(
+    ::Type{BoundedContinuousTestVariable},
+    d::MockThermalGen,
+    ::Type{TestDeviceFormulation},
+) = d.active_power_limits.max
+
+@testset "add_variables! relax_binaries" begin
+    devices = [make_mock_thermal("gen1"; limits = (min = 10.0, max = 40.0))]
+
+    @testset "binary variables stay binary by default" begin
+        container = _warm_start_container(false)
+        IOM.add_variables!(
+            container,
+            RelaxableBinaryTestVariable,
+            devices,
+            TestDeviceFormulation,
+        )
+        var = IOM.get_variable(container, RelaxableBinaryTestVariable, MockThermalGen)
+        for t in 1:2
+            @test JuMP.is_binary(var["gen1", t])
+            @test !JuMP.has_lower_bound(var["gen1", t])
+            @test !JuMP.has_upper_bound(var["gen1", t])
+        end
+    end
+
+    @testset "binary variables become continuous in [0, 1]" begin
+        container = _warm_start_container(false)
+        IOM.add_variables!(
+            container,
+            RelaxableBinaryTestVariable,
+            devices,
+            TestDeviceFormulation;
+            relax_binaries = true,
+        )
+        var = IOM.get_variable(container, RelaxableBinaryTestVariable, MockThermalGen)
+        for t in 1:2
+            @test !JuMP.is_binary(var["gen1", t])
+            @test JuMP.lower_bound(var["gen1", t]) == 0.0
+            @test JuMP.upper_bound(var["gen1", t]) == 1.0
+        end
+    end
+
+    @testset "continuous variables keep their bounds" begin
+        for relax_binaries in (true, false)
+            container = _warm_start_container(false)
+            IOM.add_variables!(
+                container,
+                BoundedContinuousTestVariable,
+                devices,
+                TestDeviceFormulation;
+                relax_binaries = relax_binaries,
+            )
+            var =
+                IOM.get_variable(container, BoundedContinuousTestVariable, MockThermalGen)
+            for t in 1:2
+                @test !JuMP.is_binary(var["gen1", t])
+                @test JuMP.lower_bound(var["gen1", t]) == 10.0
+                @test JuMP.upper_bound(var["gen1", t]) == 40.0
+            end
+        end
+    end
+end

@@ -19,43 +19,26 @@ function set_start_value!(
 end
 
 @doc raw"""
-Adds a variable to the optimization model and to the affine expressions contained
-in the optimization_container model according to the specified sign. Based on the inputs, the variable can
-be specified as binary.
+Adds a variable to the optimization model.
 
-# Bounds
-
-``` lb_value_function <= varstart[name, t] <= ub_value_function ```
-
-If binary = true:
-
-``` varstart[name, t] in {0,1} ```
-
-# LaTeX
-
-``  lb \le x^{device}_t \le ub \forall t ``
-
-``  x^{device}_t \in {0,1} \forall t iff \text{binary = true}``
+Bounds determined from get_variable_lower_bound, get_variable_upper_bound. Binary determined from
+get_variable_binary. Start value determined from get_variable_warm_start_value.
 
 # Arguments
-* container::OptimizationContainer : the optimization_container model built in InfrastructureOptimizationModels
-* devices : Vector or Iterator with the devices
-* var_key::VariableKey : Base Name for the variable
-* binary::Bool : Select if the variable is binary
-* expression_name::Symbol : Expression_name name stored in container.expressions to add the variable
-* sign::Float64 : sign of the addition of the variable to the expression_name. Default Value is 1.0
+* container::OptimizationContainer : the optimization container model built in InfrastructureOptimizationModels
+* ::Type{T} : variable type
+* devices::U : vector or iterator of devices
+* ::Type{F} : device formulation
 
-# Accepted Keyword Arguments
-* ub_value : Provides the function over device to obtain the value for a upper_bound
-* lb_value : Provides the function over device to obtain the value for a lower_bound. If the variable is meant to be positive define lb = x -> 0.0
-* initial_value : Provides the function over device to obtain the warm start value
-
+# Keyword arguments
+* relax_binaries::Bool : When true, binary variables are instead continuous in [0, 1].
 """
 function add_variables!(
     container::OptimizationContainer,
     ::Type{T},
     devices::U,
-    ::Type{F},
+    ::Type{F};
+    relax_binaries::Bool = false,
 ) where {
     T <: VariableType,
     U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
@@ -63,7 +46,8 @@ function add_variables!(
 } where {D <: IS.InfrastructureSystemsComponent}
     @assert !isempty(devices)
     time_steps = get_time_steps(container)
-    binary = get_variable_binary(T, D, F)
+    relaxed = relax_binaries && get_variable_binary(T, D, F)
+    binary = !relax_binaries && get_variable_binary(T, D, F)
     included = [d for d in devices if !skip_variable(T, d, F)]
 
     variable = add_variable_container!(
@@ -76,22 +60,22 @@ function add_variables!(
 
     for t in time_steps, d in included
         name = get_name(d)
-        variable[name, t] = JuMP.@variable(
-            get_jump_model(container),
-            base_name = "$(T)_$(D)_{$(name), $(t)}",
-            binary = binary
-        )
-        ub = get_variable_upper_bound(T, d, F)
-        ub !== nothing && JuMP.set_upper_bound(variable[name, t], ub)
-
-        lb = get_variable_lower_bound(T, d, F)
-        lb !== nothing && JuMP.set_lower_bound(variable[name, t], lb)
-
-        set_start_value!(
-            container,
-            variable[name, t],
-            get_variable_warm_start_value(T, d, F),
-        )
+        var =
+            variable[name, t] = JuMP.@variable(
+                get_jump_model(container),
+                base_name = "$(T)_$(D)_{$(name), $(t)}",
+                binary = binary
+            )
+        if relaxed
+            JuMP.set_lower_bound(var, 0.0)
+            JuMP.set_upper_bound(var, 1.0)
+        else
+            ub = get_variable_upper_bound(T, d, F)
+            ub !== nothing && JuMP.set_upper_bound(var, ub)
+            lb = get_variable_lower_bound(T, d, F)
+            lb !== nothing && JuMP.set_lower_bound(var, lb)
+        end
+        set_start_value!(container, var, get_variable_warm_start_value(T, d, F))
     end
 
     return
