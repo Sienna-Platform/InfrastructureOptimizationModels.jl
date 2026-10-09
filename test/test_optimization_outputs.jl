@@ -268,3 +268,55 @@ end
         10,
     )
 end
+
+@testset "Test make_realized_dataframe" begin
+    # Single-window (flat DataFrame) shape: OptimizationProblemOutputs' read_variable
+    # returns this directly. Filters straight through.
+    flat = DataFrame(
+        "DateTime" => DateTime.(["2024-01-01T00:00:00", "2024-01-01T01:00:00"]),
+        "c1" => [1.0, 2.0],
+    )
+    realized = [DateTime("2024-01-01T01:00:00")]
+    result = IOM.make_realized_dataframe(flat, realized)
+    @test result == DataFrame("DateTime" => realized, "c1" => [2.0])
+
+    # Multi-window shape: what `make_dataframes(::OutputsByTime; table_format=WIDE)`
+    # returns for a rolling-horizon Simulation, keyed by each window's own start time.
+    # Consecutive windows overlap; only each window's non-overlapping prefix is realized.
+    windows = SortedDict(
+        DateTime("2024-01-01T00:00:00") => DataFrame(
+            "DateTime" =>
+                DateTime.([
+                    "2024-01-01T00:00:00",
+                    "2024-01-01T01:00:00",
+                    "2024-01-01T02:00:00",
+                ]),
+            "c1" => [1.0, 2.0, 3.0],
+        ),
+        DateTime("2024-01-01T02:00:00") => DataFrame(
+            "DateTime" =>
+                DateTime.([
+                    "2024-01-01T02:00:00",
+                    "2024-01-01T03:00:00",
+                    "2024-01-01T04:00:00",
+                ]),
+            "c1" => [30.0, 40.0, 50.0],
+        ),
+    )
+    windows_realized = DateTime.([
+        "2024-01-01T00:00:00",
+        "2024-01-01T01:00:00",
+        "2024-01-01T02:00:00",
+        "2024-01-01T03:00:00",
+        "2024-01-01T04:00:00",
+    ])
+    stitched = IOM.make_realized_dataframe(windows, windows_realized)
+    @test stitched.DateTime == windows_realized
+    # The second window's own value for 02:00 (30.0) wins over the first window's
+    # look-ahead value (3.0) because `realized` names exactly one row per timestamp and
+    # `filter` on the second window keeps its 02:00 row, not the first's.
+    @test stitched.c1 == [1.0, 2.0, 30.0, 40.0, 50.0]
+
+    @test IOM.make_realized_dataframe(SortedDict{DateTime, DataFrame}(), DateTime[]) ==
+          DataFrame()
+end
