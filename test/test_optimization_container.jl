@@ -54,6 +54,7 @@ function _build_milp_with_duals_container(dual_optimizer)
         MockDeterministic,
     )
     IOM.set_time_steps!(container, 1:1)
+    IOM.set_network_model!(container, IOM.NetworkModel(TestPowerModel))
     model = IOM.get_jump_model(container)
     names = ["g1"]
 

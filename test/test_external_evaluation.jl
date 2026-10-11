@@ -130,3 +130,24 @@ end
     @test IOM.get_evaluations(nw) === ec
     @test haskey(IOM.get_evaluations(nw), MockEvaluator)
 end
+
+@testset "OptimizationContainer reads evaluations through its NetworkModel" begin
+    mock_sys = MockSystem(100.0)
+    settings = IOM.Settings(
+        mock_sys;
+        horizon = Dates.Hour(1),
+        resolution = Dates.Hour(1),
+        time_series_cache_size = 0,
+    )
+    container =
+        IOM.OptimizationContainer(mock_sys, settings, JuMP.Model(), MockDeterministic)
+    @test_throws ErrorException IOM.get_network_model(container)
+    @test_throws ErrorException IOM.get_evaluations(container)
+
+    ec = EvaluationContainer()
+    add_evaluator!(ec, MockEvaluator, MockEvaluator(:container))
+    network_model = IOM.NetworkModel(TestPowerModel; evaluations = ec)
+    IOM.init_optimization_container!(container, network_model, mock_sys)
+    @test IOM.get_network_model(container) === network_model
+    @test IOM.get_evaluations(container) === ec
+end
