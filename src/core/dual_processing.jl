@@ -56,10 +56,13 @@ function process_duals(container::OptimizationContainer, lp_optimizer)
         return RunStatus.FAILED
     end
 
-    if JuMP.has_duals(jump_model)
-        for (key, dual) in get_duals(container)
-            _copy_dual_values!(dual, get_constraint(container, key))
-        end
+    if !isempty(get_duals(container)) && !JuMP.has_duals(jump_model)
+        @error "Optimizer returned no duals during dual calculation"
+        undo_relaxation()
+        return RunStatus.FAILED
+    end
+    for (key, dual) in get_duals(container)
+        _copy_dual_values!(dual, get_constraint(container, key))
     end
 
     undo_relaxation()
