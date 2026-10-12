@@ -145,8 +145,8 @@ IOM.get_variable_upper_bound(
             container,
             RelaxableBinaryTestVariable,
             devices,
-            TestDeviceFormulation;
-            relax_binaries = true,
+            TestDeviceFormulation,
+            true,
         )
         var = IOM.get_variable(container, RelaxableBinaryTestVariable, MockThermalGen)
         for t in 1:2
@@ -163,8 +163,8 @@ IOM.get_variable_upper_bound(
                 container,
                 BoundedContinuousTestVariable,
                 devices,
-                TestDeviceFormulation;
-                relax_binaries = relax_binaries,
+                TestDeviceFormulation,
+                relax_binaries,
             )
             var =
                 IOM.get_variable(container, BoundedContinuousTestVariable, MockThermalGen)

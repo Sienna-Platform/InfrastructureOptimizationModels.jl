@@ -29,15 +29,13 @@ get_variable_binary. Start value determined from get_variable_warm_start_value.
 * ::Type{T} : variable type
 * devices::U : vector or iterator of devices
 * ::Type{F} : device formulation
-
-# Keyword arguments
-* relax_binaries::Bool : When true, binary variables are instead continuous in [0, 1].
+* relax_binaries::Bool : When true, binary variables are instead continuous in [0, 1]. The default is false.
 """
 function add_variables!(
     container::OptimizationContainer,
     ::Type{T},
     devices::U,
-    ::Type{F};
+    ::Type{F},
     relax_binaries::Bool = false,
 ) where {
     T <: VariableType,
