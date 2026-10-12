@@ -136,6 +136,15 @@ function finalize_template!(template::AbstractProblemTemplate, args...)
 end
 
 """
+    make_solve_context(template::AbstractProblemTemplate) -> AbstractSolveContext
+
+Make the [`AbstractSolveContext`](@ref) for one solve from `template`.
+`solve_model!` calls this function before each solve.
+Downstream packages must implement it for their template type.
+"""
+function make_solve_context end
+
+"""
     share_template_references!(template_::AbstractProblemTemplate, template::AbstractProblemTemplate)
 
 Extension point for template types whose build-time copy must share some objects with

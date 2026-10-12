@@ -44,6 +44,7 @@ function IOM.calculate_aux_variable_value!(
     container::OptimizationContainer,
     key::AuxVarKey{MockLineLossAuxVariable, MockNetworkNode},
     system::MockSystem,
+    ::IOM.AbstractSolveContext,
 )
     cont = get_aux_variable(container, key)
     names = axes(cont, 1)

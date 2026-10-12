@@ -14,11 +14,19 @@ struct MockExpressionType <: ISOPT.ExpressionType end
 # Aux variables that record a primal value and a dual value read after the solve.
 struct PrimalProbeAux <: ISOPT.AuxVariableType end
 struct DualProbeAux <: ISOPT.AuxVariableType end
+struct ContextProbeAux <: ISOPT.AuxVariableType end
+
+# Mutable so that `===` compares identity.
+mutable struct MockSolveContext <: IOM.AbstractSolveContext end
+struct NoContextTestTemplate <: IOM.AbstractProblemTemplate end
+
+const RECEIVED_SOLVE_CONTEXTS = IOM.AbstractSolveContext[]
 
 function IOM.calculate_aux_variable_value!(
     container::IOM.OptimizationContainer,
     key::IOM.AuxVarKey{PrimalProbeAux, MockComponentType},
     ::IS.InfrastructureSystemsContainer,
+    ::IOM.AbstractSolveContext,
 )
     p = IOM.lookup_value(container, TestVariableType, MockComponentType)
     IOM.get_aux_variable(container, key)["g1", 1] = p["g1", 1]
@@ -29,10 +37,21 @@ function IOM.calculate_aux_variable_value!(
     container::IOM.OptimizationContainer,
     key::IOM.AuxVarKey{DualProbeAux, MockComponentType},
     ::IS.InfrastructureSystemsContainer,
+    ::IOM.AbstractSolveContext,
 )
     dual_key = IOM.ConstraintKey(TestConstraintType, MockComponentType)
     IOM.get_aux_variable(container, key)["g1", 1] =
         IOM.get_duals(container)[dual_key]["g1", 1]
+    return
+end
+
+function IOM.calculate_aux_variable_value!(
+    ::IOM.OptimizationContainer,
+    ::IOM.AuxVarKey{ContextProbeAux, MockComponentType},
+    ::IS.InfrastructureSystemsContainer,
+    context::IOM.AbstractSolveContext,
+)
+    push!(RECEIVED_SOLVE_CONTEXTS, context)
     return
 end
 
@@ -500,7 +519,8 @@ end
         primal_key = IOM.AuxVarKey(PrimalProbeAux, MockComponentType)
         dual_key = IOM.AuxVarKey(DualProbeAux, MockComponentType)
 
-        @test IOM.execute_optimizer!(container, MockSystem(100.0)) ==
+        context = MockSolveContext()
+        @test IOM.execute_optimizer!(container, MockSystem(100.0), context) ==
               IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
         # Undoing the MILP dual relaxation leaves JuMP without primal values.
@@ -532,8 +552,29 @@ end
             @test_logs (:error, r"during dual calculation") match_mode = :any IOM.execute_optimizer!(
                 container,
                 MockSystem(100.0),
+                MockSolveContext(),
             )
         @test status == IOM.RunStatus.FAILED
+    end
+
+    @testset "make_solve_context throws without a method for the template" begin
+        @test_throws MethodError IOM.make_solve_context(NoContextTestTemplate())
+    end
+
+    @testset "execute_optimizer! passes the solve context to standalone aux variables" begin
+        container = _build_milp_with_duals_container(HiGHS_optimizer)
+        IOM.add_aux_variable_container!(
+            container,
+            ContextProbeAux,
+            MockComponentType,
+            ["g1"],
+            1:1,
+        )
+        context = MockSolveContext()
+        empty!(RECEIVED_SOLVE_CONTEXTS)
+        @test IOM.execute_optimizer!(container, MockSystem(100.0), context) ==
+              IOM.RunStatus.SUCCESSFULLY_FINALIZED
+        @test only(RECEIVED_SOLVE_CONTEXTS) === context
     end
 
     @testset "Key-based InitialCondition constructor (Task 2.4)" begin
