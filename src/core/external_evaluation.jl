@@ -143,9 +143,8 @@ function is_solved(data::AbstractEvaluationData)
 end
 
 """
-Return the underlying domain-specific data wrapped by `data` (e.g., a
-`PowerFlowData` for a power-flow evaluator). Used by aux-variable calculators
-that need direct read access to the evaluator's output.
+Return the domain data that `data` wraps. Aux variable calculations use it to read the
+output of the evaluator.
 """
 function get_inner_data(data::AbstractEvaluationData)
     error(
