@@ -512,6 +512,7 @@ export add_evaluator!
 export add_evaluation_data!
 export reset_evaluations!
 export is_from_evaluator
+export bind_aux_variable!, get_bound_aux_var_keys, add_evaluator_aux_variables!
 export lookup_value
 export get_entry_type
 export get_component_names

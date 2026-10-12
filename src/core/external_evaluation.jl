@@ -43,15 +43,19 @@ Base.haskey(ec::EvaluationContainer, T::DataType) = haskey(ec.evaluators, T)
 
 """
 Holds the runtime data of the evaluators of one build, keyed by the concrete evaluator
-type. Iteration follows the order in which the data was added.
+type, and the aux variable keys bound to each evaluator type.
+Iteration follows the order in which the data was added.
 The `OptimizationContainer` owns it, and a rebuild empties it.
 """
 struct EvaluationDataContainer
     evaluation_data::OrderedDict{DataType, AbstractEvaluationData}
+    aux_var_keys::OrderedDict{DataType, Vector{AuxVarKey}}
 end
 
-EvaluationDataContainer() =
-    EvaluationDataContainer(OrderedDict{DataType, AbstractEvaluationData}())
+EvaluationDataContainer() = EvaluationDataContainer(
+    OrderedDict{DataType, AbstractEvaluationData}(),
+    OrderedDict{DataType, Vector{AuxVarKey}}(),
+)
 
 function add_evaluation_data!(
     edc::EvaluationDataContainer,
@@ -72,6 +76,7 @@ Base.iterate(edc::EvaluationDataContainer, state...) =
     iterate(edc.evaluation_data, state...)
 function Base.empty!(edc::EvaluationDataContainer)
     empty!(edc.evaluation_data)
+    empty!(edc.aux_var_keys)
     return edc
 end
 

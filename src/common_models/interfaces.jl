@@ -229,8 +229,28 @@ function calculate_aux_variable_value! end
 Extension point: Check if an auxiliary variable type is produced by an external
 evaluator (see `AbstractEvaluator`). Default: false. Override in POM for
 evaluator-bound aux variable subtypes.
+
+Each aux variable of such a type must also be bound to the evaluators that produce it
+with [`bind_aux_variable!`](@ref). `check_optimization_container` errors if it is not.
 """
 is_from_evaluator(::Type{<:AuxVariableType}) = false
+
+"""
+    add_evaluator_aux_variables!(container, T::DataType, data::AbstractEvaluationData, system)
+
+Extension point: add the aux variables that the evaluator registered under `T` produces,
+and bind each one with [`bind_aux_variable!`](@ref).
+The domain package calls it after it stores `data` with `add_evaluation_data!`.
+The default adds nothing.
+"""
+function add_evaluator_aux_variables!(
+    ::OptimizationContainer,
+    ::DataType,
+    ::AbstractEvaluationData,
+    ::Any,
+)
+    return
+end
 
 """
 Extension point: Get minimum and maximum limits for a given component, constraint type, and device formulation.
