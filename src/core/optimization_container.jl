@@ -95,7 +95,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     # `UnionAll`), the unparameterized name. The constructor rejects abstract
     # types; this covers IS time series types and duck-typed mocks alike.
     default_time_series_type::Type
-    evaluation_data::EvaluationDataContainer
+    evaluations::EvaluationContainer
     serialization_task::Union{Nothing, Task}
 end
 
@@ -145,7 +145,7 @@ function OptimizationContainer(
         AuxVarKey[],
         OptimizationContainerMetadata(),
         T,
-        EvaluationDataContainer(),
+        EvaluationContainer(),
         nothing,
     )
 end
@@ -184,6 +184,7 @@ get_jump_model(container::OptimizationContainer) = container.JuMPmodel
 get_metadata(container::OptimizationContainer) = container.metadata
 get_optimizer_stats(container::OptimizationContainer) = container.optimizer_stats
 get_parameters(container::OptimizationContainer) = container.parameters
+get_evaluations(container::OptimizationContainer) = container.evaluations
 get_resolution(container::OptimizationContainer) = get_resolution(container.settings)
 get_settings(container::OptimizationContainer) = container.settings
 get_time_steps(container::OptimizationContainer) = container.time_steps
@@ -212,29 +213,10 @@ is_synchronized(container::OptimizationContainer) =
 set_time_steps!(container::OptimizationContainer, time_steps::UnitRange{Int64}) =
     container.time_steps = time_steps
 
-"""
-    get_evaluation_data(container::OptimizationContainer)
-    get_evaluation_data(container::OptimizationContainer, T::DataType)
-
-Return the [`EvaluationDataContainer`](@ref) of the container, or the runtime data of the
-evaluator type `T`.
-"""
-get_evaluation_data(container::OptimizationContainer) = container.evaluation_data
-get_evaluation_data(container::OptimizationContainer, T::DataType) =
-    container.evaluation_data[T]
-
-"Store `data` in the container under the evaluator type `T`."
-add_evaluation_data!(
-    container::OptimizationContainer,
-    T::DataType,
-    data::AbstractEvaluationData,
-) = add_evaluation_data!(container.evaluation_data, T, data)
-
 function reset_evaluations!(container::OptimizationContainer)
-    for data in values(get_evaluation_data(container))
+    for data in values(get_evaluation_data(get_evaluations(container)))
         reset!(data)
     end
-    return
 end
 
 @generated function has_container_key(
@@ -397,7 +379,6 @@ function reset_optimization_model!(container::OptimizationContainer)
     end
     empty!(container.evaluator_aux_var_keys)
     empty!(container.standalone_aux_var_keys)
-    empty!(get_evaluation_data(container))
     container.initial_conditions_data = InitialConditionsData()
     container.objective_function = ObjectiveFunction()
     container.primal_values_cache = PrimalValuesCache()
@@ -444,14 +425,11 @@ end
 
 """
 Execute the optimizer on the container's JuMP model, compute aux/dual variables,
-and return the run status.
-`context` is the [`AbstractSolveContext`](@ref) of this solve. The standalone aux
-variables get it.
+and return the run status. Called `solve_impl!(container, system)` in PSI.
 """
 function execute_optimizer!(
     container::OptimizationContainer,
     system::IS.InfrastructureSystemsContainer,
-    context::AbstractSolveContext,
 )
     optimizer_stats = get_optimizer_stats(container)
     empty!(container.primal_values_cache)
@@ -498,7 +476,7 @@ function execute_optimizer!(
     dual_status == RunStatus.FAILED && return RunStatus.FAILED
 
     _, optimizer_stats.timed_calculate_aux_variables =
-        @timed calculate_aux_variables!(container, system, context)
+        @timed calculate_aux_variables!(container, system)
 
     return RunStatus.SUCCESSFULLY_FINALIZED
 end
@@ -1343,7 +1321,6 @@ end
 function calculate_aux_variables!(
     container::OptimizationContainer,
     system::IS.InfrastructureSystemsContainer,
-    context::AbstractSolveContext,
 )
     if isempty(container.evaluator_aux_var_keys) &&
        isempty(container.standalone_aux_var_keys)
@@ -1351,7 +1328,7 @@ function calculate_aux_variables!(
     end
     evaluator_aux_var_keys = container.evaluator_aux_var_keys
     standalone_aux_var_keys = container.standalone_aux_var_keys
-    evaluation_data = get_evaluation_data(container)
+    evaluation_data = get_evaluation_data(get_evaluations(container))
     # We should only have evaluator-bound aux vars if we have evaluators registered
     @assert isempty(evaluator_aux_var_keys) || !isempty(evaluation_data)
 
@@ -1369,7 +1346,7 @@ function calculate_aux_variables!(
 
     # Other aux vars get calculated once at the end
     for key in standalone_aux_var_keys
-        calculate_aux_variable_value!(container, key, system, context)
+        calculate_aux_variable_value!(container, key, system)
     end
     return RunStatus.SUCCESSFULLY_FINALIZED
 end

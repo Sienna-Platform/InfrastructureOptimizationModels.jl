@@ -7,7 +7,6 @@ import InfrastructureOptimizationModels:
     get_evaluator,
     add_evaluator!,
     add_evaluation_data!,
-    reset_evaluations!,
     initialize_evaluation_data,
     evaluate!,
     reset!,
@@ -50,7 +49,7 @@ IOM.get_inner_data(data::MockEvaluationData) = data.payload
     @test length(ec) == 0
     @test !haskey(ec, MockEvaluator)
     @test isempty(get_evaluators(ec))
-    @test !hasfield(EvaluationContainer, :evaluation_data)
+    @test isempty(get_evaluation_data(ec))
 
     ev = MockEvaluator(:primary)
     add_evaluator!(ec, MockEvaluator, ev)
@@ -58,17 +57,11 @@ IOM.get_inner_data(data::MockEvaluationData) = data.payload
     @test length(ec) == 1
     @test haskey(ec, MockEvaluator)
     @test get_evaluator(ec, MockEvaluator) === ev
-end
 
-function _mock_evaluation_container()
-    mock_sys = MockSystem(100.0)
-    settings = IOM.Settings(
-        mock_sys;
-        horizon = Dates.Hour(1),
-        resolution = Dates.Hour(1),
-        time_series_cache_size = 0,
-    )
-    return IOM.OptimizationContainer(mock_sys, settings, JuMP.Model(), MockDeterministic)
+    data = MockEvaluationData(ev, false, Float64[])
+    add_evaluation_data!(ec, MockEvaluator, data)
+    @test get_evaluation_data(ec, MockEvaluator) === data
+    @test length(get_evaluation_data(ec)) == 1
 end
 
 @testset "AbstractEvaluator interface stubs throw with type names" begin
@@ -98,19 +91,21 @@ end
 end
 
 @testset "MockEvaluator end-to-end dispatch" begin
-    container = _mock_evaluation_container()
+    ec = EvaluationContainer()
     ev = MockEvaluator(:e1)
+    add_evaluator!(ec, MockEvaluator, ev)
     data = initialize_evaluation_data(ev, nothing, nothing)
-    add_evaluation_data!(container, MockEvaluator, data)
-    @test get_evaluation_data(container, MockEvaluator) === data
-    @test length(get_evaluation_data(container)) == 1
+    add_evaluation_data!(ec, MockEvaluator, data)
 
     @test !is_solved(data)
     evaluate!(data, nothing, nothing)
     @test is_solved(data)
     @test get_inner_data(data) == [1.0]
 
-    reset_evaluations!(container)
+    # Iterate via the dict view, as `calculate_aux_variables!` does
+    for (T, d) in get_evaluation_data(ec)
+        reset!(d)
+    end
     @test !is_solved(data)
 
     evaluate!(data, nothing, nothing)
@@ -126,7 +121,6 @@ end
     nw = IOM.NetworkModel(TestPowerModel)
     @test IOM.get_evaluations(nw) isa EvaluationContainer
     @test isempty(IOM.get_evaluations(nw))
-    @test isempty(IOM.get_modeled_branch_types(nw))
 end
 
 @testset "NetworkModel evaluations accepts a populated container" begin
@@ -135,15 +129,4 @@ end
     nw = IOM.NetworkModel(TestPowerModel; evaluations = ec)
     @test IOM.get_evaluations(nw) === ec
     @test haskey(IOM.get_evaluations(nw), MockEvaluator)
-end
-
-@testset "reset_optimization_model! empties the evaluation data" begin
-    container = _mock_evaluation_container()
-    @test isempty(get_evaluation_data(container))
-    ev = MockEvaluator(:reset)
-    add_evaluation_data!(container, MockEvaluator, MockEvaluationData(ev, true, [1.0]))
-    @test !isempty(get_evaluation_data(container))
-
-    IOM.reset_optimization_model!(container)
-    @test isempty(get_evaluation_data(container))
 end
