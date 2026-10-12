@@ -142,19 +142,14 @@ end
     @test is_from_evaluator(MockAuxVariable) === false
 end
 
-@testset "NetworkModel evaluations field defaults to empty" begin
+@testset "NetworkModel holds no evaluators" begin
     nw = IOM.NetworkModel(TestPowerModel)
-    @test IOM.get_evaluations(nw) isa EvaluationContainer
-    @test isempty(IOM.get_evaluations(nw))
+    @test !hasfield(IOM.NetworkModel, :evaluations)
     @test isempty(IOM.get_modeled_branch_types(nw))
-end
-
-@testset "NetworkModel evaluations accepts a populated container" begin
-    ec = EvaluationContainer()
-    add_evaluator!(ec, MockEvaluator, MockEvaluator(:populated))
-    nw = IOM.NetworkModel(TestPowerModel; evaluations = ec)
-    @test IOM.get_evaluations(nw) === ec
-    @test haskey(IOM.get_evaluations(nw), MockEvaluator)
+    @test_throws MethodError IOM.NetworkModel(
+        TestPowerModel;
+        evaluations = EvaluationContainer(),
+    )
 end
 
 @testset "reset_optimization_model! empties the evaluation data" begin
