@@ -179,13 +179,7 @@ function is_nontrivial_offer(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve})
     lo, hi = IS.get_domain(IS.get_function_data(IS.get_value_curve(curve)))
     return hi > lo
 end
-# PRESENCE-ONLY approximation for a bare TS-backed curve: without a component and
-# container the referenced series cannot be resolved, and a thin key carries nothing to
-# test (the empty-name placeholder sentinel is gone - absent sides attach a REAL stored
-# inert series, an all-zero-span step function per hour). A TS-backed side is therefore
-# always "present" here; build-time callers that hold the component must use the
-# 3-argument method below, which resolves the series and applies the same domain test as
-# the static check.
+# A TS-backed side is always present here; build-time callers use the 3-argument method.
 is_nontrivial_offer(::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}) = true
 
 """

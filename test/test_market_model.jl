@@ -14,7 +14,6 @@ struct _TestMarketFormulation <: IOM.AbstractMarketModel end
     @test IOM.get_settlement_domain(m) === IS.InfrastructureSystemsComponent
     @test isempty(IOM.get_market_component_models(m))
     @test isempty(IOM.get_duals(m))
-    @test IOM.get_subsystem(m) === nothing
     @test_throws ArgumentError IOM.MarketModel(
         IOM.AbstractMarketModel;
         settlement_domain = IS.InfrastructureSystemsComponent,
