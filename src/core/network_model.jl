@@ -146,6 +146,8 @@ function get_network_reduction end
 
 get_network_formulation(::NetworkModel{T}) where {T} = T
 get_reduced_branch_tracker(m::NetworkModel) = m.reduced_branch_tracker
+"""Return the branch types that the network model represents."""
+get_modeled_branch_types(m::NetworkModel) = m.modeled_branch_types
 get_reference_buses(m::NetworkModel{T}) where {T <: AbstractNetworkModel} =
     collect(keys(m.subnetworks))
 get_subnetworks(m::NetworkModel) = m.subnetworks
