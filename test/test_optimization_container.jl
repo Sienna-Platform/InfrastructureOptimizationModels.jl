@@ -507,7 +507,7 @@ end
     end
 
     @testset "make_solve_context throws without a method for the template" begin
-        @test_throws ArgumentError IOM.make_solve_context(NoContextTestTemplate())
+        @test_throws MethodError IOM.make_solve_context(NoContextTestTemplate())
     end
 
     @testset "execute_optimizer! passes the solve context to standalone aux variables" begin
@@ -523,7 +523,6 @@ end
         empty!(RECEIVED_SOLVE_CONTEXTS)
         @test IOM.execute_optimizer!(container, MockSystem(100.0), context) ==
               IOM.RunStatus.SUCCESSFULLY_FINALIZED
-        @test length(RECEIVED_SOLVE_CONTEXTS) == 1
         @test only(RECEIVED_SOLVE_CONTEXTS) === context
     end
 

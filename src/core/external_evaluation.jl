@@ -1,13 +1,11 @@
 """
-Abstract type for an evaluator configuration.
+Abstract type for the configuration of an evaluator.
 
-The user adds an `AbstractEvaluator` to an [`EvaluationContainer`](@ref) and gives the
-container to a `NetworkModel`. The configuration lives on the network model for the life of
-the template. It holds no runtime data.
+An evaluator is a calculation that runs after each solve, outside the optimization model.
+The configuration is part of the problem template. It holds no runtime data.
 
 At build time, [`initialize_evaluation_data`](@ref) makes the runtime data from the
-configuration. Downstream packages, such as PowerOperationsModels, define the concrete
-subtypes.
+configuration. Downstream packages define the concrete subtypes.
 """
 abstract type AbstractEvaluator end
 
@@ -15,18 +13,15 @@ abstract type AbstractEvaluator end
 Abstract type for the runtime data of an evaluator.
 
 [`initialize_evaluation_data`](@ref) makes the runtime data at build time. The
-`OptimizationContainer` keeps it for one build, keyed by the concrete evaluator type. Use
-[`get_evaluation_data`](@ref) and [`add_evaluation_data!`](@ref) on the container to read
-and write it. `calculate_aux_variables!` uses it at each solve.
+`OptimizationContainer` keeps it in an [`EvaluationDataContainer`](@ref) for one build.
+`calculate_aux_variables!` uses it after each solve.
 """
 abstract type AbstractEvaluationData end
 
 """
-Holds the evaluator configurations of a `NetworkModel`, keyed by the concrete evaluator
-type.
-
-The user fills the container and gives it to `NetworkModel(...; evaluations = ec)`. The
-container holds configuration only. The `OptimizationContainer` keeps the runtime data.
+Holds the evaluator configurations of a problem template, keyed by the concrete evaluator
+type. It holds configuration only. The runtime data is in an
+[`EvaluationDataContainer`](@ref).
 """
 mutable struct EvaluationContainer
     evaluators::Dict{DataType, AbstractEvaluator}
@@ -46,6 +41,39 @@ Base.isempty(ec::EvaluationContainer) = isempty(ec.evaluators)
 Base.length(ec::EvaluationContainer) = length(ec.evaluators)
 Base.haskey(ec::EvaluationContainer, T::DataType) = haskey(ec.evaluators, T)
 
+"""
+Holds the runtime data of the evaluators of one build, keyed by the concrete evaluator
+type. The `OptimizationContainer` owns it, and a rebuild empties it.
+"""
+struct EvaluationDataContainer
+    evaluation_data::Dict{DataType, AbstractEvaluationData}
+end
+
+EvaluationDataContainer() =
+    EvaluationDataContainer(Dict{DataType, AbstractEvaluationData}())
+
+function add_evaluation_data!(
+    edc::EvaluationDataContainer,
+    T::DataType,
+    data::AbstractEvaluationData,
+)
+    edc.evaluation_data[T] = data
+    return
+end
+
+Base.getindex(edc::EvaluationDataContainer, T::DataType) = edc.evaluation_data[T]
+Base.haskey(edc::EvaluationDataContainer, T::DataType) = haskey(edc.evaluation_data, T)
+Base.isempty(edc::EvaluationDataContainer) = isempty(edc.evaluation_data)
+Base.length(edc::EvaluationDataContainer) = length(edc.evaluation_data)
+Base.keys(edc::EvaluationDataContainer) = keys(edc.evaluation_data)
+Base.values(edc::EvaluationDataContainer) = values(edc.evaluation_data)
+Base.iterate(edc::EvaluationDataContainer, state...) =
+    iterate(edc.evaluation_data, state...)
+function Base.empty!(edc::EvaluationDataContainer)
+    empty!(edc.evaluation_data)
+    return edc
+end
+
 #=
 =========================================================================
 AbstractEvaluator interface (config-side)
@@ -56,9 +84,9 @@ AbstractEvaluator interface (config-side)
 Make the runtime data for the evaluator configuration `ev` and return an
 `AbstractEvaluationData`.
 
-The domain package calls this function once for each evaluator at build time. It reads
-`ev` from the network model and writes the result to the `OptimizationContainer` with
-[`add_evaluation_data!`](@ref). Downstream packages define the concrete methods.
+The domain package calls this function once for each evaluator at build time. It stores
+the result in the `OptimizationContainer` with [`add_evaluation_data!`](@ref).
+Downstream packages define the concrete methods.
 """
 function initialize_evaluation_data(
     ev::AbstractEvaluator,

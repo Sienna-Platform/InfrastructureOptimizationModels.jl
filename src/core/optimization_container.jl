@@ -95,7 +95,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     # `UnionAll`), the unparameterized name. The constructor rejects abstract
     # types; this covers IS time series types and duck-typed mocks alike.
     default_time_series_type::Type
-    evaluation_data::Dict{DataType, AbstractEvaluationData}
+    evaluation_data::EvaluationDataContainer
     serialization_task::Union{Nothing, Task}
 end
 
@@ -145,7 +145,7 @@ function OptimizationContainer(
         AuxVarKey[],
         OptimizationContainerMetadata(),
         T,
-        Dict{DataType, AbstractEvaluationData}(),
+        EvaluationDataContainer(),
         nothing,
     )
 end
@@ -213,30 +213,22 @@ set_time_steps!(container::OptimizationContainer, time_steps::UnitRange{Int64}) 
     container.time_steps = time_steps
 
 """
-Return the runtime evaluation data of the container, keyed by evaluator type.
-The container owns this data. A rebuild empties it.
+    get_evaluation_data(container::OptimizationContainer)
+    get_evaluation_data(container::OptimizationContainer, T::DataType)
+
+Return the [`EvaluationDataContainer`](@ref) of the container, or the runtime data of the
+evaluator type `T`.
 """
 get_evaluation_data(container::OptimizationContainer) = container.evaluation_data
-
-"""
-Return the runtime evaluation data of the container for the evaluator type `T`.
-The container owns this data. A rebuild empties it.
-"""
 get_evaluation_data(container::OptimizationContainer, T::DataType) =
     container.evaluation_data[T]
 
-"""
-Store `data` in the container under the evaluator type `T`.
-The container owns the runtime evaluation data. A rebuild empties it.
-"""
-function add_evaluation_data!(
+"Store `data` in the container under the evaluator type `T`."
+add_evaluation_data!(
     container::OptimizationContainer,
     T::DataType,
     data::AbstractEvaluationData,
-)
-    container.evaluation_data[T] = data
-    return
-end
+) = add_evaluation_data!(container.evaluation_data, T, data)
 
 function reset_evaluations!(container::OptimizationContainer)
     for data in values(get_evaluation_data(container))

@@ -495,7 +495,7 @@ export EventParameter
 # External evaluation abstraction (replaces the PowerFlows-specific shims)
 export AbstractEvaluator
 export AbstractEvaluationData
-export EvaluationContainer
+export EvaluationContainer, EvaluationDataContainer
 export initialize_evaluation_data
 export evaluate!
 export reset!
