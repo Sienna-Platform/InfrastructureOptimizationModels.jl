@@ -71,6 +71,26 @@ function _mock_evaluation_container()
     return IOM.OptimizationContainer(mock_sys, settings, JuMP.Model(), MockDeterministic)
 end
 
+struct OrderProbeEvaluatorA <: AbstractEvaluator end
+struct OrderProbeEvaluatorB <: AbstractEvaluator end
+struct OrderProbeEvaluatorC <: AbstractEvaluator end
+struct OrderProbeData <: AbstractEvaluationData end
+
+@testset "Evaluators keep registration order" begin
+    types = [OrderProbeEvaluatorA, OrderProbeEvaluatorB, OrderProbeEvaluatorC]
+    for order in (types, reverse(types), types[[2, 3, 1]])
+        ec = EvaluationContainer()
+        container = _mock_evaluation_container()
+        for T in order
+            add_evaluator!(ec, T, T())
+            add_evaluation_data!(container, T, OrderProbeData())
+        end
+        @test collect(keys(get_evaluators(ec))) == order
+        @test collect(keys(get_evaluation_data(container))) == order
+        @test first.(collect(get_evaluation_data(container))) == order
+    end
+end
+
 @testset "AbstractEvaluator interface stubs throw with type names" begin
     container = nothing
     system = nothing
