@@ -208,6 +208,20 @@ end
 
 get_evaluations(container::OptimizationContainer) =
     get_evaluations(get_network_model(container))
+
+"""
+Deep copy of the container without its `NetworkModel` reference. The network model can hold
+PNM factorizations, which must not be copied.
+"""
+function deepcopy_without_network_model(container::OptimizationContainer)
+    network_model = container.network_model
+    container.network_model = nothing
+    try
+        return deepcopy(container)
+    finally
+        container.network_model = network_model
+    end
+end
 get_resolution(container::OptimizationContainer) = get_resolution(container.settings)
 get_settings(container::OptimizationContainer) = container.settings
 get_time_steps(container::OptimizationContainer) = container.time_steps
