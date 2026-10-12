@@ -210,10 +210,18 @@ function start_up_cost(
 end
 
 """
+    calculate_aux_variable_value!(container, key, system, context::AbstractSolveContext)
+    calculate_aux_variable_value!(container, key, system, data::AbstractEvaluationData)
+
 Extension point: Calculate auxiliary variable values.
 Concrete implementations in PowerOperationsModels for specific aux variable types.
-Evaluator-bound aux variables get the `AbstractEvaluationData` that produced them
-as a fourth argument, so the implementation does not have to look it up.
+
+A standalone aux variable gets the [`AbstractSolveContext`](@ref) of the solve
+as the fourth argument.
+An evaluator-bound aux variable gets the [`AbstractEvaluationData`](@ref) that
+produced it as the fourth argument.
+Both forms have the same name and the same number of arguments.
+Thus each method must give a type to its fourth argument.
 """
 function calculate_aux_variable_value! end
 

@@ -1,65 +1,44 @@
 """
-Abstract type for evaluator configurations attached to a `NetworkModel`.
+Abstract type for an evaluator configuration.
 
-An `AbstractEvaluator` is stateless configuration that, when used to build an
-`OptimizationContainer`, produces an `AbstractEvaluationData` (its runtime
-counterpart) via [`initialize_evaluation_data`](@ref).
+The user adds an `AbstractEvaluator` to an [`EvaluationContainer`](@ref) and gives the
+container to a `NetworkModel`. The configuration lives on the network model for the life of
+the template. It holds no runtime data.
 
-Concrete subtypes (e.g. `PowerFlowEvaluationModel`) are defined in downstream
-packages such as PowerOperationsModels and its PowerFlows extension.
+At build time, [`initialize_evaluation_data`](@ref) makes the runtime data from the
+configuration. Downstream packages, such as PowerOperationsModels, define the concrete
+subtypes.
 """
 abstract type AbstractEvaluator end
 
 """
-Abstract type for runtime evaluator state stored inside the
-`OptimizationContainer`'s [`EvaluationContainer`](@ref).
+Abstract type for the runtime data of an evaluator.
 
-Concrete subtypes wrap whatever domain-specific data (power-flow solver state,
-exporter handles, etc.) the evaluator needs across iterations of
-`calculate_aux_variables!`.
+[`initialize_evaluation_data`](@ref) makes the runtime data at build time. The
+`OptimizationContainer` keeps it for one build, keyed by the concrete evaluator type. Use
+[`get_evaluation_data`](@ref) and [`add_evaluation_data!`](@ref) on the container to read
+and write it. `calculate_aux_variables!` uses it at each solve.
 """
 abstract type AbstractEvaluationData end
 
 """
-Holds the evaluators registered on a `NetworkModel` and their associated
-runtime data, keyed by concrete evaluator type.
+Holds the evaluator configurations of a `NetworkModel`, keyed by the concrete evaluator
+type.
 
-`evaluators` is populated by the user when constructing a `NetworkModel`;
-`evaluation_data` is populated during `OptimizationContainer` construction by
-calling [`initialize_evaluation_data`](@ref) for each registered evaluator.
-
-The split between the two dictionaries may evolve; for now we keep them as
-parallel keyed dictionaries so that `evaluation_data[T]` is the runtime state
-produced from `evaluators[T]`.
+The user fills the container and gives it to `NetworkModel(...; evaluations = ec)`. The
+container holds configuration only. The `OptimizationContainer` keeps the runtime data.
 """
 mutable struct EvaluationContainer
     evaluators::Dict{DataType, AbstractEvaluator}
-    evaluation_data::Dict{DataType, AbstractEvaluationData}
 end
 
-function EvaluationContainer()
-    return EvaluationContainer(
-        Dict{DataType, AbstractEvaluator}(),
-        Dict{DataType, AbstractEvaluationData}(),
-    )
-end
+EvaluationContainer() = EvaluationContainer(Dict{DataType, AbstractEvaluator}())
 
 get_evaluators(ec::EvaluationContainer) = ec.evaluators
-get_evaluation_data(ec::EvaluationContainer) = ec.evaluation_data
-
 get_evaluator(ec::EvaluationContainer, T::DataType) = ec.evaluators[T]
-get_evaluation_data(ec::EvaluationContainer, T::DataType) = ec.evaluation_data[T]
 
 function add_evaluator!(ec::EvaluationContainer, T::DataType, ev::AbstractEvaluator)
     ec.evaluators[T] = ev
-    return
-end
-function add_evaluation_data!(
-    ec::EvaluationContainer,
-    T::DataType,
-    d::AbstractEvaluationData,
-)
-    ec.evaluation_data[T] = d
     return
 end
 
@@ -74,9 +53,12 @@ AbstractEvaluator interface (config-side)
 =#
 
 """
-Build the runtime state for `ev` and return an `AbstractEvaluationData`.
-Called once during `OptimizationContainer` construction. Concrete methods are
-registered in downstream packages.
+Make the runtime data for the evaluator configuration `ev` and return an
+`AbstractEvaluationData`.
+
+The domain package calls this function once for each evaluator at build time. It reads
+`ev` from the network model and writes the result to the `OptimizationContainer` with
+[`add_evaluation_data!`](@ref). Downstream packages define the concrete methods.
 """
 function initialize_evaluation_data(
     ev::AbstractEvaluator,
