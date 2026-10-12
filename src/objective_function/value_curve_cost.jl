@@ -179,17 +179,14 @@ function is_nontrivial_offer(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve})
     lo, hi = IS.get_domain(IS.get_function_data(IS.get_value_curve(curve)))
     return hi > lo
 end
-# A TS-backed offer side is the absent/placeholder side of a one-sided participant
-# (a load with no supply offer, or a generator with no demand offer) when it carries
-# the reserved zero association id — the store mints ids from 1, so a real key can
-# never be zero. Any store-minted key references a real forecast, so it is a genuine
-# offer. This is the TS analog of the static `ZERO_OFFER_CURVE` placeholder check
-# above, until the static-or-TS union offer fields (the convention PSY's ORDC
-# `variable` field already uses) reach the TS bid costs and the absent side becomes
-# the static placeholder itself.
-function is_nontrivial_offer(curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve})
-    return !iszero(IS.get_association_id(IS.get_time_series_key(curve)))
-end
+# PRESENCE-ONLY approximation for a bare TS-backed curve: without a component and
+# container the referenced series cannot be resolved, and a thin key carries nothing to
+# test (the empty-name placeholder sentinel is gone - absent sides attach a REAL stored
+# inert series, an all-zero-span step function per hour). A TS-backed side is therefore
+# always "present" here; build-time callers that hold the component must use the
+# 3-argument method below, which resolves the series and applies the same domain test as
+# the static check.
+is_nontrivial_offer(::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}) = true
 
 """
     is_nontrivial_offer(container, component, curve)

@@ -530,3 +530,88 @@ end
         )
     end
 end
+
+@testset "Offer triviality: build-context predicate + zero-width inert hours" begin
+    @testset "_offer_step_span" begin
+        @test IOM._offer_step_span(IS.PiecewiseStepData([0.0, 0.0], [0.0])) == 0.0
+        @test IOM._offer_step_span(IS.PiecewiseStepData([0.0, 50.0], [10.0])) == 50.0
+        # Unknown eltype stays strict (treated as genuine)
+        @test IOM._offer_step_span(1.0) == Inf
+    end
+
+    @testset "3-arg is_nontrivial_offer: static delegate + TS fast paths" begin
+        container = make_test_container(1:2)
+        device = make_mock_thermal("gen1")
+        genuine = IS.CostCurve(
+            IS.PiecewiseIncrementalCurve(0.0, [0.0, 50.0], [10.0]), IS.NaturalUnit())
+        trivial = IS.CostCurve(
+            IS.PiecewiseIncrementalCurve(0.0, [0.0, 0.0], [0.0]), IS.NaturalUnit())
+        # Static curves: same answer with and without build context
+        @test IOM.is_nontrivial_offer(container, device, genuine)
+        @test !IOM.is_nontrivial_offer(container, device, trivial)
+        @test IOM.is_nontrivial_offer(genuine)
+        @test !IOM.is_nontrivial_offer(trivial)
+
+        # A key naming no series the component carries: trivial, since the resolve
+        # finds no matching association id in the metadata catalog.
+        unresolvable_curve = IS.CostCurve(
+            IS.TimeSeriesPiecewiseIncrementalCurve(
+                _make_pwl_forecast_key(999), nothing, nothing),
+            IS.NaturalUnit())
+        @test !IOM.is_nontrivial_offer(container, device, unresolvable_curve)
+
+        # TS curve with a named key the component does not carry: trivial (no series to
+        # resolve). The resolving branch itself (a REAL attached series with zero-span
+        # hours) needs a full time-series manager and is covered by the downstream POM
+        # guard tests and the ERCOT one-bus backcast.
+        mock_clear_time_series!()
+        named_curve = _make_ts_incremental_cost_curve()
+        @test !IOM.is_nontrivial_offer(container, device, named_curve)
+    end
+
+    @testset "zero-width inert hour pins the dispatch variable to zero" begin
+        # Mixed per-hour curves: genuine / all-degenerate ([0,0]) / genuine. The delta
+        # block constraints (delta <= bp[k+1] - bp[k], p == sum(delta)) must force p = 0
+        # in the inert hour with no special handling - the same dx = 0 mechanism the
+        # tranche padding relies on.
+        time_steps = 1:3
+        names = ["gen1"]
+        genuine_bp = [0.0, 50.0, 100.0, 150.0]
+        genuine_sl = [10.0, 20.0, 30.0]
+        inert_bp = [0.0, 0.0]
+        inert_sl = [0.0]
+
+        container = make_test_container(time_steps; base_power = 100.0)
+        for t in time_steps
+            add_test_variable!(container, TestVariableType, MockThermalGen, "gen1", t)
+        end
+        add_test_expression!(
+            container, IOM.ProductionCostExpression, MockThermalGen, names, time_steps)
+        slopes_mat = reshape([genuine_sl, inert_sl, genuine_sl], 1, 3)
+        bp_mat = reshape([genuine_bp, inert_bp, genuine_bp], 1, 3)
+        setup_delta_pwl_parameters!(
+            container, MockThermalGen, names, slopes_mat, bp_mat, time_steps)
+
+        device = make_mock_thermal("gen1")
+        IOM.add_variable_cost_to_objective!(
+            container,
+            TestVariableType,
+            device,
+            _make_ts_incremental_cost_curve(),
+            TestDeviceFormulation,
+        )
+
+        # Maximize total dispatch subject to the block constraints alone: the genuine
+        # hours reach the curve top (150 MW / 100 base = 1.5) and the inert hour is 0.
+        jm = IOM.get_jump_model(container)
+        p = IOM.get_variable(container, TestVariableType, MockThermalGen)
+        JuMP.set_optimizer(jm, HiGHS.Optimizer)
+        JuMP.set_silent(jm)
+        JuMP.@objective(jm, JuMP.MOI.MAX_SENSE, sum(p["gen1", t] for t in time_steps))
+        JuMP.optimize!(jm)
+        @test JuMP.termination_status(jm) == JuMP.MOI.OPTIMAL
+        @test isapprox(JuMP.value(p["gen1", 1]), 1.5; atol = 1e-6)
+        @test isapprox(JuMP.value(p["gen1", 2]), 0.0; atol = 1e-9)
+        @test isapprox(JuMP.value(p["gen1", 3]), 1.5; atol = 1e-6)
+    end
+end

@@ -107,6 +107,7 @@ function run_tests()
                     # optimization_container_types.jl: no need for tests
                     include(joinpath(TEST_DIR, "test_optimization_container.jl"))
                     include(joinpath(TEST_DIR, "test_network_model.jl"))
+                    include(joinpath(TEST_DIR, "test_market_model.jl"))
                     include(joinpath(TEST_DIR, "test_external_evaluation.jl"))
                     # optimization_problem_outputs_export.jl: low-complexity
                     include(joinpath(TEST_DIR, "test_optimization_outputs.jl"))

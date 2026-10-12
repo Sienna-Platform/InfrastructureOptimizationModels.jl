@@ -55,6 +55,16 @@ function get_network_formulation(template::AbstractProblemTemplate)
     )
 end
 
+function get_market_model(template::AbstractProblemTemplate)
+    throw(
+        ArgumentError(
+            "get_market_model is not implemented for $(typeof(template)). " *
+            "Downstream packages must implement `get_market_model(::YourTemplateType)` " *
+            "returning the market model for the template.",
+        ),
+    )
+end
+
 function get_hvdc_network_model(template::AbstractProblemTemplate)
     throw(
         ArgumentError(
@@ -91,6 +101,26 @@ function set_network_model!(template::AbstractProblemTemplate, args...)
             "set_network_model! is not implemented for $(typeof(template)). " *
             "Downstream packages must implement `set_network_model!(::YourTemplateType, network_model)` " *
             "to attach the network model to the template.",
+        ),
+    )
+end
+
+function set_market_model!(template::AbstractProblemTemplate, args...)
+    throw(
+        ArgumentError(
+            "set_market_model! is not implemented for $(typeof(template)). " *
+            "Downstream packages must implement `set_market_model!(::YourTemplateType, market_model)` " *
+            "to attach the market model to the template.",
+        ),
+    )
+end
+
+function set_market_component_model!(template::AbstractProblemTemplate, args...)
+    throw(
+        ArgumentError(
+            "set_market_component_model! is not implemented for $(typeof(template)). " *
+            "Downstream packages must implement `set_market_component_model!(::YourTemplateType, market_component_model)` " *
+            "to attach a market component model to the template.",
         ),
     )
 end

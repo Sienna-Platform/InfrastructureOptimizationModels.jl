@@ -185,6 +185,13 @@ export DefaultNetworkSource
 # Note: Concrete network model types (PTDFPowerModel, CopperPlatePowerModel, etc.)
 # and the branch-reduction tracker machinery are defined in PowerOperationsModels, not IOM.
 
+# Market Model Relevant Exports
+export AbstractMarketModel
+export MarketModel
+export MarketModelContainer
+export get_market_component_models
+export get_settlement_domain
+
 ######## Model Container Types ########
 export DeviceModel
 export ServiceModel
@@ -220,6 +227,9 @@ export set_network_model!
 export get_network_formulation
 export get_hvdc_network_model
 export set_hvdc_network_model!
+export get_market_model
+export set_market_model!
+export set_market_component_model!
 
 # Extension points for downstream packages (e.g., PowerOperationsModels)
 # These functions have fallback implementations in IOM but are meant to be
@@ -456,6 +466,7 @@ export CostExpressions
 export PostContingencyExpressions
 export ActivePowerBalance
 export ReactivePowerBalance
+export SettlementBalance
 export EmergencyUp
 export EmergencyDown
 export RawACE
@@ -589,6 +600,7 @@ include("core/service_model.jl")
 include("core/device_model.jl")
 include("core/external_evaluation.jl")
 include("core/network_model.jl")
+include("core/market_model.jl")
 include("core/initial_conditions.jl")
 include("core/settings.jl")
 include("core/dataset.jl")
