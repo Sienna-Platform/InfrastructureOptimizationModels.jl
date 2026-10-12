@@ -58,9 +58,10 @@ Establishes the NetworkModel for a given AC network formulation type.
     builds it from the system with no reductions. Concrete sources (a reduction
     specification, a prebuilt matrix, a prebuilt factorization core) live in the
     matrix-aware downstream package.
-- `reduction_exceptions::Vector{Int}` = `Int[]`
-    Bus numbers the reduction must not eliminate, on top of those the template
-    itself pins.
+- `irreducible_buses::IS.ComponentSelector` = `IS.make_selector()`
+    Selects the components whose buses the network reduction must keep, in addition to
+    the buses that the template keeps. The matrix-aware downstream package resolves the
+    selector to bus numbers. The default selects no component.
 - `duals::Vector{DataType}` = Vector{DataType}()
     Constraint types for which duals should be recorded.
 - `evaluations::EvaluationContainer`
@@ -86,7 +87,7 @@ Establishes the NetworkModel for a given AC network formulation type.
 mutable struct NetworkModel{T <: AbstractNetworkModel}
     use_slacks::Bool
     network_source::AbstractNetworkSource
-    reduction_exceptions::Vector{Int}
+    irreducible_buses::IS.ComponentSelector
     subnetworks::Dict{Int, Set{Int}}
     bus_area_map::Dict{IS.InfrastructureSystemsComponent, Int}
     duals::Vector{DataType}
@@ -101,7 +102,7 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
         ::Type{T};
         use_slacks = false,
         network_source = DefaultNetworkSource(),
-        reduction_exceptions = Int[],
+        irreducible_buses::IS.ComponentSelector = IS.make_selector(),
         duals = Vector{DataType}(),
         evaluations = EvaluationContainer(),
         hvdc_network_model = nothing,
@@ -110,7 +111,7 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
         new{T}(
             use_slacks,
             network_source,
-            reduction_exceptions,
+            irreducible_buses,
             Dict{Int, Set{Int}}(),
             Dict{IS.InfrastructureSystemsComponent, Int}(),
             duals,
@@ -128,7 +129,7 @@ end
 
 get_use_slacks(m::NetworkModel) = m.use_slacks
 get_network_source(m::NetworkModel) = m.network_source
-get_reduction_exceptions(m::NetworkModel) = m.reduction_exceptions
+get_irreducible_buses(m::NetworkModel) = m.irreducible_buses
 get_network_data(m::NetworkModel) = m.network_data
 get_duals(m::NetworkModel) = m.duals
 
