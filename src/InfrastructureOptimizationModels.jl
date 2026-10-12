@@ -159,6 +159,8 @@ using DocStringExtensions
 export DecisionModel
 export EmulationModel
 export AbstractProblemTemplate
+export AbstractSolveContext
+export make_solve_context
 export ServicesModelContainer, DevicesModelContainer, BranchModelContainer
 export InitialCondition
 
@@ -346,6 +348,7 @@ export remove_undef!
 # Bulk-added: symbols used by POM but previously not exported
 # Network reduction tracker access (the tracker machinery itself lives in POM)
 export get_reduced_branch_tracker
+export get_modeled_branch_types
 # Container/variable helpers
 export add_variable_container!, add_constraint_dual!
 export add_to_objective_invariant_expression!, lazy_container_addition!
@@ -492,7 +495,7 @@ export EventParameter
 # External evaluation abstraction (replaces the PowerFlows-specific shims)
 export AbstractEvaluator
 export AbstractEvaluationData
-export EvaluationContainer
+export EvaluationContainer, EvaluationDataContainer
 export initialize_evaluation_data
 export evaluate!
 export reset!
