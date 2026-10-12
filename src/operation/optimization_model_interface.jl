@@ -159,8 +159,7 @@ function solve_model!(model::AbstractOptimizationModel)
         serialize_optimization_model(model, model_export_path, fmt)
     end
 
-    context = make_solve_context(get_template(model))
-    status = execute_optimizer!(container, get_system(model), context)
+    status = execute_optimizer!(container, get_system(model))
     set_run_status!(model, status)
     if status != RunStatus.SUCCESSFULLY_FINALIZED
         settings = get_settings(model)
