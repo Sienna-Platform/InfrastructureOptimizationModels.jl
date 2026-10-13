@@ -57,7 +57,8 @@ function process_duals(container::OptimizationContainer, lp_optimizer)
     end
 
     if !isempty(get_duals(container)) && !JuMP.has_duals(jump_model)
-        @error "Optimizer returned no duals during dual calculation"
+        @error "Optimizer returned no duals during dual calculation" requested =
+            collect(keys(get_duals(container)))
         undo_relaxation()
         return RunStatus.FAILED
     end
