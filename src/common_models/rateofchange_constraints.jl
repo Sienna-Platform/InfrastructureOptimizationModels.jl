@@ -67,9 +67,9 @@ If t > 1:
 
 # LaTeX
 
-`` r^{down} \leq x_1 - x_{init} \leq r^{up}, \text{ for } t = 1 ``
+`` -r^{down} \leq x_1 - x_{init} \leq r^{up}, \text{ for } t = 1 ``
 
-`` r^{down} \leq x_t - x_{t-1} \leq r^{up}, \forall t \geq 2 ``
+`` -r^{down} \leq x_t - x_{t-1} \leq r^{up}, \forall t \geq 2 ``
 
 """
 function add_linear_ramp_constraints!(
@@ -110,7 +110,7 @@ function add_linear_ramp_constraints!(
         add_ramp_constraint_pair!(
             jump_model, cons, name, 1,
             (up = expr_up[name, 1], down = expr_dn[name, 1]),
-            ic_power, ramp_limits, minutes_per_period, slack, false,
+            ic_power, ramp_limits, minutes_per_period, slack,
         )
 
         for t in time_steps[2:end]
@@ -118,8 +118,7 @@ function add_linear_ramp_constraints!(
             add_ramp_constraint_pair!(
                 jump_model, cons, name, t,
                 (up = expr_up[name, t], down = expr_dn[name, t]),
-                variable[name, t - 1], ramp_limits, minutes_per_period, slack,
-                false)
+                variable[name, t - 1], ramp_limits, minutes_per_period, slack)
         end
     end
     return
@@ -308,9 +307,9 @@ If t > 1:
 
 # LaTeX
 
-`` r^{down} + r^{min} x^{stop}_1 \leq x_1 - x_{init} \leq r^{up} + r^{max} x^{start}_1, \text{ for } t = 1 ``
+`` -r^{down} - r^{min} x^{stop}_1 \leq x_1 - x_{init} \leq r^{up} + r^{max} x^{start}_1, \text{ for } t = 1 ``
 
-`` r^{down} + r^{min} x^{stop}_t \leq x_t - x_{t-1} \leq r^{up} + r^{max} x^{start}_t, \forall t \geq 2 ``
+`` -r^{down} - r^{min} x^{stop}_t \leq x_t - x_{t-1} \leq r^{up} + r^{max} x^{start}_t, \forall t \geq 2 ``
 """
 function add_semicontinuous_ramp_constraints!(
     container::OptimizationContainer,
