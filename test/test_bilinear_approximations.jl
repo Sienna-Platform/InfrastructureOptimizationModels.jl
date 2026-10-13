@@ -1,6 +1,30 @@
 const BILINEAR_META = "BilinearTest"
 
 @testset "Bilinear Approximations" begin
+    @testset "Bin2 default config keeps box-face points feasible" begin
+        for (xv, yv) in [(0.0, 1.3), (4.0, 2.7), (1.3, 0.0), (2.7, 4.0)]
+            setup = _setup_bilinear_test(["dev1"], 1:1)
+            JuMP.fix(setup.x_var_container["dev1", 1], xv; force = true)
+            JuMP.fix(setup.y_var_container["dev1", 1], yv; force = true)
+            IOM._add_bilinear_approx!(
+                IOM.Bin2Config(IOM.SolverSOS2QuadConfig(; depth = 2, pwmcc_segments = 0)),
+                setup.container,
+                MockThermalGen,
+                ["dev1"],
+                1:1,
+                setup.x_var_container,
+                setup.y_var_container,
+                [(min = 0.0, max = 4.0)],
+                [(min = 0.0, max = 4.0)],
+                BILINEAR_META,
+            )
+            JuMP.set_optimizer(setup.jump_model, HiGHS.Optimizer)
+            JuMP.set_silent(setup.jump_model)
+            JuMP.optimize!(setup.jump_model)
+            @test JuMP.termination_status(setup.jump_model) == JuMP.OPTIMAL
+        end
+    end
+
     @testset "Bin2 + Solver SOS2" begin
         @testset "Reformulated McCormick tightens LP relaxation" begin
             # At interior point x=2.5, y=1.5, true product = 3.75
