@@ -45,12 +45,11 @@ end
     devices = [MockBranch("L1", true, bus_a, bus_b, 5.0)]
     container = _make_directional_container(devices, time_steps)
     var = IOM.get_variable(container, TestVariableType, MockBranch)
+    limit = DenseAxisArray([2.0 * t for _ in 1:1, t in time_steps], ["L1"], time_steps)
     for dir in (IOM.FromTo(), IOM.ToFrom())
-        sign = _test_flow_sign(dir)
         IOM.add_directional_limit_constraints!(
             container, TestConstraintType, MockBranch, dir, ["L1"],
-            (name, t) -> sign * var[name, t],
-            (name, t) -> 2.0 * t,
+            var, _test_flow_sign(dir), limit,
         )
     end
     con_ft = IOM.get_constraint(container, TestConstraintType, MockBranch, "ft")
@@ -62,6 +61,31 @@ end
         @test JuMP.coefficient(obj_tf.func, var["L1", t]) == -1.0
         @test obj_ft.set == MOI.LessThan(2.0 * t)
         @test obj_tf.set == MOI.LessThan(2.0 * t)
+    end
+end
+
+@testset "Directional limits: constraint builder with slack" begin
+    time_steps = 1:2
+    bus_a = MockBus("a", 1, :PV)
+    bus_b = MockBus("b", 2, :PQ)
+    devices = [MockBranch("L1", true, bus_a, bus_b, 5.0)]
+    container = _make_directional_container(devices, time_steps)
+    jump_model = IOM.get_jump_model(container)
+    var = IOM.get_variable(container, TestVariableType, MockBranch)
+    slack = DenseAxisArray(
+        [JuMP.@variable(jump_model) for _ in 1:1, _ in time_steps], ["L1"], time_steps,
+    )
+    limit = DenseAxisArray(fill(3.0, 1, length(time_steps)), ["L1"], time_steps)
+    IOM.add_directional_limit_constraints!(
+        container, TestConstraintType, MockBranch, IOM.ToFrom(), ["L1"],
+        var, -1.0, slack, limit,
+    )
+    con = IOM.get_constraint(container, TestConstraintType, MockBranch, "tf")
+    for t in time_steps
+        obj = JuMP.constraint_object(con["L1", t])
+        @test JuMP.coefficient(obj.func, var["L1", t]) == -1.0
+        @test JuMP.coefficient(obj.func, slack["L1", t]) == -1.0
+        @test obj.set == MOI.LessThan(3.0)
     end
 end
 
