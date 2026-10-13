@@ -166,7 +166,7 @@ export InitialCondition
 export AbstractNetworkModel
 export NetworkModel
 export get_network_matrix, get_contingency_matrix
-export get_network_source, get_reduction_exceptions, get_network_data, set_network_data!
+export get_network_source, get_irreducible_buses, get_network_data, set_network_data!
 export get_outages
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, has_subnetworks, get_subsystem

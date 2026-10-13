@@ -13,13 +13,14 @@ struct MockReductionTracker <: IOM.AbstractBranchReductionTracker end
 
 @testset "NetworkModel with abstract network source and data" begin
     source = MockNetworkSource()
+    selector = IS.make_selector(IS.TestComponent, "component_1")
     nw = IOM.NetworkModel(
         TestPowerModel;
         network_source = source,
-        reduction_exceptions = [3, 7],
+        irreducible_buses = selector,
     )
     @test IOM.get_network_source(nw) === source
-    @test IOM.get_reduction_exceptions(nw) == [3, 7]
+    @test IOM.get_irreducible_buses(nw) == selector
     # Network data and tracker are populated by the matrix-aware downstream package.
     @test IOM.get_network_data(nw) === nothing
     @test IOM.get_reduced_branch_tracker(nw) === nothing
@@ -36,6 +37,6 @@ end
 @testset "NetworkModel defaults to the neutral source" begin
     nw = IOM.NetworkModel(TestPowerModel)
     @test IOM.get_network_source(nw) === IOM.DefaultNetworkSource()
-    @test isempty(IOM.get_reduction_exceptions(nw))
+    @test IOM.get_irreducible_buses(nw) == IS.make_selector()
     @test isempty(IOM.get_subnetworks(nw))
 end
