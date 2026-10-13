@@ -177,6 +177,28 @@ function setup_pwl_constraint_test(;
     return (; container, device, pwl_data, break_points, power_var)
 end
 
+# Mocks for the _sos_status commitment traits
+struct MockCommitGen <: AbstractMockGenerator end
+struct MockPlainGen <: AbstractMockGenerator end
+struct MockCommitFormulation <: IOM.AbstractDeviceFormulation end
+struct MockNoCommitFormulation <: IOM.AbstractDeviceFormulation end
+struct MockThermalCommitFormulation <: IOM.AbstractThermalUnitCommitment end
+IOM.uses_commitment_variables(::Type{MockCommitGen}) = true
+IOM.uses_commitment_formulation(::Type{MockCommitFormulation}) = true
+
+@testset "_sos_status commitment traits" begin
+    @test IOM._sos_status(MockCommitGen, MockCommitFormulation) ==
+          IOM.SOSStatusVariable.VARIABLE
+    @test IOM._sos_status(MockCommitGen, MockNoCommitFormulation) ==
+          IOM.SOSStatusVariable.NO_VARIABLE
+    @test IOM._sos_status(MockPlainGen, MockCommitFormulation) ==
+          IOM.SOSStatusVariable.NO_VARIABLE
+    @test IOM._sos_status(MockCommitGen, MockThermalCommitFormulation) ==
+          IOM.SOSStatusVariable.VARIABLE
+    @test IOM._sos_status(MockPlainGen, MockThermalCommitFormulation) ==
+          IOM.SOSStatusVariable.NO_VARIABLE
+end
+
 @testset "Piecewise Linear Objective Functions" begin
     @testset "add_pwl_variables_lambda!" begin
         (; container, pwl_data) = setup_pwl_test()
