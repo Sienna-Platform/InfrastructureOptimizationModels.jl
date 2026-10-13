@@ -409,3 +409,45 @@ function add_pwl_sos2_constraint!(
     JuMP.@constraint(jump_model, pwl_vars in MOI.SOS2(collect(1:n_points)))
     return
 end
+
+"""
+Add the PWL linking and normalization rows for one period. The variable type selects the
+form: `PowerAboveMinimumVariable` holds the output above `P_min`, so its rows add `P_min·on`.
+"""
+function _add_pwl_linking!(
+    container::OptimizationContainer,
+    component::IS.InfrastructureSystemsComponent,
+    ::Type{<:VariableType},
+    break_points::Vector{Float64},
+    sos_status::SOSStatusVariable.Value,
+    period::Int,
+    power_var::JuMP.VariableRef,
+)
+    _add_pwl_constraint_standard!(
+        container, component, break_points, sos_status, period, power_var,
+    )
+    return
+end
+
+function _add_pwl_linking!(
+    container::OptimizationContainer,
+    component::IS.InfrastructureSystemsComponent,
+    ::Type{PowerAboveMinimumVariable},
+    break_points::Vector{Float64},
+    sos_status::SOSStatusVariable.Value,
+    period::Int,
+    power_var::JuMP.VariableRef,
+)
+    p_min = get_active_power_limits(component).min
+    _add_pwl_constraint_compact!(
+        container,
+        component,
+        get_name(component),
+        break_points,
+        sos_status,
+        period,
+        power_var,
+        p_min,
+    )
+    return
+end
