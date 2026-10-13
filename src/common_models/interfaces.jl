@@ -239,6 +239,40 @@ function get_min_max_limits(
 end
 
 """
+Per-step minimum active power of `device`, as a vector over the time steps. The default
+repeats `get_active_power_limits(device).min`. The ramp and PWL cost code read it. A device
+type whose minimum changes by step implements this method.
+"""
+function get_min_active_power_values(
+    container::OptimizationContainer,
+    device::V,
+) where {V <: IS.InfrastructureSystemsComponent}
+    n = length(get_time_steps(container))
+    return fill(Float64(get_active_power_limits(device).min), n)
+end
+
+"""
+Per-step minimum and maximum limits of `device` for the constraint `T`, as two vectors over
+the time steps. The default repeats [`get_min_max_limits`](@ref) at every step. A formulation
+whose limits change by step implements this method. `fill_slacked_range_constraints!` still
+reads the static [`get_min_max_limits`](@ref) (branch ratings only), so it has no per-step limits.
+"""
+function get_min_max_limit_values(
+    container::OptimizationContainer,
+    ::Type{T},
+    device::V,
+    ::DeviceModel{V, W},
+) where {
+    T <: ConstraintType,
+    V <: IS.InfrastructureSystemsComponent,
+    W <: AbstractDeviceFormulation,
+}
+    limits = get_min_max_limits(device, T, W)
+    n = length(get_time_steps(container))
+    return (min = fill(Float64(limits.min), n), max = fill(Float64(limits.max), n))
+end
+
+"""
 Extension point: variable cost.
 
 The one exception where it isn't just `get_variable(cost)`: storage devices, where we
