@@ -29,9 +29,8 @@ effective_limit(limits::DirectionalMinMax, rating::Float64, dir::FlowDirection) 
 
 """
 Add `flow_sign * flow[name, t] <= limit[name, t]` for each name and time step, in a
-container with meta `constraint_meta(dir)`. `flow` and `limit` are indexed by name and
-time step, for example a `DenseAxisArray`. Use `flow_sign = -1.0` when `flow` has the
-sign of the other direction.
+container with meta `constraint_meta(dir)`. `flow` and `limit` have the axes name and
+time step. Use `flow_sign = -1.0` when `flow` has the sign of the other direction.
 """
 function add_directional_limit_constraints!(
     container::OptimizationContainer,
@@ -39,10 +38,10 @@ function add_directional_limit_constraints!(
     ::Type{D},
     dir::FlowDirection,
     names::Vector{String},
-    flow::AbstractArray,
+    flow::DenseAxisArray{<:JuMP.AbstractJuMPScalar, 2, A},
     flow_sign::Float64,
-    limit::AbstractArray,
-) where {C <: ConstraintType, D}
+    limit::DenseAxisArray{<:JuMPOrFloat, 2, A},
+) where {C <: ConstraintType, D, A <: Tuple{Vector{String}, UnitRange{Int}}}
     time_steps = get_time_steps(container)
     con = add_constraints_container!(
         container, C, D, names, time_steps; meta = constraint_meta(dir),
@@ -65,11 +64,11 @@ function add_directional_limit_constraints!(
     ::Type{D},
     dir::FlowDirection,
     names::Vector{String},
-    flow::AbstractArray,
+    flow::DenseAxisArray{<:JuMP.AbstractJuMPScalar, 2, A},
     flow_sign::Float64,
-    slack::AbstractArray,
-    limit::AbstractArray,
-) where {C <: ConstraintType, D}
+    slack::DenseAxisArray{JuMP.VariableRef, 2, A},
+    limit::DenseAxisArray{<:JuMPOrFloat, 2, A},
+) where {C <: ConstraintType, D, A <: Tuple{Vector{String}, UnitRange{Int}}}
     time_steps = get_time_steps(container)
     con = add_constraints_container!(
         container, C, D, names, time_steps; meta = constraint_meta(dir),
