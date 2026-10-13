@@ -140,3 +140,114 @@ end
     @test JuMP.normalized_coefficient(up["gen1", 1], start["gen1", 1]) ≈ -30.0
     @test JuMP.normalized_coefficient(dn["gen1", 1], stop["gen1", 1]) ≈ -30.0
 end
+
+abstract type AbstractRampGen <: AbstractMockGenerator end
+struct RampMockGen <: AbstractRampGen
+    name::String
+    limits::NamedTuple{(:min, :max), Tuple{Float64, Float64}}
+    ramp::NamedTuple{(:up, :down), Tuple{Float64, Float64}}
+end
+struct RampStepGen <: AbstractRampGen
+    name::String
+    limits::NamedTuple{(:min, :max), Tuple{Float64, Float64}}
+    ramp::NamedTuple{(:up, :down), Tuple{Float64, Float64}}
+end
+struct RampPerStepFormulation <: IOM.AbstractDeviceFormulation end
+struct RampDefaultFormulation <: IOM.AbstractDeviceFormulation end
+
+IS.get_name(g::AbstractRampGen) = g.name
+IOM.get_active_power_limits(g::AbstractRampGen) = g.limits
+IOM.get_ramp_limits(g::AbstractRampGen) = g.ramp
+IOM._get_initial_condition_type(
+    ::Type{TestConstraintType}, ::Type{<:AbstractRampGen},
+    ::Type{
+        <:IOM.AbstractDeviceFormulation,
+    },
+) = MockInitialCondition
+
+const RAMP_PMIN = [0.0, 1.0, 1.5]
+
+function IOM.get_min_active_power_values(
+    container::IOM.OptimizationContainer,
+    ::RampStepGen,
+)
+    return RAMP_PMIN
+end
+
+function _make_ramp_container(device, time_steps)
+    mock_sys = MockSystem(100.0)
+    settings = IOM.Settings(
+        mock_sys;
+        horizon = Dates.Hour(length(time_steps)),
+        resolution = Dates.Hour(1),
+        time_series_cache_size = 0,
+    )
+    container = IOM.OptimizationContainer(mock_sys, settings, nothing, MockDeterministic)
+    IOM.set_time_steps!(container, time_steps)
+    jump_model = IOM.get_jump_model(container)
+    names = [IS.get_name(device)]
+    D = typeof(device)
+    for V in (IOM.ActivePowerVariable, IOM.StartVariable, IOM.StopVariable)
+        var = IOM.add_variable_container!(container, V, D, names, time_steps)
+        for t in time_steps
+            var[names[1], t] = JuMP.@variable(jump_model)
+        end
+    end
+    for E in (IOM.ActivePowerRangeExpressionLB, IOM.ActivePowerRangeExpressionUB)
+        expr = IOM.add_expression_container!(container, E, D, names, time_steps)
+        power = IOM.get_variable(container, IOM.ActivePowerVariable, D)
+        for t in time_steps
+            expr[names[1], t] = 1.0 * power[names[1], t]
+        end
+    end
+    ics = IOM.add_initial_condition_container!(container, MockInitialCondition(), D, names)
+    ics[1] = IOM.InitialCondition(MockInitialCondition, device, 1.0)
+    return container
+end
+
+@testset "Per-step minimum active power in ramps" begin
+    time_steps = 1:3
+    device = RampStepGen("A", (min = 1.0, max = 10.0), (up = 0.05, down = 0.05))
+    default_device = RampMockGen("A", (min = 1.0, max = 10.0), (up = 0.05, down = 0.05))
+    step_model = IOM.DeviceModel(RampStepGen, RampPerStepFormulation)
+    default_model = IOM.DeviceModel(RampMockGen, RampDefaultFormulation)
+
+    @testset "start and stop terms use per-step values" begin
+        container = _make_ramp_container(device, time_steps)
+        IOM.add_semicontinuous_ramp_constraints!(
+            container, TestConstraintType, IOM.ActivePowerVariable,
+            [device], step_model, TestPowerModel)
+        con_up = IOM.get_constraint(container, TestConstraintType, RampStepGen, "up")
+        con_dn = IOM.get_constraint(container, TestConstraintType, RampStepGen, "dn")
+        start = IOM.get_variable(container, IOM.StartVariable, RampStepGen)
+        stop = IOM.get_variable(container, IOM.StopVariable, RampStepGen)
+        for t in time_steps
+            @test JuMP.normalized_coefficient(con_up["A", t], start["A", t]) ≈ -RAMP_PMIN[t]
+            @test JuMP.normalized_coefficient(con_dn["A", t], stop["A", t]) ≈ -RAMP_PMIN[t]
+        end
+    end
+
+    @testset "default values repeat the device minimum" begin
+        container = _make_ramp_container(default_device, time_steps)
+        IOM.add_semicontinuous_ramp_constraints!(
+            container, TestConstraintType, IOM.ActivePowerVariable,
+            [default_device], default_model, TestPowerModel)
+        con_up = IOM.get_constraint(container, TestConstraintType, RampMockGen, "up")
+        start = IOM.get_variable(container, IOM.StartVariable, RampMockGen)
+        for t in time_steps
+            @test JuMP.normalized_coefficient(con_up["A", t], start["A", t]) ≈ -1.0
+        end
+    end
+
+    @testset "ramp filter uses the smallest per-step minimum" begin
+        container = _make_ramp_container(device, time_steps)
+        tight = RampMockGen("B", (min = 1.0, max = 2.0), (up = 1.5 / 60, down = 1.5 / 60))
+        tight_step =
+            RampStepGen("B", (min = 1.0, max = 2.0), (up = 1.5 / 60, down = 1.5 / 60))
+        # Default minimum 1.0: spread 1.0/60 is below the ramp rate, so the ramp does not bind.
+        @test isempty(IOM._get_ramp_constraint_devices(container, [tight]))
+        # Smallest per-step minimum 0.0: spread 2.0/60 exceeds the ramp rate, so keep it.
+        kept = IOM._get_ramp_constraint_devices(container, [tight_step])
+        @test length(kept) == 1
+    end
+end

@@ -411,8 +411,9 @@ function add_pwl_sos2_constraint!(
 end
 
 """
-Add the PWL linking and normalization rows for one period. The variable type selects the
-form: `PowerAboveMinimumVariable` holds the output above `P_min`, so its rows add `P_min·on`.
+Add the PWL linking and normalization rows at every time step. The variable type selects the
+form: `PowerAboveMinimumVariable` holds the output above `P_min`, so its rows add `P_min_t·on_t`
+with the per-step minimum from [`get_min_active_power_values`](@ref).
 """
 function _add_pwl_linking!(
     container::OptimizationContainer,
@@ -420,12 +421,14 @@ function _add_pwl_linking!(
     ::Type{<:VariableType},
     break_points::Vector{Float64},
     sos_status::SOSStatusVariable.Value,
-    period::Int,
-    power_var::JuMP.VariableRef,
+    power_variables,
 )
-    _add_pwl_constraint_standard!(
-        container, component, break_points, sos_status, period, power_var,
-    )
+    name = get_name(component)
+    for t in get_time_steps(container)
+        _add_pwl_constraint_standard!(
+            container, component, break_points, sos_status, t, power_variables[name, t],
+        )
+    end
     return
 end
 
@@ -435,19 +438,21 @@ function _add_pwl_linking!(
     ::Type{PowerAboveMinimumVariable},
     break_points::Vector{Float64},
     sos_status::SOSStatusVariable.Value,
-    period::Int,
-    power_var::JuMP.VariableRef,
+    power_variables,
 )
-    p_min = get_active_power_limits(component).min
-    _add_pwl_constraint_compact!(
-        container,
-        component,
-        get_name(component),
-        break_points,
-        sos_status,
-        period,
-        power_var,
-        p_min,
-    )
+    p_min = get_min_active_power_values(container, component)
+    name = get_name(component)
+    for t in get_time_steps(container)
+        _add_pwl_constraint_compact!(
+            container,
+            component,
+            name,
+            break_points,
+            sos_status,
+            t,
+            power_variables[name, t],
+            p_min[t],
+        )
+    end
     return
 end

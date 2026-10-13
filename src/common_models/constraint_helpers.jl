@@ -25,6 +25,10 @@ constraint_meta(::UpperBound) = "ub"
 get_bound(::LowerBound, limits) = limits.min
 get_bound(::UpperBound, limits) = limits.max
 
+"""Extract the bound at step `t` from per-step limit vectors."""
+get_bound(::LowerBound, limits, t::Int) = limits.min[t]
+get_bound(::UpperBound, limits, t::Int) = limits.max[t]
+
 """Create a bound constraint with the appropriate direction."""
 _make_bound_constraint(::LowerBound, model, lhs, rhs) = JuMP.@constraint(model, lhs >= rhs)
 _make_bound_constraint(::UpperBound, model, lhs, rhs) = JuMP.@constraint(model, lhs <= rhs)

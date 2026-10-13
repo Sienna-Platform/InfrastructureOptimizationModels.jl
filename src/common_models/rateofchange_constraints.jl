@@ -20,7 +20,8 @@ function _get_ramp_constraint_devices(
         ramp_limits = get_ramp_limits(d)
         if ramp_limits !== nothing
             p_lims = get_active_power_limits(d)
-            max_rate = abs(p_lims.min - p_lims.max) / minutes_per_period
+            p_min = minimum(get_min_active_power_values(container, d))
+            max_rate = abs(p_min - p_lims.max) / minutes_per_period
             if (ramp_limits.up >= max_rate) & (ramp_limits.down >= max_rate)
                 @debug "Generator has a nonbinding ramp limits. Constraints Skipped" IS.get_name(
                     d,
@@ -353,7 +354,7 @@ function add_semicontinuous_ramp_constraints!(
         name ∉ device_name_set && continue
         device = get_component(ic)
         ramp_limits = get_ramp_limits(device)
-        power_limits = get_active_power_limits(device)
+        p_min = get_min_active_power_values(container, device)
         ic_power = get_value(ic)
         @debug "add rate_of_change_constraint" name ic_power
 
@@ -369,8 +370,8 @@ function add_semicontinuous_ramp_constraints!(
                     cur, prev, ramp_limits, minutes_per_period, slack)
             else
                 startstop = (
-                    up = power_limits.min * varstart[name, t],
-                    down = power_limits.min * varstop[name, t],
+                    up = p_min[t] * varstart[name, t],
+                    down = p_min[t] * varstop[name, t],
                 )
                 add_ramp_constraint_startstop_pair!(
                     jump_model, cons, name, t,
