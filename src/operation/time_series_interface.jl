@@ -18,6 +18,7 @@ function get_time_series_values!(
             start_time = initial_time,
             len = horizon,
             interval = is_interval,
+            resolution = resolution,
         )
     end
 
