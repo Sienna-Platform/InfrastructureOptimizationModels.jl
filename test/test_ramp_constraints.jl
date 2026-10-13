@@ -30,7 +30,7 @@ IOM.get_ramp_limits(::MockThermalGen) = (up = 0.1, down = 0.2)
         @test IOM._initial_on_status(p) == 0.0
     end
 
-    @testset "Expression-path ramp down row bounds the decrease" begin
+    @testset "Expression-path ramp down limits the decrease in a solved model" begin
         time_steps = 1:2
         dev = make_mock_thermal("A")
         mock_sys = MockSystem(100.0)
@@ -71,20 +71,18 @@ IOM.get_ramp_limits(::MockThermalGen) = (up = 0.1, down = 0.2)
             container, TestConstraintType, IOM.ActivePowerVariable, [dev], model,
             TestPowerModel)
 
-        con_dn = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "dn")
-        down_limit = 0.2 * 60
+        # Minimizing power must stop at the ramp-down limit from the initial value:
+        # p1 >= 50 - 12 = 38 and p2 >= p1 - 12 = 26. A row that bounds the increase
+        # instead would let both go to zero.
+        JuMP.@constraint(jump_model, [t in time_steps], p["A", t] >= 0.0)
+        JuMP.fix.(r["A", :], 0.0; force = true)
+        JuMP.@objective(jump_model, Min, sum(p["A", t] for t in time_steps))
+        JuMP.set_optimizer(jump_model, HiGHS.Optimizer)
+        JuMP.set_silent(jump_model)
+        JuMP.optimize!(jump_model)
 
-        # t = 1: ic - (p1 - r1) <= down * dt
-        obj = JuMP.constraint_object(con_dn["A", 1])
-        @test obj.set == MOI.LessThan(down_limit - 50.0)
-        @test JuMP.coefficient(obj.func, p["A", 1]) == -1.0
-        @test JuMP.coefficient(obj.func, r["A", 1]) == 1.0
-
-        # t = 2: p1 - (p2 - r2) <= down * dt
-        obj = JuMP.constraint_object(con_dn["A", 2])
-        @test obj.set == MOI.LessThan(down_limit)
-        @test JuMP.coefficient(obj.func, p["A", 1]) == 1.0
-        @test JuMP.coefficient(obj.func, p["A", 2]) == -1.0
-        @test JuMP.coefficient(obj.func, r["A", 2]) == 1.0
+        @test JuMP.termination_status(jump_model) == MOI.OPTIMAL
+        @test JuMP.value(p["A", 1]) ≈ 38.0
+        @test JuMP.value(p["A", 2]) ≈ 26.0
     end
 end
