@@ -211,6 +211,29 @@ end
         @test collect(got) == collect(1.0:24.0)
     end
 
+    @testset "get_time_series_window reads a later window without a container" begin
+        got = IOM.get_time_series_window(
+            IS.SingleTimeSeries, component, "links", t0 + Hour(30), 1)
+        @test got == [vec(links[31, :, :])]
+
+        # Fresh data: two Deterministic windows need their own store.
+        sd = IS.SystemData()
+        owner = IS.TestComponent("c1", 1)
+        IS.add_component!(sd, owner)
+        second = shares .+ 100.0
+        IS.add_time_series!(
+            sd,
+            owner,
+            IS.Deterministic("shares",
+                Dict(t0 => shares, t0 + Hour(24) => second), Hour(1), Hour(24);
+                value_axes = [IS.TimeSeriesAxis("bus", [10, 20, 30])]),
+        )
+        got = IOM.get_time_series_window(
+            IS.Deterministic, owner, "shares", t0 + Hour(24), 24)
+        @test length(got) == 24
+        @test all(got[t] == second[t, :] for t in 1:24)
+    end
+
     @testset "only Deterministic and SingleTimeSeries carry value axes" begin
         @test IOM._value_axes(
             MockDeterministic("x", Float64[], Hour(1), DateTime("2024-01-01T00:00:00")),
