@@ -978,7 +978,7 @@ end
                 container, IOM.PiecewiseLinearCostVariable, MockThermalGen)
             power = IOM.get_variable(container, TestPWLVariable, MockThermalGen)
             allowed = Set(vcat([power["gen1", t]], [pwl["gen1", k, t] for k in 1:3]))
-            @test all(v -> v in allowed, keys(func.terms))
+            @test issubset(keys(func.terms), allowed)
         end
     end
 end
