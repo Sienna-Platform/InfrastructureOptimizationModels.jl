@@ -28,8 +28,10 @@ effective_limit(limits::DirectionalMinMax, rating::Float64, dir::FlowDirection) 
     min(rating, get_directional_value(limits, dir).max)
 
 """
-Add `flow(name, t) <= limit(name, t)` for each name and time step, in a container with
-meta `constraint_meta(dir)`. The caller supplies `flow` with the sign of direction `dir`.
+Add `flow_sign * flow[name, t] <= limit[name, t]` for each name and time step, in a
+container with meta `constraint_meta(dir)`. `flow` and `limit` are indexed by name and
+time step, for example a `DenseAxisArray`. Use `flow_sign = -1.0` when `flow` has the
+sign of the other direction.
 """
 function add_directional_limit_constraints!(
     container::OptimizationContainer,
@@ -37,16 +39,47 @@ function add_directional_limit_constraints!(
     ::Type{D},
     dir::FlowDirection,
     names::Vector{String},
-    flow::F,
-    limit::G,
-) where {C <: ConstraintType, D, F, G}
+    flow::AbstractArray,
+    flow_sign::Float64,
+    limit::AbstractArray,
+) where {C <: ConstraintType, D}
     time_steps = get_time_steps(container)
     con = add_constraints_container!(
         container, C, D, names, time_steps; meta = constraint_meta(dir),
     )
     jump_model = get_jump_model(container)
     for name in names, t in time_steps
-        con[name, t] = JuMP.@constraint(jump_model, flow(name, t) <= limit(name, t))
+        con[name, t] =
+            JuMP.@constraint(jump_model, flow_sign * flow[name, t] <= limit[name, t])
+    end
+    return
+end
+
+"""
+Add `flow_sign * flow[name, t] - slack[name, t] <= limit[name, t]` for each name and time
+step. The other arguments are as in the method without `slack`.
+"""
+function add_directional_limit_constraints!(
+    container::OptimizationContainer,
+    ::Type{C},
+    ::Type{D},
+    dir::FlowDirection,
+    names::Vector{String},
+    flow::AbstractArray,
+    flow_sign::Float64,
+    slack::AbstractArray,
+    limit::AbstractArray,
+) where {C <: ConstraintType, D}
+    time_steps = get_time_steps(container)
+    con = add_constraints_container!(
+        container, C, D, names, time_steps; meta = constraint_meta(dir),
+    )
+    jump_model = get_jump_model(container)
+    for name in names, t in time_steps
+        con[name, t] = JuMP.@constraint(
+            jump_model,
+            flow_sign * flow[name, t] - slack[name, t] <= limit[name, t],
+        )
     end
     return
 end
