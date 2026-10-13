@@ -64,9 +64,6 @@ Establishes the NetworkModel for a given AC network formulation type.
     selector to bus numbers. The default selects no component.
 - `duals::Vector{DataType}` = Vector{DataType}()
     Constraint types for which duals should be recorded.
-- `evaluations::EvaluationContainer`
-    External evaluators (e.g. power-flow) keyed by concrete evaluator type.
-    Default is an empty container — no evaluator runs.
 
 # Notes
 - `network_data` holds every matrix and the reduction data derived from
@@ -76,11 +73,8 @@ Establishes the NetworkModel for a given AC network formulation type.
 - `subsystem` can be set after construction via `set_subsystem!(model, id)`.
 
 # Examples (concrete types like PTDFPowerModel, CopperPlatePowerModel are defined in PowerSimulations)
-# ec = EvaluationContainer()
-# add_evaluator!(ec, PFS.PowerFlowEvaluationModel, PFS.PowerFlowEvaluationModel())
 # nw = NetworkModel(PTDFPowerModel;
-#                   network_source = NetworkReductionSpec(RadialReduction()),
-#                   evaluations = ec)
+#                   network_source = NetworkReductionSpec(RadialReduction()))
 #
 # nw2 = NetworkModel(CopperPlatePowerModel)
 """
@@ -92,7 +86,6 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
     bus_area_map::Dict{IS.InfrastructureSystemsComponent, Int}
     duals::Vector{DataType}
     network_data::Union{Nothing, AbstractNetworkData}
-    evaluations::EvaluationContainer
     subsystem::Union{Nothing, String}
     hvdc_network_model::Union{Nothing, AbstractHVDCNetworkModel}
     modeled_branch_types::Vector{DataType}
@@ -104,7 +97,6 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
         network_source = DefaultNetworkSource(),
         irreducible_buses::IS.ComponentSelector = IS.make_selector(),
         duals = Vector{DataType}(),
-        evaluations = EvaluationContainer(),
         hvdc_network_model = nothing,
     ) where {T <: AbstractNetworkModel}
         _check_network_formulation(T)
@@ -118,7 +110,6 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
             # Populated by the network-matrix-aware instantiation code (POM); IOM
             # holds it behind an abstract type so it carries no PNM dependency.
             nothing,
-            evaluations,
             nothing,
             hvdc_network_model,
             Vector{DataType}(),
@@ -153,7 +144,6 @@ get_reference_buses(m::NetworkModel{T}) where {T <: AbstractNetworkModel} =
     collect(keys(m.subnetworks))
 get_subnetworks(m::NetworkModel) = m.subnetworks
 get_bus_area_map(m::NetworkModel) = m.bus_area_map
-get_evaluations(m::NetworkModel) = m.evaluations
 has_subnetworks(m::NetworkModel) = !isempty(m.bus_area_map)
 get_subsystem(m::NetworkModel) = m.subsystem
 get_hvdc_network_model(m::NetworkModel) = m.hvdc_network_model
