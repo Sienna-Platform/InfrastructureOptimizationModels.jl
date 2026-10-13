@@ -100,11 +100,14 @@ function _add_bound_range_constraints_impl!(
     con = add_constraints_container!(
         container, T, V, device_names, time_steps; meta = constraint_meta(dir))
 
-    for device in devices, t in time_steps
+    for device in devices
         ci_name = IS.get_name(device)
-        limits = get_min_max_limits(device, T, W)
-        add_range_bound_constraint!(
-            dir, jump_model, con, ci_name, t, array[ci_name, t], get_bound(dir, limits))
+        limit_values = get_min_max_limit_values(container, T, device, model)
+        for t in time_steps
+            add_range_bound_constraint!(
+                dir, jump_model, con, ci_name, t,
+                array[ci_name, t], get_bound(dir, limit_values, t))
+        end
     end
     return
 end
@@ -295,7 +298,7 @@ function _add_semicontinuous_bound_range_constraints_impl!(
     dir::BoundDirection,
     array,
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    ::DeviceModel{V, W};
+    model::DeviceModel{V, W};
     meta_suffix::String = "",
 ) where {
     T <: ConstraintType,
@@ -309,12 +312,14 @@ function _add_semicontinuous_bound_range_constraints_impl!(
         container, T, V, names, time_steps; meta = constraint_meta(dir) * meta_suffix)
     varbin = get_variable(container, OnVariable, V)
 
-    for device in devices, t in time_steps
+    for device in devices
         ci_name = IS.get_name(device)
-        limits = get_min_max_limits(device, T, W)
-        add_range_bound_constraint!(
-            dir, jump_model, con, ci_name, t,
-            array[ci_name, t], get_bound(dir, limits), varbin[ci_name, t])
+        limit_values = get_min_max_limit_values(container, T, device, model)
+        for t in time_steps
+            add_range_bound_constraint!(
+                dir, jump_model, con, ci_name, t,
+                array[ci_name, t], get_bound(dir, limit_values, t), varbin[ci_name, t])
+        end
     end
     return
 end
@@ -342,7 +347,7 @@ function add_reserve_bound_range_constraints!(
     dir::BoundDirection,
     array,
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    ::DeviceModel{V, W},
+    model::DeviceModel{V, W},
     invert_binary::Bool,
 ) where {
     T <: ConstraintType,
@@ -357,13 +362,15 @@ function add_reserve_bound_range_constraints!(
         container, T, V, names, time_steps; meta = constraint_meta(dir))
     varbin = get_variable(container, ReservationVariable, V)
 
-    for device in devices, t in time_steps
+    for device in devices
         ci_name = IS.get_name(device)
-        limits = get_min_max_limits(device, T, W)
-        bin = invert_binary ? (1 - varbin[ci_name, t]) : varbin[ci_name, t]
-        add_range_bound_constraint!(
-            dir, jump_model, con, ci_name, t,
-            array[ci_name, t], get_bound(dir, limits), bin)
+        limit_values = get_min_max_limit_values(container, T, device, model)
+        for t in time_steps
+            bin = invert_binary ? (1 - varbin[ci_name, t]) : varbin[ci_name, t]
+            add_range_bound_constraint!(
+                dir, jump_model, con, ci_name, t,
+                array[ci_name, t], get_bound(dir, limit_values, t), bin)
+        end
     end
     return
 end

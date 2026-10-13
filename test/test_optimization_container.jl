@@ -463,6 +463,57 @@ end
         @test JuMP.has_upper_bound(v) && JuMP.upper_bound(v) == 5.0
     end
 
+    @testset "process_duals fails when the optimizer returns no duals" begin
+        MOI = IOM.MOI
+        mock_sys = MockSystem(100.0)
+        settings = IOM.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        jump_model = JuMP.Model(HiGHS_optimizer)
+        container =
+            IOM.OptimizationContainer(mock_sys, settings, jump_model, MockDeterministic)
+        IOM.set_time_steps!(container, 1:1)
+        model = IOM.get_jump_model(container)
+        names = ["g1"]
+        var = IOM.add_variable_container!(
+            container, TestVariableType, MockComponentType, names, 1:1,
+        )
+        v = JuMP.@variable(model, integer = true, lower_bound = 0.0, upper_bound = 5.0)
+        var["g1", 1] = v
+        cons = IOM.add_constraints_container!(
+            container, TestConstraintType, MockComponentType, names, 1:1,
+        )
+        cons["g1", 1] = JuMP.@constraint(model, v <= 3.0)
+        IOM.add_dual_container!(
+            container, TestConstraintType, MockComponentType, names, 1:1,
+        )
+        JuMP.@objective(model, Max, v)
+        JuMP.optimize!(model)
+
+        no_dual_optimizer =
+            () -> begin
+                mock = MOI.Utilities.MockOptimizer(
+                    MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),
+                )
+                MOI.Utilities.set_mock_optimize!(
+                    mock,
+                    m -> MOI.Utilities.mock_optimize!(
+                        m,
+                        MOI.OPTIMAL,
+                        (MOI.FEASIBLE_POINT, [3.0]),
+                    ),
+                )
+                return mock
+            end
+        @test_logs (:error, r"no duals") match_mode = :any begin
+            @test IOM.process_duals(container, no_dual_optimizer) ==
+                  IOM.RunStatus.FAILED
+        end
+    end
+
     @testset "execute_optimizer! computes aux variables after MILP duals" begin
         container = _build_milp_with_duals_container(HiGHS_optimizer)
         primal_key = IOM.AuxVarKey(PrimalProbeAux, MockComponentType)

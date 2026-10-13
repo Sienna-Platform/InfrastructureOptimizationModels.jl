@@ -24,6 +24,34 @@ InfrastructureOptimizationModels._sos_status(
     ::Type{TestPWLFormulation},
 ) = IOM.SOSStatusVariable.NO_VARIABLE
 
+if !isdefined(InfrastructureOptimizationModelsTests, :TestPWLPminFormulation)
+    struct TestPWLPminFormulation <:
+           InfrastructureOptimizationModels.AbstractDeviceFormulation end
+end
+const TEST_PMIN = [0.2, 0.4]
+InfrastructureOptimizationModels.objective_function_multiplier(
+    ::Type{<:IOM.VariableType},
+    ::Type{TestPWLPminFormulation},
+) = 1.0
+# A thermal mock with a per-step minimum power, so the hook override stays local to it.
+struct MockPminStepGen <: AbstractMockGenerator
+    name::String
+    active_power_limits::NamedTuple{(:min, :max), Tuple{Float64, Float64}}
+end
+get_name(g::MockPminStepGen) = g.name
+IOM.get_active_power_limits(g::MockPminStepGen) = g.active_power_limits
+IOM.get_base_power(::MockPminStepGen) = 100.0
+IOM.get_operation_cost(::MockPminStepGen) = MockOperationCost(0.0)
+IOM.get_must_run(::MockPminStepGen) = false
+InfrastructureOptimizationModels._sos_status(
+    ::Type{MockPminStepGen},
+    ::Type{TestPWLPminFormulation},
+) = IOM.SOSStatusVariable.VARIABLE
+IOM.get_min_active_power_values(
+    ::IOM.OptimizationContainer,
+    ::MockPminStepGen,
+) = TEST_PMIN
+
 # Helper to set up container with variables for a device
 function setup_pwl_container_with_variables(
     time_steps::UnitRange{Int},
@@ -893,4 +921,101 @@ end
         con_set = JuMP.constraint_object(linking_con).set
         @test con_set.value ≈ -P_min
     end
+
+    @testset "lambda link reads Pmin_t for PowerAboveMinimumVariable" begin
+        points = [(x = 0.3, y = 5.0), (x = 0.6, y = 12.0), (x = 1.0, y = 25.0)]
+        time_steps = 1:2
+        device = MockPminStepGen("gen1", (min = 0.3, max = 1.0))
+        sys = MockSystem(100.0)
+        settings = IOM.Settings(
+            sys; horizon = Dates.Hour(length(time_steps)), resolution = Dates.Hour(1))
+        container =
+            IOM.OptimizationContainer(sys, settings, JuMP.Model(), MockDeterministic)
+        IOM.set_time_steps!(container, time_steps)
+        jump_model = IOM.get_jump_model(container)
+        on = IOM.add_variable_container!(
+            container, IOM.OnVariable, MockPminStepGen, ["gen1"], time_steps)
+        dp = IOM.add_variable_container!(
+            container, IOM.PowerAboveMinimumVariable, MockPminStepGen,
+            ["gen1"], time_steps)
+        for t in time_steps
+            on["gen1", t] = JuMP.@variable(jump_model, base_name = "on_$t")
+            dp["gen1", t] = JuMP.@variable(jump_model, base_name = "dp_$t")
+        end
+        cost_curve = IS.CostCurve(
+            IS.InputOutputCurve(IS.PiecewiseLinearData(points)), IS.NaturalUnit())
+
+        IOM.add_variable_cost_to_objective!(
+            container, IOM.PowerAboveMinimumVariable, device, cost_curve,
+            TestPWLPminFormulation)
+
+        con = IOM.get_constraint(
+            container, IOM.PiecewiseLinearCostConstraint, MockPminStepGen)
+        lambda = IOM.get_variable(
+            container, IOM.PiecewiseLinearCostVariable, MockPminStepGen)
+        for t in time_steps
+            func = JuMP.constraint_object(con["gen1", t]).func
+            @test JuMP.coefficient(func, on["gen1", t]) == TEST_PMIN[t]
+            @test JuMP.coefficient(func, dp["gen1", t]) == 1.0
+            for (k, p) in enumerate(points)
+                @test JuMP.coefficient(func, lambda["gen1", k, t]) ≈ -p.x / 100.0
+            end
+        end
+    end
+
+    @testset "lambda link for ActivePowerVariable has no u_t term" begin
+        time_steps = 1:2
+        (; container, device, cost_curve) = setup_pwl_test(; time_steps)
+        IOM.add_variable_cost_to_objective!(
+            container, TestPWLVariable, device, cost_curve,
+            TestPWLFormulation)
+        con = IOM.get_constraint(
+            container, IOM.PiecewiseLinearCostConstraint, MockThermalGen)
+        for t in time_steps
+            func = JuMP.constraint_object(con["gen1", t]).func
+            @test JuMP.constant(func) == 0.0
+            pwl = IOM.get_variable(
+                container, IOM.PiecewiseLinearCostVariable, MockThermalGen)
+            power = IOM.get_variable(container, TestPWLVariable, MockThermalGen)
+            allowed = Set(vcat([power["gen1", t]], [pwl["gen1", k, t] for k in 1:3]))
+            @test issubset(keys(func.terms), allowed)
+        end
+    end
+end
+
+@testset "add_pwl_term_lambda! links PowerAboveMinimumVariable to total power" begin
+    device = make_mock_thermal("gen_compact"; limits = (min = 0.3, max = 1.0))
+    sys = MockSystem(100.0)
+    settings = IOM.Settings(sys; horizon = Dates.Hour(1), resolution = Dates.Hour(1))
+    container = IOM.OptimizationContainer(sys, settings, JuMP.Model(), MockDeterministic)
+    IOM.set_time_steps!(container, 1:1)
+    p_container = IOM.add_variable_container!(
+        container, IOM.PowerAboveMinimumVariable, MockThermalGen, ["gen_compact"], 1:1,
+    )
+    p_above = JuMP.@variable(IOM.get_jump_model(container), base_name = "p_above")
+    p_container["gen_compact", 1] = p_above
+    points = [(x = 0.3, y = 3.0), (x = 0.6, y = 7.0), (x = 1.0, y = 12.0)]
+    cost = IS.CostCurve(
+        IS.InputOutputCurve(IS.PiecewiseLinearData(points)),
+        IS.SystemBaseUnit(),
+    )
+
+    IOM.add_pwl_term_lambda!(
+        container, device, cost, IOM.PowerAboveMinimumVariable, TestPWLFormulation,
+    )
+
+    link = IOM.get_constraint(
+        container, IOM.PiecewiseLinearCostConstraint, MockThermalGen,
+    )[
+        "gen_compact",
+        1,
+    ]
+    func = JuMP.constraint_object(link).func
+    lambda = IOM.get_variable(container, IOM.PiecewiseLinearCostVariable, MockThermalGen)
+    @test JuMP.coefficient(func, p_above) == 1.0
+    for (i, break_point) in enumerate((0.3, 0.6, 1.0))
+        @test JuMP.coefficient(func, lambda["gen_compact", i, 1]) ≈ -break_point
+    end
+    # 1.0·P_min + p' == Σ λ_i P_i, so the normalized right-hand side is -P_min.
+    @test JuMP.normalized_rhs(link) ≈ -0.3
 end

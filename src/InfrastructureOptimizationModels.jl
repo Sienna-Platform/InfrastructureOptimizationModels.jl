@@ -168,7 +168,7 @@ export InitialCondition
 export AbstractNetworkModel
 export NetworkModel
 export get_network_matrix, get_contingency_matrix
-export get_network_source, get_reduction_exceptions, get_network_data, set_network_data!
+export get_network_source, get_irreducible_buses, get_network_data, set_network_data!
 export get_outages
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, has_subnetworks, get_subsystem
@@ -384,6 +384,8 @@ export device_duration_parameters!, device_duration_retrospective!
 # Ramp helpers
 export add_linear_ramp_constraints!
 export get_min_max_limits
+export get_min_max_limit_values
+export get_min_active_power_values
 export AbstractThermalDispatchFormulation, AbstractThermalUnitCommitment
 # Service/misc helpers
 # NOTE: get_time_series NOT exported — conflicts with IS.get_time_series. Use IOM.get_time_series.
@@ -501,6 +503,10 @@ export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariabl
 # intended for these to stay internal, but needed for POM due to moving
 # add_reserve_range_constraints! into POM (because it needs FooPowerVariableLimitsConstraint)
 export UpperBound, LowerBound, BoundDirection, get_bound_direction
+export FlowDirection, FromTo, ToFrom, DirectionalMinMax
+export get_directional_value, reverse_directions, effective_limit
+export add_directional_limit_constraints!
+export validate_directional_limits, validate_directional_limit_values
 export EventParameter
 
 # External evaluation abstraction (replaces the PowerFlows-specific shims)
@@ -626,6 +632,7 @@ include("common_models/set_expression.jl")
 include("common_models/get_time_series.jl")
 # PWL interpolation methods moved to quadratic_approximations/
 include("common_models/constraint_helpers.jl")
+include("common_models/directional_limits.jl")
 include("common_models/range_constraint.jl")
 include("common_models/duration_constraints.jl")
 include("common_models/rateofchange_constraints.jl")

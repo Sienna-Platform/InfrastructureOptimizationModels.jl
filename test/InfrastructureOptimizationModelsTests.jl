@@ -117,6 +117,7 @@ function run_tests()
                     # TODO outputs_by_time.jl
                     # TODO service_model.jl
                     include(joinpath(TEST_DIR, "test_settings.jl"))
+                    include(joinpath(TEST_DIR, "test_time_series_interface.jl"))
                     include(joinpath(TEST_DIR, "test_problem_template.jl"))
                     # standard_variables_expressions.jl: low complexity
                     # time_series_parameter_types.jl: low complexity
@@ -142,6 +143,8 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_start_values.jl"))
                     include(joinpath(TEST_DIR, "test_ramp_constraints.jl"))
                     include(joinpath(TEST_DIR, "test_parameterized_range_constraints.jl"))
+                    include(joinpath(TEST_DIR, "test_directional_limits.jl"))
+                    include(joinpath(TEST_DIR, "test_range_constraints_hooks.jl"))
                     include(joinpath(TEST_DIR, "test_duration_constraints.jl"))
                     include(joinpath(TEST_DIR, "test_emulation_model_store.jl"))
                     include(joinpath(TEST_DIR, "test_model_store.jl"))
