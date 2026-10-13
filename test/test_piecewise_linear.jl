@@ -894,3 +894,40 @@ end
         @test con_set.value ≈ -P_min
     end
 end
+
+@testset "add_pwl_term_lambda! links PowerAboveMinimumVariable to total power" begin
+    device = make_mock_thermal("gen_compact"; limits = (min = 0.3, max = 1.0))
+    sys = MockSystem(100.0)
+    settings = IOM.Settings(sys; horizon = Dates.Hour(1), resolution = Dates.Hour(1))
+    container = IOM.OptimizationContainer(sys, settings, JuMP.Model(), MockDeterministic)
+    IOM.set_time_steps!(container, 1:1)
+    p_container = IOM.add_variable_container!(
+        container, IOM.PowerAboveMinimumVariable, MockThermalGen, ["gen_compact"], 1:1,
+    )
+    p_above = JuMP.@variable(IOM.get_jump_model(container), base_name = "p_above")
+    p_container["gen_compact", 1] = p_above
+    points = [(x = 0.3, y = 3.0), (x = 0.6, y = 7.0), (x = 1.0, y = 12.0)]
+    cost = IS.CostCurve(
+        IS.InputOutputCurve(IS.PiecewiseLinearData(points)),
+        IS.SystemBaseUnit(),
+    )
+
+    IOM.add_pwl_term_lambda!(
+        container, device, cost, IOM.PowerAboveMinimumVariable, TestPWLFormulation,
+    )
+
+    link = IOM.get_constraint(
+        container, IOM.PiecewiseLinearCostConstraint, MockThermalGen,
+    )[
+        "gen_compact",
+        1,
+    ]
+    func = JuMP.constraint_object(link).func
+    lambda = IOM.get_variable(container, IOM.PiecewiseLinearCostVariable, MockThermalGen)
+    @test JuMP.coefficient(func, p_above) == 1.0
+    for (i, break_point) in enumerate((0.3, 0.6, 1.0))
+        @test JuMP.coefficient(func, lambda["gen_compact", i, 1]) ≈ -break_point
+    end
+    # 1.0·P_min + p' == Σ λ_i P_i, so the normalized right-hand side is -P_min.
+    @test JuMP.normalized_rhs(link) ≈ -0.3
+end

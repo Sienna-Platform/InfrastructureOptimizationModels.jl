@@ -86,3 +86,57 @@ IOM.get_ramp_limits(::MockThermalGen) = (up = 0.1, down = 0.2)
         @test JuMP.value(p["A", 2]) ≈ 26.0
     end
 end
+
+# One unit (P_min 30, P_max 100), two hourly steps, the ramp limits defined above.
+function _semicontinuous_ramp_rows(::Type{U}) where {U <: IOM.VariableType}
+    device = make_mock_thermal("gen1"; limits = (min = 30.0, max = 100.0))
+    time_steps = 1:2
+    names = ["gen1"]
+    mock_sys = MockSystem(100.0)
+    settings = IOM.Settings(
+        mock_sys;
+        horizon = Dates.Hour(length(time_steps)),
+        resolution = Dates.Hour(1),
+        time_series_cache_size = 0,
+    )
+    container = IOM.OptimizationContainer(mock_sys, settings, nothing, MockDeterministic)
+    IOM.set_time_steps!(container, time_steps)
+    jump_model = IOM.get_jump_model(container)
+    power = IOM.add_variable_container!(container, U, MockThermalGen, names, time_steps)
+    start = IOM.add_variable_container!(
+        container, IOM.StartVariable, MockThermalGen, names, time_steps)
+    stop = IOM.add_variable_container!(
+        container, IOM.StopVariable, MockThermalGen, names, time_steps)
+    lb = IOM.add_expression_container!(
+        container, IOM.ActivePowerRangeExpressionLB, MockThermalGen, names, time_steps)
+    ub = IOM.add_expression_container!(
+        container, IOM.ActivePowerRangeExpressionUB, MockThermalGen, names, time_steps)
+    for t in time_steps
+        power["gen1", t] = JuMP.@variable(jump_model)
+        start["gen1", t] = JuMP.@variable(jump_model)
+        stop["gen1", t] = JuMP.@variable(jump_model)
+        lb["gen1", t] = JuMP.@expression(jump_model, 1.0 * power["gen1", t])
+        ub["gen1", t] = JuMP.@expression(jump_model, 1.0 * power["gen1", t])
+    end
+    ics = IOM.add_initial_condition_container!(
+        container, MockInitialCondition(), MockThermalGen, names)
+    ics[1] = IOM.InitialCondition(MockInitialCondition, device, 0.0)
+    model = IOM.DeviceModel(MockThermalGen, RampTestFormulation)
+    IOM.add_semicontinuous_ramp_constraints!(
+        container, TestConstraintType, U, [device], model, TestPowerModel)
+    up = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "up")
+    dn = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "dn")
+    return up, dn, start, stop
+end
+
+@testset "Semicontinuous ramp rows on PowerAboveMinimumVariable have no start/stop term" begin
+    up, dn, start, stop = _semicontinuous_ramp_rows(IOM.PowerAboveMinimumVariable)
+    for t in 1:2
+        @test iszero(JuMP.normalized_coefficient(up["gen1", t], start["gen1", t]))
+        @test iszero(JuMP.normalized_coefficient(dn["gen1", t], stop["gen1", t]))
+    end
+    # Control: a row on total power keeps the P_min allowance at start-up and shut-down.
+    up, dn, start, stop = _semicontinuous_ramp_rows(IOM.ActivePowerVariable)
+    @test JuMP.normalized_coefficient(up["gen1", 1], start["gen1", 1]) ≈ -30.0
+    @test JuMP.normalized_coefficient(dn["gen1", 1], stop["gen1", 1]) ≈ -30.0
+end
