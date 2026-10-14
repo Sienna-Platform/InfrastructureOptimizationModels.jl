@@ -61,23 +61,44 @@ end
 
 struct VariableValueAttributes{T <: OptimizationContainerKey} <: ParameterAttributes
     attribute_key::T
+    attribute_key_string::String
     affected_keys::Set{OptimizationContainerKey}
 end
 
 function VariableValueAttributes(key::T) where {T <: OptimizationContainerKey}
-    return VariableValueAttributes{T}(key, Set{OptimizationContainerKey}())
+    return VariableValueAttributes{T}(
+        key,
+        encode_key_as_string(key),
+        Set{OptimizationContainerKey}(),
+    )
 end
 
 get_attribute_key(attr::VariableValueAttributes) = attr.attribute_key
+get_attribute_key_string(attr::VariableValueAttributes) = attr.attribute_key_string
 
 struct CostFunctionAttributes{T} <: ParameterAttributes
     variable_types::Tuple{Vararg{Type}}
+    variable_types_string::String
     sos_status::SOSStatusVariable.Value
     uses_compact_power::Bool
 end
 
+function CostFunctionAttributes{T}(
+    variable_types::Tuple{Vararg{Type}},
+    sos_status::SOSStatusVariable.Value,
+    uses_compact_power::Bool,
+) where {T}
+    return CostFunctionAttributes{T}(
+        variable_types,
+        join(strip_module_name.(variable_types), ","),
+        sos_status,
+        uses_compact_power,
+    )
+end
+
 get_sos_status(attr::CostFunctionAttributes) = attr.sos_status
 get_variable_types(attr::CostFunctionAttributes) = attr.variable_types
+get_variable_types_string(attr::CostFunctionAttributes) = attr.variable_types_string
 get_uses_compact_power(attr::CostFunctionAttributes) = attr.uses_compact_power
 
 struct EventParametersAttributes{
