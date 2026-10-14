@@ -2,7 +2,7 @@ mutable struct InvestmentModel{S <: AbstractOptimizationProblem} <:
                AbstractOptimizationModel
     name::Symbol
     template::AbstractProblemTemplate
-    portfolio::IS.InfrastructureSystemsContainer
+    sys::IS.InfrastructureSystemsContainer
     internal::Union{Nothing, ModelInternal}
     simulation_info::Union{Nothing, SimulationInfo}
     store::InvestmentModelStore
@@ -17,29 +17,41 @@ end
         jump_model::Union{Nothing, JuMP.Model}=nothing;
         name::Union{String, Symbol}) where {M<:AbstractOptimizationProblem}
 
-Settings-taking constructor — builds the `OptimizationContainer` for the portfolio. Unlike
-the keyword constructor, `name` is required.
+Settings-taking constructor — builds the `OptimizationContainer`, finalizes a copy of the
+template, and validates time series. Both `finalize_template!` and `validate_time_series!`
+are extension points: downstream packages provide methods for their concrete
+`AbstractProblemTemplate` and model types.
 """
 function InvestmentModel{M}(
     template::AbstractProblemTemplate,
     portfolio::IS.InfrastructureSystemsContainer,
     settings::Settings,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
-    name::Union{String, Symbol},
+    name = nothing,
 ) where {M <: AbstractOptimizationProblem}
+    if isnothing(name)
+        name = nameof(M)
+    elseif name isa String
+        name = Symbol(name)
+    end
+
     internal = ModelInternal(
         OptimizationContainer(portfolio, settings, jump_model, IS.SingleTimeSeries),
     )
 
+    template_ = deepcopy(template)
+    share_template_references!(template_, template)
+    finalize_template!(template_, portfolio)
     model = InvestmentModel{M}(
-        Symbol(name),
-        template,
+        name,
+        template_,
         portfolio,
         internal,
         SimulationInfo(),
         InvestmentModelStore(),
         Dict{String, Any}(),
     )
+    validate_time_series!(model)
     return model
 end
 
@@ -50,9 +62,14 @@ end
         jump_model::Union{Nothing, JuMP.Model}=nothing;
         kwargs...) where {M<:AbstractOptimizationProblem}
 
-Kwargs constructor — accepts horizon/resolution and the standard solver/model settings,
-builds a `Settings`, and delegates to the settings-taking constructor. `name` defaults to
-the problem type's name.
+Kwargs constructor — builds a `Settings` and delegates to the settings-taking constructor.
+`name` defaults to the problem type's name.
+
+Accepts the settings that apply to investment models. The operational-only
+settings (`interval`, `allow_fails`, `rebuild_model`, `initialize_model`,
+`initialization_file`, `deserialize_initial_conditions`, `check_components`,
+`export_pwl_vars`) are not accepted. `portfolio_to_file` is the investment name for
+`system_to_file`.
 """
 function InvestmentModel{M}(
     template::AbstractProblemTemplate,
@@ -62,12 +79,14 @@ function InvestmentModel{M}(
     optimizer = nothing,
     horizon = UNSET_HORIZON,
     resolution = UNSET_RESOLUTION,
+    warm_start = true,
     portfolio_to_file = true,
     optimizer_solve_log_print = false,
     detailed_optimizer_stats = false,
     calculate_conflict = false,
     direct_mode_optimizer = false,
     store_variable_names = false,
+    export_optimization_model = OptimizationModelExportFormat.NONE,
     check_numerical_bounds = true,
     initial_time = UNSET_INI_TIME,
     time_series_cache_size::Int = IS.TIME_SERIES_CACHE_SIZE_BYTES,
@@ -79,6 +98,7 @@ function InvestmentModel{M}(
         horizon = horizon,
         resolution = resolution,
         optimizer = optimizer,
+        warm_start = warm_start,
         direct_mode_optimizer = direct_mode_optimizer,
         optimizer_solve_log_print = optimizer_solve_log_print,
         detailed_optimizer_stats = detailed_optimizer_stats,
@@ -86,6 +106,7 @@ function InvestmentModel{M}(
         system_to_file = portfolio_to_file,
         check_numerical_bounds = check_numerical_bounds,
         store_variable_names = store_variable_names,
+        export_optimization_model = export_optimization_model,
     )
     return InvestmentModel{M}(template, portfolio, settings, jump_model; name = name)
 end
@@ -110,83 +131,11 @@ function InvestmentModel(
     return InvestmentModel{M}(template, portfolio, jump_model; kwargs...)
 end
 
-# Default implementations of getter/setter functions for InvestmentModel.
-is_built(model::InvestmentModel) =
-    get_status(get_internal(model)) == ModelBuildStatus.BUILT
-isempty(model::InvestmentModel) =
-    get_status(get_internal(model)) == ModelBuildStatus.EMPTY
-
-get_constraints(model::InvestmentModel) =
-    get_constraints(get_internal(model))
-get_internal(model::InvestmentModel) = model.internal
-
-function get_jump_model(model::InvestmentModel)
-    return get_jump_model(get_container(get_internal(model)))
-end
-
-get_name(model::InvestmentModel) = model.name
-get_store(model::InvestmentModel) = model.store
-
-function get_optimization_container(model::InvestmentModel)
-    return get_optimization_container(get_internal(model))
-end
-
-function get_timestamps(model::InvestmentModel)
-    optimization_container = get_optimization_container(model)
-    start_time = get_initial_time(optimization_container)
-    resolution = get_resolution(model)
-    horizon_count = get_time_steps(optimization_container)[end]
-    return range(start_time; length = horizon_count, step = resolution)
-end
-
 # No Base Power for Portfolio models. Always in Natural Units.
 get_problem_base_power(model::InvestmentModel) = 1.0
-get_settings(model::InvestmentModel) = get_optimization_container(model).settings
-get_optimizer_stats(model::InvestmentModel) =
-    get_optimizer_stats(get_optimization_container(model))
-
-get_status(model::InvestmentModel) = get_status(get_internal(model))
-get_portfolio(model::InvestmentModel) = model.portfolio
-# Generic model code reads the data container through `get_system`.
-get_system(model::InvestmentModel) = get_portfolio(model)
-get_template(model::InvestmentModel) = model.template
+get_portfolio(model::InvestmentModel) = get_system(model)
 get_time_stamps(model::InvestmentModel) =
     get_time_stamps(get_time_mapping(get_optimization_container(model)))
 
-get_store_params(model::InvestmentModel) =
-    get_store_params(get_internal(model))
-get_output_dir(model::InvestmentModel) = get_output_dir(get_internal(model))
-get_recorder_dir(model::InvestmentModel) = joinpath(get_output_dir(model), "recorder")
-
-get_variables(model::InvestmentModel) = get_variables(get_optimization_container(model))
-get_duals(model::InvestmentModel) = get_duals(get_optimization_container(model))
-get_initial_conditions(model::InvestmentModel) =
-    get_initial_conditions(get_optimization_container(model))
-
-get_simulation_info(model::InvestmentModel) = model.simulation_info
-get_executions(model::InvestmentModel) = get_executions(get_internal(model))
-
-get_run_status(model::InvestmentModel) = get_run_status(get_simulation_info(model))
-set_run_status!(model::InvestmentModel, status) =
-    set_run_status!(get_simulation_info(model), status)
-
-get_initial_time(model::InvestmentModel) = get_initial_time(get_settings(model))
-get_resolution(model::InvestmentModel) = get_resolution(get_settings(model))
-
-set_console_level!(model::InvestmentModel, val) =
-    set_console_level!(get_internal(model), val)
-set_file_level!(model::InvestmentModel, val) =
-    set_file_level!(get_internal(model), val)
-
-function set_status!(model::InvestmentModel, status::ModelBuildStatus.Value)
-    set_status!(get_internal(model), status)
-    return
-end
-
-function set_output_dir!(model::InvestmentModel, path::AbstractString)
-    set_output_dir!(get_internal(model), path)
-    return
-end
-
-# Portfolio-specific alias for Setttings
+# Portfolio-specific alias for Settings
 get_portfolio_to_file(settings::Settings) = get_system_to_file(settings)

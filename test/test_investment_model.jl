@@ -34,6 +34,7 @@ mutable struct MockInvestTemplate <: IOM.AbstractProblemTemplate
     capital_model::MockCapitalModel
     operation_model::MockOperationModel
     feasibility_model::MockFeasibilityModel
+    finalized::Bool
 end
 
 function build_mock_invest_template()
@@ -45,7 +46,20 @@ function build_mock_invest_template()
         MockCapitalModel([(Date(2030, 1, 1), Date(2030, 12, 31))]),
         MockOperationModel([[DateTime(2030, 1, 1, 0), DateTime(2030, 1, 1, 1)]], [1.0]),
         MockFeasibilityModel(Vector{Vector{DateTime}}()),
+        false,
     )
+end
+
+# Construction-time extension points; they record that they ran so the tests can check
+# the constructor calls them, and on which template.
+function IOM.finalize_template!(template::MockInvestTemplate, ::MockSystem)
+    template.finalized = true
+    return
+end
+
+function IOM.validate_time_series!(model::IOM.InvestmentModel{MockInvestProblem})
+    model.ext["time_series_validated"] = true
+    return
 end
 
 @testset "Investment template accessors" begin
@@ -70,7 +84,12 @@ end
     model = IOM.InvestmentModel{MockInvestProblem}(t, portfolio, settings; name = :cem)
 
     @test IOM.get_name(model) == :cem
-    @test IOM.get_template(model) === t
+    # The model builds against a finalized copy; the caller's template is left untouched.
+    @test IOM.get_template(model) !== t
+    @test IOM.get_template(model) isa MockInvestTemplate
+    @test IOM.get_template(model).finalized
+    @test !t.finalized
+    @test model.ext["time_series_validated"]
     @test IOM.get_portfolio(model) === portfolio
     @test IOM.get_system(model) === portfolio
     @test IOM.get_settings(model) === settings
@@ -99,6 +118,23 @@ end
     typed = IOM.InvestmentModel(MockInvestProblem, t, portfolio)
     @test typed isa IOM.InvestmentModel{MockInvestProblem}
     @test IOM.get_name(typed) == :MockInvestProblem
+
+    # Settings that apply to investment models are forwarded; operational-only ones are
+    # not accepted.
+    exported = IOM.InvestmentModel{MockInvestProblem}(
+        t,
+        portfolio;
+        warm_start = false,
+        export_optimization_model = IOM.OptimizationModelExportFormat.LP,
+    )
+    @test !IOM.get_warm_start(IOM.get_settings(exported))
+    @test IOM.get_export_optimization_model(IOM.get_settings(exported)) ==
+          IOM.OptimizationModelExportFormat.LP
+    @test_throws MethodError IOM.InvestmentModel{MockInvestProblem}(
+        t,
+        portfolio;
+        rebuild_model = true,
+    )
 end
 
 @testset "init_optimization_container! builds the time mapping" begin
