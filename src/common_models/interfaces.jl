@@ -230,7 +230,7 @@ Extension point: Check if an auxiliary variable type is produced by an external
 evaluator (see `AbstractEvaluator`). Default: false. Override in POM for
 evaluator-bound aux variable subtypes.
 
-Each aux variable of such a type must also be bound to the evaluators that produce it
+Each aux variable of such a type must also be bound to the one evaluator that produces it
 with [`bind_aux_variable!`](@ref). `check_optimization_container` errors if it is not.
 """
 is_from_evaluator(::Type{<:AuxVariableType}) = false
