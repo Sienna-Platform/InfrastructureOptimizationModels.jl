@@ -265,6 +265,9 @@ function bind_aux_variable!(container::OptimizationContainer, T::DataType, key::
             ),
         )
     end
+    # After each solve, every evaluator bound to a key writes it, so a key bound to two
+    # evaluators would have the later one silently overwrite the earlier one. Binding the
+    # same evaluator to the same key again is a no-op.
     for (other, other_keys) in data.aux_var_keys
         if other != T && key in other_keys
             throw(
