@@ -89,12 +89,13 @@ method dispatching on `PSY.OfferCurveCost`.
 function add_pwl_term_delta! end
 
 """
-    _add_vom_cost_to_objective!(container, ::Type{VariableType}, component, op_cost, ::Type{Formulation})
+    add_vom_cost_to_objective!(container, ::Type{VariableType}, component, op_cost, ::Type{Formulation})
 
-Add the variable operations & maintenance (VOM) cost term. POM provides the
-method dispatching on `PSY.OfferCurveCost`.
+Extension point. A downstream package implements this method to price the VOM
+cost of a device formulation. Not exported. Extend it as
+`IOM.add_vom_cost_to_objective!`.
 """
-function _add_vom_cost_to_objective! end
+function add_vom_cost_to_objective! end
 
 "Default: most formulations use incremental offers. POM overrides for loads."
 function _vom_offer_direction end
