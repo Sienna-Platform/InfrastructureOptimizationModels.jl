@@ -135,10 +135,6 @@ function finalize_template!(template::AbstractProblemTemplate, args...)
     )
 end
 
-# Investment-template interface accessors. These read fields present on concrete
-# investment templates (e.g. PSINV's InvestmentModelTemplate); IOM's investment build
-# (`init_optimization_container!`) dispatches through them. `get_branch_models` is the
-# shared template stub defined above and is overridden by concrete templates.
 get_technology_models(template::AbstractProblemTemplate) = template.technology_models
 get_requirement_models(template::AbstractProblemTemplate) = template.requirement_models
 get_transport_model(template::AbstractProblemTemplate) = template.transport_model

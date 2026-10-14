@@ -196,9 +196,6 @@ get_objective_expression(container::OptimizationContainer) = container.objective
 
 get_serialization_task(container::OptimizationContainer) = container.serialization_task
 
-# Generic (domain-neutral) time abstraction stored directly on the container.
-# Financial parameters (base year, discount/inflation/interest rates) are domain-specific
-# and live in the downstream package (e.g. PSINV), not in this container.
 get_time_mapping(container::OptimizationContainer) = container.time_mapping
 
 function set_time_mapping!(container::OptimizationContainer, time_mapping::TimeMapping)
@@ -206,8 +203,6 @@ function set_time_mapping!(container::OptimizationContainer, time_mapping::TimeM
     return
 end
 
-# Operational (representative-period) weights are per-operational-slice metadata carried
-# by the TimeMapping; expose them off the container for convenience.
 get_operational_weights(container::OptimizationContainer) =
     get_operational_weights(get_time_mapping(container))
 
@@ -409,10 +404,6 @@ function init_optimization_container!(
     )
 
     set_time_mapping!(container, time_map)
-
-    # NOTE: Financial parameters (base year, discount/inflation/interest rates) are
-    # domain-specific and are stored by the downstream package (e.g. PSINV), not on this
-    # domain-neutral container.
 
     stats = get_optimizer_stats(container)
     stats.detailed_stats = get_detailed_optimizer_stats(settings)
