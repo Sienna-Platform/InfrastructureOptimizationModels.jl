@@ -20,7 +20,8 @@ function _get_ramp_constraint_devices(
         ramp_limits = get_ramp_limits(d)
         if ramp_limits !== nothing
             p_lims = get_active_power_limits(d)
-            max_rate = abs(p_lims.min - p_lims.max) / minutes_per_period
+            p_min = minimum(get_min_active_power_values(container, d))
+            max_rate = abs(p_min - p_lims.max) / minutes_per_period
             if (ramp_limits.up >= max_rate) & (ramp_limits.down >= max_rate)
                 @debug "Generator has a nonbinding ramp limits. Constraints Skipped" IS.get_name(
                     d,
@@ -289,6 +290,11 @@ function add_linear_ramp_constraints!(
     return
 end
 
+# A row on total power relaxes the ramp by P_min at start-up and shut-down. With
+# p' = p - P_min·u that relaxation cancels, so a row on p' has no start/stop term.
+_has_startstop_ramp_allowance(::Type{ActivePowerVariable}) = true
+_has_startstop_ramp_allowance(::Type{PowerAboveMinimumVariable}) = false
+
 @doc raw"""
 Constructs allowed rate-of-change constraints from variables, initial condtions, start/stop status, and rate data
 
@@ -310,6 +316,9 @@ If t > 1:
 `` -r^{down} - r^{min} x^{stop}_1 \leq x_1 - x_{init} \leq r^{up} + r^{max} x^{start}_1, \text{ for } t = 1 ``
 
 `` -r^{down} - r^{min} x^{stop}_t \leq x_t - x_{t-1} \leq r^{up} + r^{max} x^{start}_t, \forall t \geq 2 ``
+
+For `PowerAboveMinimumVariable` the rows have no start/stop term, because the `P_min`
+relaxation cancels on the output above minimum.
 """
 function add_semicontinuous_ramp_constraints!(
     container::OptimizationContainer,
@@ -345,7 +354,7 @@ function add_semicontinuous_ramp_constraints!(
         name ∉ device_name_set && continue
         device = get_component(ic)
         ramp_limits = get_ramp_limits(device)
-        power_limits = get_active_power_limits(device)
+        p_min = get_min_active_power_values(container, device)
         ic_power = get_value(ic)
         @debug "add rate_of_change_constraint" name ic_power
 
@@ -355,14 +364,14 @@ function add_semicontinuous_ramp_constraints!(
             slack = _get_ramp_slack_vars(container, model, name, t)
             prev = t == 1 ? ic_power : variable[name, t - 1]
             cur = (up = expr_up[name, t], down = expr_dn[name, t])
-            if must_run
+            if must_run || !_has_startstop_ramp_allowance(S)
                 add_ramp_constraint_pair!(
                     jump_model, cons, name, t,
                     cur, prev, ramp_limits, minutes_per_period, slack)
             else
                 startstop = (
-                    up = power_limits.min * varstart[name, t],
-                    down = power_limits.min * varstop[name, t],
+                    up = p_min[t] * varstart[name, t],
+                    down = p_min[t] * varstop[name, t],
                 )
                 add_ramp_constraint_startstop_pair!(
                     jump_model, cons, name, t,

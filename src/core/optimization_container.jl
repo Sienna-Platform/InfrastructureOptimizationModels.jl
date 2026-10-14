@@ -1581,20 +1581,41 @@ function get_time_series_initial_values!(
     interval::Dates.Millisecond = UNSET_INTERVAL,
     resolution::Dates.Millisecond = UNSET_RESOLUTION,
 ) where {T <: IS.TimeSeriesData}
-    initial_time = get_initial_time(container)
-    time_steps = get_time_steps(container)
+    return get_time_series_window(
+        T,
+        component,
+        time_series_name,
+        get_initial_time(container),
+        length(get_time_steps(container));
+        interval = interval,
+        resolution = resolution,
+    )
+end
+
+"""
+Read `len` time steps of the time series `time_series_name` of `component`, starting at
+`initial_time`. A series with value axes gives one flattened (column-major) vector per step.
+"""
+function get_time_series_window(
+    ::Type{T},
+    component::IS.InfrastructureSystemsComponent,
+    time_series_name::AbstractString,
+    initial_time::Dates.DateTime,
+    len::Int;
+    interval::Dates.Millisecond = UNSET_INTERVAL,
+    resolution::Dates.Millisecond = UNSET_RESOLUTION,
+) where {T <: IS.TimeSeriesData}
     forecast = IS.get_time_series(
         T,
         component,
         time_series_name;
         start_time = initial_time,
+        len = len,
         count = 1,
         interval = _to_is_interval(interval),
         resolution = _to_is_resolution(resolution),
     )
-    return _initial_values(
-        component, forecast, _value_axes(forecast), initial_time, length(time_steps),
-    )
+    return _initial_values(component, forecast, _value_axes(forecast), initial_time, len)
 end
 
 # Only these two series types carry value axes; any other forecast keeps the TimeArray read.

@@ -374,6 +374,8 @@ export device_duration_parameters!, device_duration_retrospective!
 # Ramp helpers
 export add_linear_ramp_constraints!
 export get_min_max_limits
+export get_min_max_limit_values
+export get_min_active_power_values
 export AbstractThermalDispatchFormulation, AbstractThermalUnitCommitment
 # Service/misc helpers
 # NOTE: get_time_series NOT exported — conflicts with IS.get_time_series. Use IOM.get_time_series.
