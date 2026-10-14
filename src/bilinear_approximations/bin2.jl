@@ -23,22 +23,17 @@ Config for Bin2 bilinear approximation using z = ½((x+y)² − x² − y²).
 
 # Fields
 - `quad_config::Q`: quadratic method used for x², y², and (x+y)²
-- `add_mccormick::Bool`: whether to add reformulated McCormick cuts through separable variables (default false).
-  The cuts are valid only for the exact product. An approximate inner quad makes them cut off
-  feasible points. Enable them only when the inner quad is exact.
 
 The Q type parameter lets tolerance helpers dispatch on the inner quad method;
 see `tolerance_depth(::Type{Bin2Config{Q}}; …)`.
 """
 struct Bin2Config{Q <: QuadraticApproxConfig} <: BilinearApproxConfig
     quad_config::Q
-    add_mccormick::Bool
 
     Bin2Config(
         quad_config::Q;
-        add_mccormick::Bool = false,
     ) where {Q <: QuadraticApproxConfig} =
-        new{Q}(quad_config, add_mccormick)
+        new{Q}(quad_config)
 end
 
 # --- Tolerance helpers ---
@@ -261,15 +256,6 @@ function _add_bilinear_approx!(
         add_proportional_to_jump_expression!(result, psq[name, t], 0.5)
         add_proportional_to_jump_expression!(result, xsq[name, t], -0.5)
         add_proportional_to_jump_expression!(result, ysq[name, t], -0.5)
-    end
-
-    # --- Reformulated McCormick cuts (optional) ---
-    if config.add_mccormick
-        _add_reformulated_mccormick!(
-            container, C, names, time_steps,
-            x_var, y_var, psq, xsq, ysq,
-            x_bounds, y_bounds, meta,
-        )
     end
 
     return result_expr
