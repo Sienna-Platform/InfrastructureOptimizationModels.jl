@@ -422,7 +422,7 @@ make_tranche_axis(n_tranches) = "tranche_" .* string.(1:n_tranches)
 Given a parameter array, return any additional axes, i.e. those that aren't the
 first (component) or the last (time).
 """
-lookup_additional_axes(parameter_array) = axes(parameter_array)[2:(end - 1)]
+lookup_additional_axes(parameter_array) = Base.front(Base.tail(axes(parameter_array)))
 
 # Maximum number of tranches (segments) across a piecewise time series.
 get_max_tranches(data::Vector{IS.PiecewiseStepData}) = maximum(length, data)
