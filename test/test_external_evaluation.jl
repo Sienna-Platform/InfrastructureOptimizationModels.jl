@@ -265,6 +265,21 @@ end
     )
 end
 
+@testset "bind_aux_variable! rejects a second evaluator for the same key" begin
+    container = _binding_container()
+    key_a = IOM.AuxVarKey(BoundAuxA, MockComponentType)
+    bind_aux_variable!(container, MockEvaluator, key_a)
+    err = @test_throws ArgumentError bind_aux_variable!(
+        container,
+        OtherMockEvaluator,
+        key_a,
+    )
+    @test occursin("MockEvaluator", err.value.msg)
+    @test occursin("OtherMockEvaluator", err.value.msg)
+    @test get_bound_aux_var_keys(container, MockEvaluator) == [key_a]
+    @test isempty(get_bound_aux_var_keys(container, OtherMockEvaluator))
+end
+
 @testset "An unbound evaluator aux variable fails the container check" begin
     container = _binding_container()
     bind_aux_variable!(

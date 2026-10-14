@@ -235,7 +235,8 @@ add_evaluation_data!(
 
 Record that the evaluator registered under `T` produces the aux variable `key`.
 After each solve, `calculate_aux_variables!` calls `calculate_aux_variable_value!` for
-`key` with the runtime data of each evaluator bound to it, in registration order.
+`key` with the runtime data of that evaluator.
+Each aux variable has exactly one evaluator: binding `key` to a second evaluator throws.
 """
 function bind_aux_variable!(container::OptimizationContainer, T::DataType, key::AuxVarKey)
     data = get_evaluation_data(container)
@@ -263,6 +264,17 @@ function bind_aux_variable!(container::OptimizationContainer, T::DataType, key::
                 "Define is_from_evaluator(::Type{$aux_type}) = true.",
             ),
         )
+    end
+    for (other, other_keys) in data.aux_var_keys
+        if other != T && key in other_keys
+            throw(
+                ArgumentError(
+                    "The aux variable $(encode_key_as_string(key)) is already bound to " *
+                    "$other, so $T cannot also produce it. Each aux variable must " *
+                    "come from exactly one evaluator.",
+                ),
+            )
+        end
     end
     bound = get!(data.aux_var_keys, T, AuxVarKey[])
     key in bound || push!(bound, key)
