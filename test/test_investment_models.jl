@@ -2,21 +2,9 @@
 Unit tests for the investment model-container types and template/container accessors
 ported into IOM: TechnologyModel, RequirementModel, TransportModel, the investment
 formulation hierarchy, and the generic time-mapping accessors on OptimizationContainer.
-Uses mocks (mock_components.jl, mock_system.jl) — no PowerSystems dependency.
+Uses mocks (mock_components.jl, mock_system.jl, mock_investments.jl) — no PowerSystems
+dependency.
 """
-
-using Test
-using InfrastructureOptimizationModels
-using Dates
-using InfrastructureSystems
-const IS = InfrastructureSystems
-
-# Mock investment formulations (concrete leaves of the ported abstract hierarchy).
-struct MockInvestTechForm <: IOM.InvestmentTechnologyFormulation end
-struct MockOpsTechForm <: IOM.OperationsTechnologyFormulation end
-struct MockFeasTechForm <: IOM.FeasibilityTechnologyFormulation end
-struct MockReqForm <: IOM.RequirementFormulation end
-struct MockTransportAgg <: IOM.AbstractTransportAggregation end
 
 @testset "Investment formulation hierarchy" begin
     @test MockInvestTechForm <: IOM.AbstractTechnologyFormulation

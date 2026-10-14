@@ -1,66 +1,9 @@
 """
 Unit tests for InvestmentModel (investments/investment_model.jl) and the investment
 `init_optimization_container!` build hook, plus the investment-template accessors now
-hosted in operation/problem_template.jl. Uses mocks + HiGHS — no PowerSystems dependency.
+hosted in operation/problem_template.jl. Uses mocks (mock_investments.jl) + HiGHS — no
+PowerSystems dependency.
 """
-
-using Test
-using InfrastructureOptimizationModels
-using Dates
-using JuMP
-using InfrastructureSystems
-const IS = InfrastructureSystems
-
-struct MockInvestProblem <: IOM.AbstractOptimizationProblem end
-struct MockTransportAggModel <: IOM.AbstractTransportAggregation end
-
-# Minimal sub-models carrying exactly the fields the investment build reads.
-struct MockCapitalModel
-    investment_years::Vector{Tuple{Date, Date}}
-end
-struct MockOperationModel
-    representative_series::Vector{Vector{DateTime}}
-    series_weights::Vector{Float64}
-end
-struct MockFeasibilityModel
-    sample_periods::Vector{Vector{DateTime}}
-end
-
-mutable struct MockInvestTemplate <: IOM.AbstractProblemTemplate
-    technology_models::Dict{Symbol, Any}
-    branch_models::Dict{Symbol, Any}
-    requirement_models::Dict{Symbol, Any}
-    transport_model::IOM.TransportModel
-    capital_model::MockCapitalModel
-    operation_model::MockOperationModel
-    feasibility_model::MockFeasibilityModel
-    finalized::Bool
-end
-
-function build_mock_invest_template()
-    return MockInvestTemplate(
-        Dict{Symbol, Any}(),
-        Dict{Symbol, Any}(),
-        Dict{Symbol, Any}(),
-        IOM.TransportModel(MockTransportAggModel),
-        MockCapitalModel([(Date(2030, 1, 1), Date(2030, 12, 31))]),
-        MockOperationModel([[DateTime(2030, 1, 1, 0), DateTime(2030, 1, 1, 1)]], [1.0]),
-        MockFeasibilityModel(Vector{Vector{DateTime}}()),
-        false,
-    )
-end
-
-# Construction-time extension points; they record that they ran so the tests can check
-# the constructor calls them, and on which template.
-function IOM.finalize_template!(template::MockInvestTemplate, ::MockSystem)
-    template.finalized = true
-    return
-end
-
-function IOM.validate_time_series!(model::IOM.InvestmentModel{MockInvestProblem})
-    model.ext["time_series_validated"] = true
-    return
-end
 
 @testset "Investment template accessors" begin
     t = build_mock_invest_template()

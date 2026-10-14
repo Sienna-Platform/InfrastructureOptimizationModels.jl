@@ -2,21 +2,8 @@
 Unit tests for InvestmentModelStore (investments/investment_model_store.jl):
 the empty constructor, operation/investment entry classification, optimizer-stats
 round-trip, and `initialize_storage!` row-count sizing from the TimeMapping.
-Uses mocks — no PowerSystems dependency.
+Uses mocks (mock_investments.jl) — no PowerSystems dependency.
 """
-
-using Test
-using InfrastructureOptimizationModels
-using Dates
-using InfrastructureSystems
-import JuMP.Containers: DenseAxisArray
-const IS = InfrastructureSystems
-
-# Concrete operation/investment entry types for classification + storage sizing.
-struct MockStoreInvestVar <: IOM.InvestmentVariableType end
-struct MockStoreOpsVar <: IOM.OperationsVariableType end
-struct MockStoreInvestExpr <: IOM.InvestmentExpressionType end
-struct MockStoreOpsExpr <: IOM.OperationsExpressionType end
 
 @testset "InvestmentModelStore" begin
     @testset "empty constructor" begin
