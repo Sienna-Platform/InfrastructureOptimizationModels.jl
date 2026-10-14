@@ -105,12 +105,9 @@ end
 
     named = IOM.InvestmentModel{MockInvestProblem}(t, portfolio, settings; name = "my_cem")
     @test IOM.get_name(named) == :my_cem
-    # The settings-taking constructor requires a name.
-    @test_throws UndefKeywordError IOM.InvestmentModel{MockInvestProblem}(
-        t,
-        portfolio,
-        settings,
-    )
+    # Without a name, the settings-taking constructor uses the problem type's name.
+    unnamed = IOM.InvestmentModel{MockInvestProblem}(t, portfolio, settings)
+    @test IOM.get_name(unnamed) == :MockInvestProblem
 
     # Keyword and type-first constructors; the name defaults to the problem type.
     kw_model = IOM.InvestmentModel{MockInvestProblem}(t, portfolio; name = :kw)

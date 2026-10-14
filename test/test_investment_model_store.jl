@@ -51,8 +51,12 @@ struct MockStoreOpsExpr <: IOM.OperationsExpressionType end
         df = IOM.read_optimizer_stats(store)
         @test size(df, 1) == 1
         @test :DateTime in propertynames(df)
-        # Writing the same index overwrites in place (count stays at one row).
-        IOM.write_optimizer_stats!(store, stats, Date(2030, 1, 1))
+        # Writing the same index warns and overwrites in place (count stays at one row).
+        @test_logs (:warn, r"Overwriting optimizer stats") IOM.write_optimizer_stats!(
+            store,
+            stats,
+            Date(2030, 1, 1),
+        )
         @test size(IOM.read_optimizer_stats(store), 1) == 1
     end
 
@@ -103,6 +107,46 @@ struct MockStoreOpsExpr <: IOM.OperationsExpressionType end
 
         # get_column_names on the store resolves through the canonical helper.
         @test IOM.get_column_names(store, ops_key) == (cols,)
+    end
+
+    @testset "write_output! / read_outputs round-trip" begin
+        store = IOM.InvestmentModelStore()
+        ts = DateTime(2030, 1, 1)
+        ops_key = IOM.VariableKey(MockStoreOpsVar, MockComponentType)
+        inv_key = IOM.VariableKey(MockStoreInvestVar, MockComponentType)
+        for key in (ops_key, inv_key)
+            store.variables[key] = IOM.OrderedDict{DateTime, DenseAxisArray{Float64, 2}}()
+        end
+
+        # 2-D outputs keep their shape; integer columns are stored as strings.
+        IOM.write_output!(
+            store,
+            :model,
+            ops_key,
+            ts,
+            ts,
+            DenseAxisArray([1.0 2.0; 3.0 4.0], [10, 20], 1:2),
+        )
+        ops = IOM.read_outputs(store, ops_key)
+        @test axes(ops) == (["10", "20"], 1:2)
+        @test ops.data == [1.0 2.0; 3.0 4.0]
+
+        # 1-D outputs become a single row named "1" with one column per entry.
+        IOM.write_output!(
+            store,
+            :model,
+            inv_key,
+            ts,
+            ts,
+            DenseAxisArray([5.0, 6.0], ["a", "b"]),
+        )
+        inv = IOM.read_outputs(store, inv_key; index = ts)
+        @test axes(inv) == (["1"], ["a", "b"])
+        @test inv.data == [5.0 6.0]
+
+        # read_outputs returns a copy.
+        inv.data[1, 1] = -1.0
+        @test IOM.read_outputs(store, inv_key).data == [5.0 6.0]
     end
 
     @testset "initialize_storage! errors when time steps are undefined" begin

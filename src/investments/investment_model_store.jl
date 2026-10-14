@@ -60,28 +60,42 @@ function initialize_storage!(
     return
 end
 
-function write_optimizer_stats!(
+function write_output!(
     store::InvestmentModelStore,
-    stats::OptimizerStats,
-    index::Dates.Date,
+    name::Symbol,
+    key::OptimizationContainerKey,
+    index::Dates.DateTime,
+    update_timestamp::Dates.DateTime,
+    array::DenseAxisArray{<:Any, 2},
 )
-    if index in keys(store.optimizer_stats)
-        @warn "Overwriting optimizer stats"
+    columns = axes(array)[1]
+    if eltype(columns) !== String
+        # TODO: This happens because buses are stored by indexes instead of name.
+        columns = string.(columns)
     end
-    store.optimizer_stats[index] = stats
+    container = getfield(store, get_store_container_type(key))
+    container[key][index] = DenseAxisArray(array.data, columns, 1:size(array)[2])
     return
 end
 
-function read_optimizer_stats(store::InvestmentModelStore)
-    stats = [IS.to_namedtuple(x) for x in values(store.optimizer_stats)]
-    df = DataFrames.DataFrame(stats)
-    DataFrames.insertcols!(df, 1, :DateTime => keys(store.optimizer_stats))
-    return df
-end
-
-function get_column_names(store::InvestmentModelStore, key::OptimizationContainerKey)
+# 1-D outputs are stored as a single row (named "1") with one column per entry.
+function write_output!(
+    store::InvestmentModelStore,
+    name::Symbol,
+    key::OptimizationContainerKey,
+    index::Dates.DateTime,
+    update_timestamp::Dates.DateTime,
+    array::DenseAxisArray{<:Any, 1},
+)
+    columns = axes(array)[1]
+    if eltype(columns) !== String
+        # TODO: This happens because buses are stored by indexes instead of name.
+        columns = string.(columns)
+    end
     container = getfield(store, get_store_container_type(key))
-    return get_column_names_from_axis_array(key, first(values(container[key])))
+    container[key][index] =
+        DenseAxisArray(reshape(array.data, 1, length(columns)), ["1"], columns)
+    return
 end
 
 is_operation_entry(::Type{<:OperationsExpressionType}) = true

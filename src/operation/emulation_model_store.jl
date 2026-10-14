@@ -170,22 +170,6 @@ function get_last_updated_timestamp(
     container = get_data_field(store, get_store_container_type(key))
     return get_update_timestamp(container[key])
 end
-function write_optimizer_stats!(
-    store::EmulationModelStore,
-    stats::OptimizerStats,
-    index::EmulationModelIndexType,
-)
-    @assert !(index in keys(store.optimizer_stats))
-    store.optimizer_stats[index] = stats
-    return
-end
-
-function read_optimizer_stats(store::EmulationModelStore)
-    return DataFrames.DataFrame([
-        IS.to_namedtuple(x) for x in values(store.optimizer_stats)
-    ])
-end
-
 function get_last_recorded_row(x::EmulationModelStore, key::OptimizationContainerKey)
     return get_last_recorded_row(x.data_container, key)
 end

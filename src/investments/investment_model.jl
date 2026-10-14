@@ -15,12 +15,12 @@ end
         portfolio::IS.InfrastructureSystemsContainer,
         settings::Settings,
         jump_model::Union{Nothing, JuMP.Model}=nothing;
-        name::Union{String, Symbol}) where {M<:AbstractOptimizationProblem}
+        name = nothing) where {M<:AbstractOptimizationProblem}
 
 Settings-taking constructor — builds the `OptimizationContainer`, finalizes a copy of the
 template, and validates time series. Both `finalize_template!` and `validate_time_series!`
 are extension points: downstream packages provide methods for their concrete
-`AbstractProblemTemplate` and model types.
+`AbstractProblemTemplate` and model types. `name` defaults to the problem type's name.
 """
 function InvestmentModel{M}(
     template::AbstractProblemTemplate,
