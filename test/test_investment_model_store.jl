@@ -26,9 +26,21 @@ Uses mocks (mock_investments.jl) — no PowerSystems dependency.
         @test IOM.is_investment_entry(MockStoreInvestExpr)
         @test !IOM.is_operation_entry(MockStoreInvestExpr)
 
-        # The abstract VariableType base is ambiguous and must error.
-        @test_throws Exception IOM.is_operation_entry(IOM.VariableType)
-        @test_throws Exception IOM.is_investment_entry(IOM.VariableType)
+        # Entry types that aren't classified error with a message naming the type.
+        for f in (IOM.is_operation_entry, IOM.is_investment_entry)
+            @test_throws r"VariableType is neither an OperationsVariableType" f(
+                IOM.VariableType,
+            )
+            @test_throws r"ExpressionType is neither an OperationsExpressionType" f(
+                IOM.ExpressionType,
+            )
+            @test_throws r"ConstraintType outputs can't be stored in an InvestmentModelStore" f(
+                IOM.ConstraintType,
+            )
+            @test_throws r"AuxVariableType outputs can't be stored in an InvestmentModelStore" f(
+                IOM.AuxVariableType,
+            )
+        end
     end
 
     @testset "optimizer stats round-trip" begin

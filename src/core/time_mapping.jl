@@ -85,7 +85,16 @@ function TimeMapping(
             end
         end
         if !slice_found_in_interval
-            error()
+            period = if sx <= op_index_last_slice
+                "Operational period $sx"
+            else
+                "Feasibility period $(sx - op_index_last_slice)"
+            end
+            error(
+                "$period ($(first(slice)) to $(last(slice))) does not fall within any " *
+                "investment interval. Every operational and feasibility period must lie " *
+                "entirely inside one of the investment intervals: $(investment_intervals)",
+            )
         end
         slice_length = length(slice)
         slice_indeces = range(slice_running_count + 1; length = slice_length)

@@ -110,4 +110,21 @@ using Dates
             operational_weights = [1.0],
         )
     end
+
+    @testset "periods outside every investment interval are rejected" begin
+        invest = [(Date(2030, 1, 1), Date(2030, 12, 31))]
+        inside = [DateTime(2030, 6, 1, 0), DateTime(2030, 6, 1, 1)]
+        outside = [DateTime(2031, 6, 1, 0), DateTime(2031, 6, 1, 1)]
+
+        @test_throws r"Operational period 2 .* does not fall within any investment interval" IOM.TimeMapping(
+            invest,
+            [inside, outside],
+            Vector{Vector{DateTime}}(),
+        )
+        @test_throws r"Feasibility period 1 .* does not fall within any investment interval" IOM.TimeMapping(
+            invest,
+            [inside],
+            [outside],
+        )
+    end
 end
