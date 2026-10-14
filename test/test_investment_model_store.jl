@@ -114,7 +114,7 @@ struct MockStoreOpsExpr <: IOM.OperationsExpressionType end
             time_series_cache_size = 0,
         )
         container = IOM.OptimizationContainer(sys, settings, nothing, MockDeterministic)
-        IOM.set_time_mapping!(container, IOM.TimeMapping(nothing))  # empty mapping
+        IOM.set_time_mapping!(container, IOM.TimeMapping())  # empty mapping
         store = IOM.InvestmentModelStore()
         params = IOM.ModelStoreParams(
             1,

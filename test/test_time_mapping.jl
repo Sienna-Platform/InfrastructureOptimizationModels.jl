@@ -9,7 +9,7 @@ using Dates
 
 @testset "TimeMapping" begin
     @testset "Empty / `nothing` constructor" begin
-        tm = IOM.TimeMapping(nothing)
+        tm = IOM.TimeMapping()
         @test isempty(IOM.get_time_stamps(tm))
         @test isempty(IOM.get_investment_time_stamps(tm))
         @test IOM.get_total_period_count(tm) == 0
@@ -100,7 +100,7 @@ using Dates
         @test [w[op_ix] for op_ix in IOM.get_operational_indexes(tm_w)] == [90.0, 275.0]
 
         # Empty mapping has empty weights.
-        @test isempty(IOM.get_operational_weights(IOM.TimeMapping(nothing)))
+        @test isempty(IOM.get_operational_weights(IOM.TimeMapping()))
 
         # Length mismatch is rejected.
         @test_throws ErrorException IOM.TimeMapping(

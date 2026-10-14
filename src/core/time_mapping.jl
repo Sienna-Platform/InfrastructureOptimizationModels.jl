@@ -4,7 +4,7 @@ struct InvestmentIntervals
     map_to_feasibility_slices::Dict{Int, Vector{Int}}
 end
 
-function InvestmentIntervals(::Nothing)
+function InvestmentIntervals()
     return InvestmentIntervals(
         Vector{NTuple{2, Dates.Date}}(),
         Dict{Int, Vector{Int}}(),
@@ -21,7 +21,7 @@ struct OperationalPeriods
     operational_weights::Vector{Float64}
 end
 
-function OperationalPeriods(::Nothing)
+function OperationalPeriods()
     return OperationalPeriods(
         Vector{Dates.DateTime}(),
         Vector{Vector{Int}}(),
@@ -144,6 +144,6 @@ get_investment_time_steps(tm::TimeMapping) = 1:get_total_investment_period_count
 is_feasibility_empty(tm::TimeMapping) = isempty(tm.operation.feasibility_indexes)
 get_investment_map_to_operational_slices(tm::TimeMapping) =
     tm.investment.map_to_operational_slices
-function TimeMapping(::Nothing)
-    return TimeMapping(InvestmentIntervals(nothing), OperationalPeriods(nothing))
+function TimeMapping()
+    return TimeMapping(InvestmentIntervals(), OperationalPeriods())
 end
