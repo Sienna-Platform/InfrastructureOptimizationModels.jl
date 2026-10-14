@@ -87,6 +87,60 @@ function make_device_iterator(devices::Vector{MockThermalGen})
     return IS.FlattenIteratorWrapper(MockThermalGen, Vector[devices])
 end
 
+# Mock that skips by the one-argument form but prices TestPricedVariable per variable type
+struct MockSkipGen <: AbstractMockGenerator
+    name::String
+    operation_cost::MockOperationCost
+end
+
+struct TestPricedVariable <: InfrastructureOptimizationModels.VariableType end
+
+get_name(g::MockSkipGen) = g.name
+IOM.get_operation_cost(g::MockSkipGen) = g.operation_cost
+IOM.skip_proportional_cost(::MockSkipGen) = true
+IOM.skip_proportional_cost(::MockSkipGen, ::Type{TestPricedVariable}) = false
+
+IOM.objective_function_multiplier(
+    ::Type{<:Union{TestProportionalVariable, TestPricedVariable}},
+    ::Type{TestProportionalFormulation},
+) = 1.0
+IOM.proportional_cost(
+    op_cost::MockOperationCost,
+    ::Type{<:Union{TestProportionalVariable, TestPricedVariable}},
+    ::MockSkipGen,
+    ::Type{TestProportionalFormulation},
+) = op_cost.proportional_term
+IOM.proportional_cost(
+    ::IOM.OptimizationContainer,
+    op_cost::MockOperationCost,
+    ::Type{<:Union{TestProportionalVariable, TestPricedVariable}},
+    ::MockSkipGen,
+    ::Type{TestProportionalFormulation},
+    ::Int,
+) = op_cost.proportional_term
+
+function setup_skip_gen_container(time_steps::UnitRange{Int})
+    sys = MockSystem(100.0)
+    settings = IOM.Settings(
+        sys;
+        horizon = Dates.Hour(length(time_steps)),
+        resolution = Dates.Hour(1),
+    )
+    container = IOM.OptimizationContainer(sys, settings, JuMP.Model(), MockDeterministic)
+    IOM.set_time_steps!(container, time_steps)
+    jump_model = IOM.get_jump_model(container)
+    for V in (TestProportionalVariable, TestPricedVariable)
+        var_container = IOM.add_variable_container!(
+            container, V, MockSkipGen, ["gen1"], time_steps)
+        for t in time_steps
+            var_container["gen1", t] = JuMP.@variable(jump_model)
+        end
+    end
+    add_test_expression!(
+        container, IOM.ProductionCostExpression, MockSkipGen, ["gen1"], time_steps)
+    return container
+end
+
 @testset "Proportional Cost Objective Functions" begin
     @testset "add_proportional_cost! adds to invariant objective" begin
         time_steps = 1:3
@@ -414,5 +468,33 @@ end
 
         # Reset to default
         IOM.skip_proportional_cost(::MockThermalGen) = false
+    end
+
+    @testset "skip_proportional_cost per variable type" begin
+        time_steps = 1:2
+        cost_value = 15.0
+        device = MockSkipGen("gen1", MockOperationCost(cost_value, false))
+        devices = IS.FlattenIteratorWrapper(MockSkipGen, Vector[[device]])
+        for adder! in (
+            IOM.add_proportional_cost!,
+            IOM.add_proportional_cost_maybe_time_variant!,
+        )
+            container = setup_skip_gen_container(time_steps)
+            adder!(
+                container,
+                TestProportionalVariable,
+                devices,
+                TestProportionalFormulation,
+            )
+            @test count_objective_terms(container; variant = false) == 0
+            adder!(container, TestPricedVariable, devices, TestProportionalFormulation)
+            @test count_objective_terms(container; variant = false) == length(time_steps)
+            @test verify_objective_coefficients(
+                container, TestPricedVariable, MockSkipGen, "gen1", cost_value)
+            expr = IOM.get_expression(container, IOM.ProductionCostExpression, MockSkipGen)
+            for t in time_steps
+                @test JuMP.constant(expr["gen1", t]) ≈ cost_value
+            end
+        end
     end
 end
