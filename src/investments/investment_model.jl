@@ -9,19 +9,30 @@ mutable struct InvestmentModel{S <: AbstractOptimizationProblem} <:
     ext::Dict{String, Any}
 end
 
+"""
+    InvestmentModel{M}(
+        template::AbstractProblemTemplate,
+        portfolio::IS.InfrastructureSystemsContainer,
+        settings::Settings,
+        jump_model::Union{Nothing, JuMP.Model}=nothing;
+        name::Union{String, Symbol}) where {M<:AbstractOptimizationProblem}
+
+Settings-taking constructor — builds the `OptimizationContainer` for the portfolio. Unlike
+the keyword constructor, `name` is required.
+"""
 function InvestmentModel{M}(
     template::AbstractProblemTemplate,
-    ::Type{M},
     portfolio::IS.InfrastructureSystemsContainer,
     settings::Settings,
     jump_model::Union{Nothing, JuMP.Model} = nothing;
+    name::Union{String, Symbol},
 ) where {M <: AbstractOptimizationProblem}
     internal = ModelInternal(
         OptimizationContainer(portfolio, settings, jump_model, IS.SingleTimeSeries),
     )
 
     model = InvestmentModel{M}(
-        :CEM,
+        Symbol(name),
         template,
         portfolio,
         internal,
@@ -32,6 +43,17 @@ function InvestmentModel{M}(
     return model
 end
 
+"""
+    InvestmentModel{M}(
+        template::AbstractProblemTemplate,
+        portfolio::IS.InfrastructureSystemsContainer,
+        jump_model::Union{Nothing, JuMP.Model}=nothing;
+        kwargs...) where {M<:AbstractOptimizationProblem}
+
+Kwargs constructor — accepts horizon/resolution and the standard solver/model settings,
+builds a `Settings`, and delegates to the settings-taking constructor. `name` defaults to
+the problem type's name.
+"""
 function InvestmentModel{M}(
     template::AbstractProblemTemplate,
     portfolio::IS.InfrastructureSystemsContainer,
@@ -65,7 +87,27 @@ function InvestmentModel{M}(
         check_numerical_bounds = check_numerical_bounds,
         store_variable_names = store_variable_names,
     )
-    return InvestmentModel{M}(template, M, portfolio, settings, jump_model)
+    return InvestmentModel{M}(template, portfolio, settings, jump_model; name = name)
+end
+
+"""
+    InvestmentModel(
+        ::Type{M},
+        template::AbstractProblemTemplate,
+        portfolio::IS.InfrastructureSystemsContainer,
+        jump_model::Union{Nothing, JuMP.Model}=nothing;
+        kwargs...) where {M<:AbstractOptimizationProblem}
+
+Type-first dispatch variant.
+"""
+function InvestmentModel(
+    ::Type{M},
+    template::AbstractProblemTemplate,
+    portfolio::IS.InfrastructureSystemsContainer,
+    jump_model::Union{Nothing, JuMP.Model} = nothing;
+    kwargs...,
+) where {M <: AbstractOptimizationProblem}
+    return InvestmentModel{M}(template, portfolio, jump_model; kwargs...)
 end
 
 # Default implementations of getter/setter functions for InvestmentModel.
@@ -105,6 +147,8 @@ get_optimizer_stats(model::InvestmentModel) =
 
 get_status(model::InvestmentModel) = get_status(get_internal(model))
 get_portfolio(model::InvestmentModel) = model.portfolio
+# Generic model code reads the data container through `get_system`.
+get_system(model::InvestmentModel) = get_portfolio(model)
 get_template(model::InvestmentModel) = model.template
 get_time_stamps(model::InvestmentModel) =
     get_time_stamps(get_time_mapping(get_optimization_container(model)))

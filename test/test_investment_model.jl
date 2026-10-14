@@ -67,17 +67,12 @@ end
         resolution = Dates.Hour(1),
         time_series_cache_size = 0,
     )
-    model = IOM.InvestmentModel{MockInvestProblem}(
-        t,
-        MockInvestProblem,
-        portfolio,
-        settings,
-        nothing,
-    )
+    model = IOM.InvestmentModel{MockInvestProblem}(t, portfolio, settings; name = :cem)
 
-    @test IOM.get_name(model) == :CEM
+    @test IOM.get_name(model) == :cem
     @test IOM.get_template(model) === t
     @test IOM.get_portfolio(model) === portfolio
+    @test IOM.get_system(model) === portfolio
     @test IOM.get_settings(model) === settings
     # Portfolio models are always in natural units.
     @test IOM.get_problem_base_power(model) == 1.0
@@ -88,6 +83,22 @@ end
     @test IOM.get_optimization_container(model) isa IOM.OptimizationContainer
     @test IOM.get_store(model) isa IOM.InvestmentModelStore
     @test IOM.get_portfolio_to_file(settings) == IOM.get_system_to_file(settings)
+
+    named = IOM.InvestmentModel{MockInvestProblem}(t, portfolio, settings; name = "my_cem")
+    @test IOM.get_name(named) == :my_cem
+    # The settings-taking constructor requires a name.
+    @test_throws UndefKeywordError IOM.InvestmentModel{MockInvestProblem}(
+        t,
+        portfolio,
+        settings,
+    )
+
+    # Keyword and type-first constructors; the name defaults to the problem type.
+    kw_model = IOM.InvestmentModel{MockInvestProblem}(t, portfolio; name = :kw)
+    @test IOM.get_name(kw_model) == :kw
+    typed = IOM.InvestmentModel(MockInvestProblem, t, portfolio)
+    @test typed isa IOM.InvestmentModel{MockInvestProblem}
+    @test IOM.get_name(typed) == :MockInvestProblem
 end
 
 @testset "init_optimization_container! builds the time mapping" begin
@@ -99,13 +110,7 @@ end
         resolution = Dates.Hour(1),
         time_series_cache_size = 0,
     )
-    model = IOM.InvestmentModel{MockInvestProblem}(
-        t,
-        MockInvestProblem,
-        portfolio,
-        settings,
-        nothing,
-    )
+    model = IOM.InvestmentModel{MockInvestProblem}(t, portfolio, settings; name = :cem)
     container = IOM.get_optimization_container(model)
 
     @test IOM.get_time_mapping(container) === nothing
