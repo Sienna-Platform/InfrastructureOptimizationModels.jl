@@ -144,3 +144,39 @@ function add_to_expression!(
         "add_to_expression! not implemented for expression_type=$expression_type, variable_type=$variable_type, device_type=$(typeof(devices.values[1]))",
     )
 end
+
+####################################################################################
+# Formulation abstract types for Investment problems
+# Siblings of IS.Optimization's AbstractDeviceFormulation / AbstractServiceFormulation
+# (which the operation-side formulations subtype). Concrete formulations are defined
+# downstream (e.g. PowerSystemsInvestments.jl).
+####################################################################################
+
+abstract type AbstractTechnologyFormulation <: AbstractDeviceFormulation end
+
+abstract type InvestmentTechnologyFormulation <: AbstractTechnologyFormulation end
+abstract type OperationsTechnologyFormulation <: AbstractTechnologyFormulation end
+abstract type FeasibilityTechnologyFormulation <: AbstractTechnologyFormulation end
+abstract type RequirementFormulation <: AbstractServiceFormulation end
+
+####################################################################################
+# Standard Variable and Expression Types for Investment and Operations Formulations
+# Only types that IOM's own infrastructure code references belong here.
+# Technology-specific variable types are defined in PowerSystemsInvestments.jl.
+####################################################################################
+
+abstract type InvestmentExpressionType <: ExpressionType end
+abstract type OperationsExpressionType <: ExpressionType end
+abstract type FeasibilityExpressionType <: ExpressionType end
+
+abstract type CumulativeInvestmentExpressionType <: InvestmentExpressionType end
+
+#TODO: Determine which of the remaining expressions and variables should be ported
+
+abstract type InvestmentVariableType <: VariableType end
+abstract type OperationsVariableType <: VariableType end
+abstract type FeasibilityVariableType <: VariableType end
+
+### Investment Variables ###
+
+abstract type BuildInvestmentVariableType <: InvestmentVariableType end

@@ -138,3 +138,29 @@ end
 function get_column_names(::Type{OptimizerStats})
     return (collect(string.(fieldnames(OptimizerStats))),)
 end
+
+function write_optimizer_stats!(store::AbstractModelStore, stats::OptimizerStats, index)
+    key = convert(keytype(store.optimizer_stats), index)
+    if haskey(store.optimizer_stats, key)
+        @warn "Overwriting optimizer stats for index = $key"
+    end
+    store.optimizer_stats[key] = stats
+    return
+end
+
+function read_optimizer_stats(store::AbstractModelStore)
+    stats = [IS.to_namedtuple(x) for x in values(store.optimizer_stats)]
+    df = DataFrames.DataFrame(stats)
+    _add_optimizer_stats_index!(df, store.optimizer_stats)
+    return df
+end
+
+function _add_optimizer_stats_index!(
+    df::DataFrames.DataFrame,
+    optimizer_stats::AbstractDict{Dates.DateTime},
+)
+    DataFrames.insertcols!(df, 1, :DateTime => keys(optimizer_stats))
+    return
+end
+
+_add_optimizer_stats_index!(::DataFrames.DataFrame, ::AbstractDict) = nothing
