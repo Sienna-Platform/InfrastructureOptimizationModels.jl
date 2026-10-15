@@ -25,3 +25,14 @@ end
     @test IOM.get_settlement_domain(m) === IS.SystemData
     @test IS.SystemData <: IS.InfrastructureSystemsContainer
 end
+
+@testset "MarketModel locational prices flag" begin
+    m = IOM.MarketModel(_TestMarketFormulation; settlement_domain = IS.SystemData)
+    @test !IOM.get_locational_prices(m)
+    m = IOM.MarketModel(
+        _TestMarketFormulation;
+        settlement_domain = IS.SystemData,
+        locational_prices = true,
+    )
+    @test IOM.get_locational_prices(m)
+end
