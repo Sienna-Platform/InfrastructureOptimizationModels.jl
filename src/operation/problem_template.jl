@@ -65,6 +65,38 @@ function get_hvdc_network_model(template::AbstractProblemTemplate)
     )
 end
 
+"""
+    get_evaluations(template::AbstractProblemTemplate) -> EvaluationContainer
+
+Return the evaluator configurations of `template`.
+Downstream packages implement it for their template type.
+"""
+function get_evaluations(template::AbstractProblemTemplate)
+    throw(
+        ArgumentError(
+            "get_evaluations is not implemented for $(typeof(template)). " *
+            "Downstream packages must implement `get_evaluations(::YourTemplateType)` " *
+            "returning an `EvaluationContainer`.",
+        ),
+    )
+end
+
+"""
+    set_evaluations!(template::AbstractProblemTemplate, evaluations::EvaluationContainer)
+
+Replace the evaluator configurations of `template`.
+Downstream packages implement it for their template type.
+"""
+function set_evaluations!(template::AbstractProblemTemplate, ::EvaluationContainer)
+    throw(
+        ArgumentError(
+            "set_evaluations! is not implemented for $(typeof(template)). " *
+            "Downstream packages must implement " *
+            "`set_evaluations!(::YourTemplateType, ::EvaluationContainer)`.",
+        ),
+    )
+end
+
 function get_component_types(template::AbstractProblemTemplate)
     throw(
         ArgumentError(
@@ -134,6 +166,15 @@ function finalize_template!(template::AbstractProblemTemplate, args...)
         ),
     )
 end
+
+"""
+    make_solve_context(template::AbstractProblemTemplate) -> AbstractSolveContext
+
+Make the [`AbstractSolveContext`](@ref) for one solve from `template`.
+`solve_model!` calls this function before each solve.
+Downstream packages must implement it for their template type.
+"""
+function make_solve_context end
 
 """
     share_template_references!(template_::AbstractProblemTemplate, template::AbstractProblemTemplate)

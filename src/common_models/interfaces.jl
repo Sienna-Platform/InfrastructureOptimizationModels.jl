@@ -216,10 +216,18 @@ function start_up_cost(
 end
 
 """
+    calculate_aux_variable_value!(container, key, system, context::AbstractSolveContext)
+    calculate_aux_variable_value!(container, key, system, data::AbstractEvaluationData)
+
 Extension point: Calculate auxiliary variable values.
 Concrete implementations in PowerOperationsModels for specific aux variable types.
-Evaluator-bound aux variables get the `AbstractEvaluationData` that produced them
-as a fourth argument, so the implementation does not have to look it up.
+
+A standalone aux variable gets the [`AbstractSolveContext`](@ref) of the solve
+as the fourth argument.
+An evaluator-bound aux variable gets the [`AbstractEvaluationData`](@ref) that
+produced it as the fourth argument.
+Both forms have the same name and the same number of arguments.
+Thus each method must give a type to its fourth argument.
 """
 function calculate_aux_variable_value! end
 
@@ -227,8 +235,28 @@ function calculate_aux_variable_value! end
 Extension point: Check if an auxiliary variable type is produced by an external
 evaluator (see `AbstractEvaluator`). Default: false. Override in POM for
 evaluator-bound aux variable subtypes.
+
+Each aux variable of such a type must also be bound to the one evaluator that produces it
+with [`bind_aux_variable!`](@ref). `check_optimization_container` errors if it is not.
 """
 is_from_evaluator(::Type{<:AuxVariableType}) = false
+
+"""
+    add_evaluator_aux_variables!(container, T::DataType, data::AbstractEvaluationData, system)
+
+Extension point: add the aux variables that the evaluator registered under `T` produces,
+and bind each one with [`bind_aux_variable!`](@ref).
+The domain package calls it after it stores `data` with `add_evaluation_data!`.
+The default adds nothing.
+"""
+function add_evaluator_aux_variables!(
+    ::OptimizationContainer,
+    ::DataType,
+    ::AbstractEvaluationData,
+    ::Any,
+)
+    return
+end
 
 """
 Extension point: Get minimum and maximum limits for a given component, constraint type, and device formulation.
