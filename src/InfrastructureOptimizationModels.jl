@@ -171,7 +171,7 @@ export get_network_matrix, get_contingency_matrix
 export get_network_source, get_irreducible_buses, get_network_data, set_network_data!
 export get_outages
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
-export get_evaluations, has_subnetworks, get_subsystem
+export get_evaluations, set_evaluations!, has_subnetworks, get_subsystem
 export set_subsystem!, add_dual!
 export requires_all_branch_models,
     supports_branch_filtering, ignores_branch_filtering, branches_modeled
@@ -525,6 +525,7 @@ export add_evaluator!
 export add_evaluation_data!
 export reset_evaluations!
 export is_from_evaluator
+export bind_aux_variable!, get_bound_aux_var_keys, add_evaluator_aux_variables!
 export lookup_value
 export get_entry_type
 export get_component_names

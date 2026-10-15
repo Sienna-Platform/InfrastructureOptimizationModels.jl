@@ -181,3 +181,19 @@ end
     end
     @test length(unique(refs)) == 4 * length(time_steps)
 end
+
+@testset "Parameter attributes store their recorder strings" begin
+    key = VariableKey(MockVariable, MockThermalGen)
+    attributes = IOM.VariableValueAttributes(key)
+    @test IOM.get_attribute_key_string(attributes) == IOM.encode_key_as_string(key)
+
+    cost_attributes = IOM.CostFunctionAttributes{Float64}(
+        (MockVariable, MockVariable),
+        IOM.SOSStatusVariable.NO_VARIABLE,
+        false,
+    )
+    @test IOM.get_variable_types_string(cost_attributes) == "MockVariable,MockVariable"
+    empty_attributes =
+        IOM.CostFunctionAttributes{Float64}((), IOM.SOSStatusVariable.NO_VARIABLE, false)
+    @test IOM.get_variable_types_string(empty_attributes) == ""
+end
