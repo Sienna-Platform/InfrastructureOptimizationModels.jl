@@ -24,8 +24,8 @@ rounded_value(v::JuMP.VariableRef) = round(jump_value(v))
 function process_duals(container::OptimizationContainer, lp_optimizer)
     var_cache = container.primal_values_cache.variables_cache
     for (k, v) in get_variables(container)
-        v1 = first(v)
-        if JuMP.is_binary(v1) || JuMP.is_integer(v1)
+        # A type with no modeled component has an empty container: nothing to round.
+        if !isempty(v) && (JuMP.is_binary(first(v)) || JuMP.is_integer(first(v)))
             var_cache[k] = rounded_value.(v)
         else
             var_cache[k] = jump_value.(v)

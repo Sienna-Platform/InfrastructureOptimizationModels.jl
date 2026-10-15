@@ -463,6 +463,46 @@ end
         @test JuMP.has_upper_bound(v) && JuMP.upper_bound(v) == 5.0
     end
 
+    @testset "process_duals skips the integrality check on an empty variable container" begin
+        # A model with no component of a modeled type has a 0-row container.
+        mock_sys = MockSystem(100.0)
+        settings = IOM.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        jump_model = JuMP.Model(HiGHS_optimizer)
+        container =
+            IOM.OptimizationContainer(mock_sys, settings, jump_model, MockDeterministic)
+        IOM.set_time_steps!(container, 1:1)
+        model = IOM.get_jump_model(container)
+        names = ["g1"]
+        var = IOM.add_variable_container!(
+            container, TestVariableType, MockComponentType, names, 1:1,
+        )
+        v = JuMP.@variable(model, integer = true, lower_bound = 0.0, upper_bound = 5.0)
+        var["g1", 1] = v
+        IOM.add_variable_container!(
+            container, TestVariableType2, MockComponentType, String[], 1:1,
+        )
+        cons = IOM.add_constraints_container!(
+            container, TestConstraintType, MockComponentType, names, 1:1,
+        )
+        cons["g1", 1] = JuMP.@constraint(model, v <= 3.0)
+        IOM.add_dual_container!(
+            container, TestConstraintType, MockComponentType, names, 1:1,
+        )
+        JuMP.@objective(model, Max, v)
+        JuMP.optimize!(model)
+
+        @test IOM.process_duals(container, HiGHS_optimizer) ==
+              IOM.RunStatus.SUCCESSFULLY_FINALIZED
+        cache = container.primal_values_cache.variables_cache
+        @test isempty(cache[IOM.VariableKey(TestVariableType2, MockComponentType)])
+        @test cache[IOM.VariableKey(TestVariableType, MockComponentType)]["g1", 1] == 3.0
+    end
+
     @testset "process_duals fails when the optimizer returns no duals" begin
         MOI = IOM.MOI
         mock_sys = MockSystem(100.0)
