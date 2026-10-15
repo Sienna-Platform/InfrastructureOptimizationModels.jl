@@ -47,7 +47,7 @@ function add_variable_cost!(
     for d in devices
         op_cost_data = get_operation_cost(d)
         add_variable_cost_to_objective!(container, U, d, op_cost_data, V)
-        _add_vom_cost_to_objective!(container, U, d, op_cost_data, V)
+        add_vom_cost_to_objective!(container, U, d, op_cost_data, V)
     end
     return
 end
@@ -57,7 +57,7 @@ end
 ##################################
 
 # called in value_curve_cost.jl and above in ActivePowerVariable cost.
-function _add_vom_cost_to_objective!(
+function add_vom_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{T},
     component::C,

@@ -151,6 +151,12 @@ For thermals, equivalent to `get_must_run`, but that implementation belongs in P
 """
 skip_proportional_cost(d::IS.InfrastructureSystemsComponent) = false
 
+"""
+Extension point: downstream packages override this method to skip the proportional cost of one variable type. The default calls the one-argument form.
+"""
+skip_proportional_cost(d::IS.InfrastructureSystemsComponent, ::Type{<:VariableType}) =
+    skip_proportional_cost(d)
+
 ###############################
 #### System query stubs #######
 ###############################

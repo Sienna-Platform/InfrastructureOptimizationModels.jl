@@ -29,7 +29,7 @@ function add_proportional_cost!(
         iszero(cost_term) && continue
         name = get_name(d)
         rate = cost_term * multiplier * dt
-        skip = skip_proportional_cost(d)
+        skip = skip_proportional_cost(d, U)
         for t in get_time_steps(container)
             if skip
                 # must-run etc.: bookkeep in FixedCostExpression but not in objective
@@ -70,7 +70,7 @@ function add_proportional_cost_maybe_time_variant!(
         name = get_name(d)
         # is_time_variant_proportional depends only on op_cost_data; hoist out of the time loop.
         add_as_time_variant = is_time_variant_proportional(op_cost_data)
-        skip = skip_proportional_cost(d)
+        skip = skip_proportional_cost(d, U)
         for t in get_time_steps(container)
             cost_term = proportional_cost(container, op_cost_data, U, d, V, t)
             iszero(cost_term) && continue
