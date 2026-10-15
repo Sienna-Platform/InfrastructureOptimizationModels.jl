@@ -230,6 +230,64 @@ add_evaluation_data!(
     data::AbstractEvaluationData,
 ) = add_evaluation_data!(container.evaluation_data, T, data)
 
+"""
+    bind_aux_variable!(container, T::DataType, key::AuxVarKey)
+
+Record that the evaluator registered under `T` produces the aux variable `key`.
+After each solve, `calculate_aux_variables!` calls `calculate_aux_variable_value!` for
+`key` with the runtime data of that evaluator.
+Each aux variable has exactly one evaluator: binding `key` to a second evaluator throws.
+"""
+function bind_aux_variable!(container::OptimizationContainer, T::DataType, key::AuxVarKey)
+    data = get_evaluation_data(container)
+    if !haskey(data, T)
+        throw(
+            ArgumentError(
+                "No evaluation data is registered for $T. " *
+                "Call add_evaluation_data! before bind_aux_variable!.",
+            ),
+        )
+    end
+    if !haskey(get_aux_variables(container), key)
+        throw(
+            ArgumentError(
+                "The container has no aux variable $(encode_key_as_string(key)). " *
+                "Add its container before binding it.",
+            ),
+        )
+    end
+    aux_type = get_entry_type(key)
+    if !is_from_evaluator(aux_type)
+        throw(
+            ArgumentError(
+                "$aux_type is not an evaluator aux variable. " *
+                "Define is_from_evaluator(::Type{$aux_type}) = true.",
+            ),
+        )
+    end
+    # After each solve, every evaluator bound to a key writes it, so a key bound to two
+    # evaluators would have the later one silently overwrite the earlier one. Binding the
+    # same evaluator to the same key again is a no-op.
+    for (other, other_keys) in data.aux_var_keys
+        if other != T && key in other_keys
+            throw(
+                ArgumentError(
+                    "The aux variable $(encode_key_as_string(key)) is already bound to " *
+                    "$other, so $T cannot also produce it. Each aux variable must " *
+                    "come from exactly one evaluator.",
+                ),
+            )
+        end
+    end
+    bound = get!(data.aux_var_keys, T, AuxVarKey[])
+    key in bound || push!(bound, key)
+    return
+end
+
+"Return the aux variable keys bound to the evaluator registered under `T`."
+get_bound_aux_var_keys(container::OptimizationContainer, T::DataType) =
+    get(get_evaluation_data(container).aux_var_keys, T, AuxVarKey[])
+
 function reset_evaluations!(container::OptimizationContainer)
     for data in values(get_evaluation_data(container))
         reset!(data)
@@ -418,6 +476,27 @@ function check_optimization_container(container::OptimizationContainer)
         valid = check_parameter_multiplier_values(param_container.multiplier_array)
         if !valid
             error("The model container has invalid values in $(encode_key_as_string(k))")
+        end
+    end
+    _check_evaluator_aux_var_bindings(container)
+    return
+end
+
+function _check_evaluator_aux_var_bindings(container::OptimizationContainer)
+    data = get_evaluation_data(container)
+    bound = Set{AuxVarKey}()
+    for (T, keys_T) in data.aux_var_keys
+        haskey(data, T) ||
+            error("Aux variables are bound to $T, which has no evaluation data.")
+        union!(bound, keys_T)
+    end
+    for key in keys(get_aux_variables(container))
+        if is_from_evaluator(get_entry_type(key)) && key ∉ bound
+            error(
+                "The aux variable $(encode_key_as_string(key)) comes from an evaluator, " *
+                "but no evaluator binds it. The code that adds it must call " *
+                "bind_aux_variable!.",
+            )
         end
     end
     return
@@ -1333,6 +1412,7 @@ function deserialize_key(container::OptimizationContainer, name::AbstractString)
 end
 
 function _cache_aux_variable_key_partitions!(container::OptimizationContainer)
+    _check_evaluator_aux_var_bindings(container)
     aux_var_keys = keys(get_aux_variables(container))
     evaluator_keys = filter(is_from_evaluator ∘ get_entry_type, aux_var_keys)
     container.evaluator_aux_var_keys = collect(evaluator_keys)
@@ -1349,19 +1429,14 @@ function calculate_aux_variables!(
        isempty(container.standalone_aux_var_keys)
         _cache_aux_variable_key_partitions!(container)
     end
-    evaluator_aux_var_keys = container.evaluator_aux_var_keys
     standalone_aux_var_keys = container.standalone_aux_var_keys
-    evaluation_data = get_evaluation_data(container)
-    # We should only have evaluator-bound aux vars if we have evaluators registered
-    @assert isempty(evaluator_aux_var_keys) || !isempty(evaluation_data)
 
     TimerOutputs.@timeit RUN_SIMULATION_TIMER "External Evaluation" begin
         reset_evaluations!(container)
-        # Evaluator-bound aux vars get calculated once per evaluator
-        for (T, data) in evaluation_data
+        for (T, data) in get_evaluation_data(container)
             @debug "Processing evaluator $(T)"
             evaluate!(data, container, system)
-            for key in evaluator_aux_var_keys
+            for key in get_bound_aux_var_keys(container, T)
                 calculate_aux_variable_value!(container, key, system, data)
             end
         end
