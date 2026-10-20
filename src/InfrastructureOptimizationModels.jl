@@ -170,6 +170,7 @@ export NetworkModel
 export get_network_matrix, get_contingency_matrix
 export get_network_source, get_irreducible_buses, get_network_data, set_network_data!
 export get_outages
+export get_outage_selection
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, set_evaluations!, has_subnetworks, get_subsystem
 export set_subsystem!, add_dual!
