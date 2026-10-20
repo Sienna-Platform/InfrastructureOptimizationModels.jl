@@ -274,4 +274,3 @@ function _add_mccormick_envelope!(
         lower_bounds,
     )
 end
-
