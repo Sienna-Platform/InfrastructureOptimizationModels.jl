@@ -30,7 +30,7 @@ function add_shut_down_cost!(
 }
     multiplier = objective_function_multiplier(U, V)
     for d in devices
-        get_must_run(d) && continue
+        is_always_committed(d) && continue
         # Function barrier: op_cost type becomes a compile-time parameter
         _add_shut_down_cost_per_device!(
             container, U, T, get_name(d), get_operation_cost(d), multiplier)
@@ -103,7 +103,7 @@ function _add_start_up_cost_to_objective!(
     U <: AbstractDeviceFormulation,
 }
     multiplier = objective_function_multiplier(T, U)
-    get_must_run(component) && return
+    is_always_committed(component) && return
     name = get_name(component)
     if _is_time_series_cost(op_cost)
         param = get_parameter_array(container, StartupCostParameter, C)

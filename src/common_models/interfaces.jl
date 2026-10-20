@@ -143,19 +143,32 @@ Returns true if the cost should be added to the variant objective expression.
 """
 is_time_variant_proportional(::IS.DeviceParameter) = false
 
-# corresponds to get_must_run for thermals, but avoiding device specific code here.
 """
-Extension point: whether to skip adding proportional cost for a given device.
-
-For thermals, equivalent to `get_must_run`, but that implementation belongs in POM.
+Whether to skip adding the proportional cost of a component to the objective: by default,
+whether it [`is_always_committed`](@ref). Such a component has no commitment variable to
+price, so its proportional cost is booked in `FixedCostExpression` at each step it is active
+(see [`get_component_statuses`](@ref)). Extend [`is_always_committed`](@ref), not this
+function; the two-argument form exempts one variable type.
 """
-skip_proportional_cost(d::IS.InfrastructureSystemsComponent) = false
+skip_proportional_cost(d::IS.InfrastructureSystemsComponent) = is_always_committed(d)
 
 """
 Extension point: downstream packages override this method to skip the proportional cost of one variable type. The default calls the one-argument form.
 """
 skip_proportional_cost(d::IS.InfrastructureSystemsComponent, ::Type{<:VariableType}) =
     skip_proportional_cost(d)
+
+"""
+Extension point: whether `component` is committed whenever it is active, so it has no
+commitment variable. Default `false`.
+
+The start-up and shut-down cost builders skip such a component, the semicontinuous ramp
+rows give it no start/stop allowance, its proportional cost is skipped (see
+[`skip_proportional_cost`](@ref)), and its piecewise linear cost rows and semicontinuous
+bounds take its status as the on status. Its ramp rows assume it is committed at every step; an
+inactive period (see [`get_component_statuses`](@ref)) does not relax them.
+"""
+is_always_committed(::IS.InfrastructureSystemsComponent) = false
 
 ###############################
 #### System query stubs #######
@@ -246,8 +259,10 @@ end
 
 """
 Per-step minimum active power of `device`, as a vector over the time steps. The default
-repeats `get_active_power_limits(device).min`. The ramp and PWL cost code read it. A device
-type whose minimum changes by step implements this method.
+repeats the static `get_active_power_limits(device).min`. The ramp rows and the compact
+lambda PWL linking rows read it, so they use the static minimum for every device type without
+its own method; a device type whose minimum changes by step implements this method. The
+block-offer offset reads the offer curve's first breakpoint instead.
 """
 function get_min_active_power_values(
     container::OptimizationContainer,
@@ -323,8 +338,8 @@ Update parameter values in the optimization container from the given input data.
 This is an extension point — concrete implementations should be defined in
 PowerOperationsModels (or PowerSimulations for simulation-specific variants).
 
-Only called in `emulation_model.jl`: that file's contents and this function should
-likely be moved to POM or PSI.
+The simulation calls it for each parameter key of a model at every step, after
+[`update_model_parameters!`](@ref).
 """
 function update_container_parameter_values! end
 

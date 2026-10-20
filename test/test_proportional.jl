@@ -498,3 +498,24 @@ end
         end
     end
 end
+
+@testset "Skipped proportional cost is booked at active steps only" begin
+    time_steps = 1:3
+    cost_value = 15.0
+    statuses = [1.0 0.0 0.5]
+    device = MockSkipGen("gen1", MockOperationCost(cost_value, false))
+    devices = IS.FlattenIteratorWrapper(MockSkipGen, Vector[[device]])
+    for adder! in (
+        IOM.add_proportional_cost!,
+        IOM.add_proportional_cost_maybe_time_variant!,
+    )
+        container = setup_skip_gen_container(time_steps)
+        set_test_statuses!(container, MockSkipGen, ["gen1"], statuses)
+        adder!(container, TestProportionalVariable, devices, TestProportionalFormulation)
+        @test count_objective_terms(container; variant = false) == 0
+        expr = IOM.get_expression(container, IOM.ProductionCostExpression, MockSkipGen)
+        for t in time_steps
+            @test JuMP.constant(expr["gen1", t]) ≈ cost_value * statuses[1, t]
+        end
+    end
+end

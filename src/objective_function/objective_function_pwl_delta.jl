@@ -192,9 +192,14 @@ _include_constant_min_gen_power_in_constraint(
 Implement the constraints for PWL Block Offer variables. That is:
 
 ```math
-\\sum_{k\\in\\mathcal{K}} \\delta_{k,t} = p_t \\\\
-\\sum_{k\\in\\mathcal{K}} \\delta_{k,t} \\leq P_{k+1,t}^{max} - P_{k,t}^{max}
+\\sum_{k\\in\\mathcal{K}} \\delta_{k,t} + P_{1,t} \\, o_t = p_t \\\\
+\\delta_{k,t} \\leq P_{k+1,t}^{max} - P_{k,t}^{max}
 ```
+
+The offset ``P_{1,t} o_t`` is present only for formulations that include the minimum power in
+the constraint: ``P_{1,t}`` is the offer curve's first breakpoint and ``o_t`` is the
+`OnVariable`, or the component status (see [`get_component_statuses`](@ref)) for a constant
+offset or a component absent from the `OnVariable` axis.
 """
 function add_pwl_constraint_delta!(
     container::OptimizationContainer,
@@ -232,19 +237,21 @@ function add_pwl_constraint_delta!(
     name = get_name(component)
 
     min_power_offset = if _include_constant_min_gen_power_in_constraint(T, U, D)
-        jump_fixed_value(first(break_points))::Float64
+        p0::Float64 = jump_fixed_value(first(break_points))
+        p0 * get_component_status(container, T, name, period)
     elseif _include_min_gen_power_in_constraint(T, U, D)
         p1::Float64 = jump_fixed_value(first(break_points))
         on_vars = get_variable(container, OnVariable, T)
         # Membership decides the branch, not a device trait: the OnVariable container is
-        # built from the non-must-run devices only, so a name absent from its axis is
-        # must-run and always committed (On === 1), making the offset the constant p1.
-        # Reading the axis keeps this correct for every component type, including those
-        # with no `must_run` field at all.
+        # built from the components that are not always committed, so a name absent from
+        # its axis is committed whenever it is active and the offset is p1 times its
+        # status. The OnVariable of a committed component is fixed to zero while it is
+        # inactive, so it needs no status. Reading the axis keeps this correct for every
+        # component type.
         if name in axes(on_vars, 1)
             p1 * on_vars[name, period]
         else
-            p1
+            p1 * get_component_status(container, T, name, period)
         end
     else
         0.0

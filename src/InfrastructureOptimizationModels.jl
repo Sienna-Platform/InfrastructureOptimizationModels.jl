@@ -102,7 +102,6 @@ function get_max_active_power end
 function get_ramp_limits end
 function get_start_up end
 function get_shut_down end
-function get_must_run end
 function get_operation_cost end
 function get_dc_bus end
 function get_bustype end
@@ -333,6 +332,17 @@ export OnStatusParameter
 export LeftHandSideTimeSeriesParameter
 export get_lhs_parameter_values, has_lhs_parameter_component, get_value_length
 export set_rebuild_model!
+
+# Per-step component statuses
+export AbstractComponentStatuses, AllComponentsActive, ComponentStatusArray
+export get_component_statuses, get_component_status, get_on_status, is_always_committed
+export get_component_status_array, scaled_by_component_status
+export component_axis, component_axis_type, each_component_entry
+export fixed_when_inactive, fix_inactive_variables!
+
+# Rebuilds and per-step parameter refresh
+export requires_rebuild, should_add_parameter, on_parameter_reused!
+export reset_optimization_model!, rebuild_model!, update_model_parameters!
 export add_time_series_parameter_container!,
     add_cost_function_parameter_container!,
     add_variable_value_parameter_container!,
@@ -601,6 +611,7 @@ include("core/outputs_by_time.jl")
 # Order Required
 include("operation/problem_template.jl")
 include("core/optimization_container.jl")
+include("core/component_status.jl")
 include("core/lhs_parameters.jl")
 include("core/dual_processing.jl")
 
