@@ -38,6 +38,7 @@ include(joinpath(TEST_DIR, "mocks/constructors.jl"))
 include(joinpath(TEST_DIR, "test_utils/test_types.jl"))
 include(joinpath(TEST_DIR, "test_utils/objective_function_helpers.jl"))
 include(joinpath(TEST_DIR, "test_utils/qa_bilinear_helpers.jl"))
+include(joinpath(TEST_DIR, "test_utils/component_status_helpers.jl"))
 
 # Environment flags for test selection
 const RUN_UNIT_TESTS = get(ENV, "IOM_RUN_UNIT_TESTS", "true") == "true"
@@ -145,6 +146,8 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_directional_limits.jl"))
                     include(joinpath(TEST_DIR, "test_range_constraints_hooks.jl"))
                     include(joinpath(TEST_DIR, "test_duration_constraints.jl"))
+                    include(joinpath(TEST_DIR, "test_component_status.jl"))
+                    include(joinpath(TEST_DIR, "test_model_rebuild.jl"))
                     include(joinpath(TEST_DIR, "test_emulation_model_store.jl"))
                     include(joinpath(TEST_DIR, "test_model_store.jl"))
 

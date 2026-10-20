@@ -44,7 +44,8 @@ See the piecewise linear cost functions section for more information.
 struct PiecewiseLinearCostConstraint <: ConstraintType end
 
 """
-Normalization constraint for PWL cost: sum of delta variables equals on-status.
+Normalization constraint for PWL cost: sum of delta variables equals the on status of
+[`get_on_status`](@ref).
 """
 struct PiecewiseLinearCostNormalizationConstraint <: ConstraintType end
 
@@ -77,7 +78,7 @@ function _get_sos_value(
     ::Type{V},
     component::T,
 ) where {T <: IS.InfrastructureSystemsComponent, V <: AbstractDeviceFormulation}
-    if skip_proportional_cost(component)
+    if is_always_committed(component)
         return SOSStatusVariable.NO_VARIABLE
     elseif has_container_key(container, OnStatusParameter, T)
         return SOSStatusVariable.PARAMETER
@@ -123,6 +124,9 @@ end
 ################# PWL Constraints ################
 ##################################################
 
+# The on status of the lambda cost rows: the component status when nothing commits the
+# component, the `OnStatusParameter` scaled by the component status, or the commitment
+# variable, which is fixed to zero while the component is inactive.
 function _determine_bin_lhs(
     container::OptimizationContainer,
     sos_status::SOSStatusVariable.Value,
@@ -132,13 +136,15 @@ function _determine_bin_lhs(
     on_var_type::Type{<:VariableType} = OnVariable,
 ) where {T <: IS.InfrastructureSystemsComponent}
     if sos_status == SOSStatusVariable.NO_VARIABLE
-        @debug "Using Piecewise Linear cost function but no variable/parameter ref for ON status is passed. Default status will be set to online (1.0)" _group =
+        @debug "Using Piecewise Linear cost function but no variable/parameter ref for ON status is passed. The on status is the component status" _group =
             LOG_GROUP_COST_FUNCTIONS
-        return 1.0
+        return get_component_status(container, T, name, period)
     elseif sos_status == SOSStatusVariable.PARAMETER
         @debug "Using Piecewise Linear cost function with parameter OnStatusParameter, $T" _group =
             LOG_GROUP_COST_FUNCTIONS
-        return get_parameter(container, OnStatusParameter, T).parameter_array[name, period]
+        on_status =
+            get_parameter(container, OnStatusParameter, T).parameter_array[name, period]
+        return _scale_by_status(on_status, get_component_status(container, T, name, period))
     elseif sos_status == SOSStatusVariable.VARIABLE
         @debug "Using Piecewise Linear cost function with variable $on_var_type for $T" _group =
             LOG_GROUP_COST_FUNCTIONS
@@ -149,12 +155,52 @@ function _determine_bin_lhs(
 end
 
 """
+    get_on_status(container, ::Type{F}, component, t; on_var_type = OnVariable, commitment_first = false)
+
+The on status of `component` at step `t` under device formulation `F`:
+
+  - the component status (see [`get_component_statuses`](@ref)) for a component that is
+    always committed (see [`is_always_committed`](@ref)), which is committed whenever it is
+    active;
+  - otherwise the `OnStatusParameter` value scaled by the component status when the
+    container holds that parameter;
+  - otherwise the commitment variable `on_var_type` when the formulation commits the
+    component, and the component status when it does not.
+
+This is the precedence of the piecewise linear cost rows. With `commitment_first = true`, a
+formulation that commits the component reads its own commitment variable even when the
+container also holds an `OnStatusParameter`; the parameter then serves only formulations
+without a commitment variable.
+
+Returns a `Float64`, a JuMP variable or parameter, or an affine expression.
+"""
+function get_on_status(
+    container::OptimizationContainer,
+    ::Type{F},
+    component::T,
+    t::Int;
+    on_var_type::Type{<:VariableType} = OnVariable,
+    commitment_first::Bool = false,
+) where {F <: AbstractDeviceFormulation, T <: IS.InfrastructureSystemsComponent}
+    sos_status = _get_sos_value(container, F, component)
+    if commitment_first && sos_status == SOSStatusVariable.PARAMETER &&
+       _sos_status(T, F) == SOSStatusVariable.VARIABLE
+        sos_status = SOSStatusVariable.VARIABLE
+    end
+    return _determine_bin_lhs(
+        container, sos_status, T, get_name(component), t; on_var_type = on_var_type)
+end
+
+"""
 Implement the standard constraints for PWL variables. That is:
 
 ```math
 \\sum_{k\\in\\mathcal{K}} P_k^{max} \\delta_{k,t} = p_t \\\\
 \\sum_{k\\in\\mathcal{K}} \\delta_{k,t} = on_t
 ```
+
+where ``on_t`` is the on status of [`get_on_status`](@ref): the commitment, or the component
+status for an always-committed component (`must_run = true`).
 
 For compact form (PowerAboveMinimumVariable), use `_add_pwl_constraint_compact!` instead.
 """
@@ -188,7 +234,7 @@ function _add_pwl_constraint_standard!(
 
     # Normalization constraint: sum(pwl_vars) == on_status
     if must_run
-        bin = 1.0
+        bin = get_component_status(container, T, name, period)
     else
         bin = _determine_bin_lhs(container, sos_status, T, name, period)
     end
@@ -212,6 +258,10 @@ Implement the constraints for PWL variables for Compact form. That is:
 \\sum_{k\\in\\mathcal{K}} \\delta_{k,t} = on_t
 ```
 
+where ``on_t`` is the on status of [`get_on_status`](@ref): the commitment, or the component
+status for an always-committed component (`must_run = true`). ``P_{\\min}`` is the static
+minimum unless the device implements [`get_min_active_power_values`](@ref).
+
 For standard form, use `_add_pwl_constraint_standard!` instead.
 """
 function _add_pwl_constraint_compact!(
@@ -229,7 +279,7 @@ function _add_pwl_constraint_compact!(
 
     # Get on-status for compact form (needed for both linking and normalization)
     if must_run
-        bin = 1.0
+        bin = get_component_status(container, T, name, period)
     else
         bin = _determine_bin_lhs(container, sos_status, T, name, period)
     end
@@ -359,7 +409,9 @@ Add PWL normalization constraint: delta variables sum to on_status.
 - `name`: component name
 - `t`: time period
 - `pwl_vars`: vector of PWL delta variables
-- `on_status`: the on/off status (1.0, or a JuMP variable/parameter)
+- `on_status`: the on status: a number (the component status), a JuMP variable or parameter,
+  or an affine expression (a parameter scaled by the component status); see
+  [`get_on_status`](@ref)
 """
 function add_pwl_normalization_constraint!(
     container::OptimizationContainer,

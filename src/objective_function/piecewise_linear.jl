@@ -66,7 +66,11 @@ Given a `PiecewisePointCurve` with breakpoints ``(P_i, C_i)``, this function:
 
 1. Creates lambda variables ``\\lambda_i \\in [0, 1]`` at each breakpoint via `add_pwl_variables_lambda!`.
 2. Adds linking and normalization constraints via `_add_pwl_linking!`. For
-   `PowerAboveMinimumVariable` the linking row is ``P^{min}_t u_t + \\hat{p}_t = \\sum_i \\lambda_i P_i``.
+   `PowerAboveMinimumVariable` the linking row is ``P^{min}_t u_t + \\hat{p}_t = \\sum_i \\lambda_i P_i``,
+   where ``u_t`` is the on status of [`get_on_status`](@ref) (the commitment, scaled by or
+   replaced with the component status) and ``P^{min}_t`` comes from
+   [`get_min_active_power_values`](@ref), the static minimum for a device type without its
+   own method.
 3. If the cost curve is **non-convex**, adds an SOS2 adjacency constraint so that at most
    two neighboring ``\\lambda`` values are nonzero.
 4. Builds the cost expression ``C = \\sum_i \\lambda_i \\, C(P_i)``.
