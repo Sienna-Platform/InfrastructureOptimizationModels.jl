@@ -2,7 +2,7 @@
 Abstract type for the configuration of an evaluator.
 
 An evaluator is a calculation that runs after each solve, outside the optimization model.
-The configuration is part of the problem template. It holds no runtime data.
+The configuration is part of the problem template. The configuration holds no runtime data.
 
 At build time, [`initialize_evaluation_data`](@ref) makes the runtime data from the
 configuration. Downstream packages define the concrete subtypes.

@@ -174,7 +174,15 @@ Make the [`AbstractSolveContext`](@ref) for one solve from `template`.
 `solve_model!` calls this function before each solve.
 Downstream packages must implement it for their template type.
 """
-function make_solve_context end
+function make_solve_context(template::AbstractProblemTemplate)
+    throw(
+        ArgumentError(
+            "make_solve_context is not implemented for $(typeof(template)). " *
+            "Downstream packages must implement `make_solve_context(::YourTemplateType)` " *
+            "returning an `AbstractSolveContext`.",
+        ),
+    )
+end
 
 """
     share_template_references!(template_::AbstractProblemTemplate, template::AbstractProblemTemplate)
