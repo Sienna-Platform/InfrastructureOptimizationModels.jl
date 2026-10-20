@@ -42,7 +42,6 @@ get_name(g::MockPminStepGen) = g.name
 IOM.get_active_power_limits(g::MockPminStepGen) = g.active_power_limits
 IOM.get_base_power(::MockPminStepGen) = 100.0
 IOM.get_operation_cost(::MockPminStepGen) = MockOperationCost(0.0)
-IOM.get_must_run(::MockPminStepGen) = false
 InfrastructureOptimizationModels._sos_status(
     ::Type{MockPminStepGen},
     ::Type{TestPWLPminFormulation},
@@ -185,6 +184,13 @@ struct MockNoCommitFormulation <: IOM.AbstractDeviceFormulation end
 struct MockThermalCommitFormulation <: IOM.AbstractThermalUnitCommitment end
 IOM.uses_commitment_variables(::Type{MockCommitGen}) = true
 IOM.uses_commitment_formulation(::Type{MockCommitFormulation}) = true
+
+# A named generator whose type uses commitment variables.
+struct MockCommittedGen <: AbstractMockGenerator
+    name::String
+end
+get_name(g::MockCommittedGen) = g.name
+IOM.uses_commitment_variables(::Type{MockCommittedGen}) = true
 
 @testset "_sos_status commitment traits" begin
     @test IOM._sos_status(MockCommitGen, MockCommitFormulation) ==
@@ -1040,4 +1046,120 @@ end
     end
     # 1.0·P_min + p' == Σ λ_i P_i, so the normalized right-hand side is -P_min.
     @test JuMP.normalized_rhs(link) ≈ -0.3
+end
+
+@testset "Lambda PWL on status includes the component status" begin
+    statuses = [0.0 0.5]
+
+    @testset "_determine_bin_lhs" begin
+        (; container) = setup_pwl_constraint_test(; time_steps = 1:2)
+        set_test_statuses!(container, MockThermalGen, ["gen1"], statuses)
+        for t in 1:2
+            @test IOM._determine_bin_lhs(
+                container, IOM.SOSStatusVariable.NO_VARIABLE, MockThermalGen, "gen1", t,
+            ) == statuses[1, t]
+        end
+        add_test_parameter!(
+            container, IOM.OnStatusParameter, MockThermalGen, ["gen1"], 1:2, [1.0 1.0])
+        for t in 1:2
+            @test IOM._determine_bin_lhs(
+                container, IOM.SOSStatusVariable.PARAMETER, MockThermalGen, "gen1", t,
+            ) == statuses[1, t]
+        end
+        on = IOM.add_variable_container!(
+            container, IOM.OnVariable, MockThermalGen, ["gen1"], 1:2)
+        jump_model = IOM.get_jump_model(container)
+        for t in 1:2
+            on["gen1", t] = JuMP.@variable(jump_model, binary = true)
+            @test IOM._determine_bin_lhs(
+                container, IOM.SOSStatusVariable.VARIABLE, MockThermalGen, "gen1", t,
+            ) === on["gen1", t]
+        end
+    end
+
+    @testset "get_on_status: the commitment variable first, when asked" begin
+        container = make_test_container(1:2)
+        device = MockCommittedGen("u")
+        set_test_statuses!(container, MockCommittedGen, ["u"], statuses)
+        on = IOM.add_variable_container!(
+            container, IOM.OnVariable, MockCommittedGen, ["u"], 1:2)
+        jump_model = IOM.get_jump_model(container)
+        for t in 1:2
+            on["u", t] = JuMP.@variable(jump_model, binary = true)
+        end
+        add_test_parameter!(
+            container, IOM.OnStatusParameter, MockCommittedGen, ["u"], 1:2, [1.0 1.0])
+        for t in 1:2
+            # The piecewise linear rows read the parameter, scaled by the status.
+            @test IOM.get_on_status(container, MockThermalCommitFormulation, device, t) ==
+                  statuses[1, t]
+            @test IOM.get_on_status(
+                container, MockThermalCommitFormulation, device, t;
+                commitment_first = true,
+            ) === on["u", t]
+            # A formulation without commitment has no variable to prefer.
+            @test IOM.get_on_status(
+                container, MockNoCommitFormulation, device, t; commitment_first = true,
+            ) == statuses[1, t]
+        end
+    end
+
+    @testset "a JuMP parameter on status is scaled, not replaced" begin
+        (; container) = setup_pwl_constraint_test(; time_steps = 1:2)
+        set_test_statuses!(container, MockThermalGen, ["gen1"], statuses)
+        jump_model = IOM.get_jump_model(container)
+        param_container = IOM.add_param_container_shared_axes!(
+            container, IOM.ParameterKey(IOM.OnStatusParameter, MockThermalGen),
+            IOM.NoAttributes(), JuMP.VariableRef, ["gen1"], 1:2)
+        param_array = IOM.get_parameter_array(param_container)
+        for t in 1:2
+            param_array["gen1", t] = IOM.add_jump_parameter(jump_model, 1.0)
+        end
+        bin = IOM._determine_bin_lhs(
+            container, IOM.SOSStatusVariable.PARAMETER, MockThermalGen, "gen1", 2)
+        @test JuMP.coefficient(bin, param_array["gen1", 2]) ≈ 0.5
+        @test IOM._determine_bin_lhs(
+            container, IOM.SOSStatusVariable.PARAMETER, MockThermalGen, "gen1", 1,
+        ) == 0.0
+    end
+
+    @testset "get_on_status" begin
+        (; container, device) = setup_pwl_constraint_test(; time_steps = 1:2)
+        @test IOM.get_on_status(container, TestPWLFormulation, device, 1) == 1.0
+        set_test_statuses!(container, MockThermalGen, ["gen1"], statuses)
+        @test IOM.get_on_status(container, TestPWLFormulation, device, 1) == 0.0
+        @test IOM.get_on_status(container, TestPWLFormulation, device, 2) == 0.5
+    end
+
+    @testset "must-run normalization and linking rows" begin
+        must_run_points =
+            [(x = 20.0, y = 0.0), (x = 60.0, y = 200.0), (x = 100.0, y = 800.0)]
+        for compact in (false, true)
+            (; container, device, break_points) = setup_pwl_constraint_test(;
+                time_steps = 1:2, points = must_run_points)
+            set_test_statuses!(container, MockThermalGen, ["gen1"], statuses)
+            power = IOM.get_variable(container, TestPWLVariable, MockThermalGen)
+            for t in 1:2
+                if compact
+                    IOM._add_pwl_constraint_compact!(
+                        container, device, "gen1", break_points,
+                        IOM.SOSStatusVariable.VARIABLE, t, power["gen1", t], 20.0, true)
+                else
+                    IOM._add_pwl_constraint_standard!(
+                        container, device, break_points,
+                        IOM.SOSStatusVariable.VARIABLE, t, power["gen1", t], true)
+                end
+            end
+            norm = IOM.get_constraint(
+                container, IOM.PiecewiseLinearCostNormalizationConstraint,
+                MockThermalGen)
+            link = IOM.get_constraint(
+                container, IOM.PiecewiseLinearCostConstraint, MockThermalGen)
+            for t in 1:2
+                @test JuMP.normalized_rhs(norm["gen1", t]) ≈ statuses[1, t]
+                expected_link_rhs = compact ? -20.0 * statuses[1, t] : 0.0
+                @test JuMP.normalized_rhs(link["gen1", t]) ≈ expected_link_rhs
+            end
+        end
+    end
 end
