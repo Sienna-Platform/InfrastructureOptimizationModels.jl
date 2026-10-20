@@ -247,15 +247,17 @@ is_from_evaluator(::Type{<:AuxVariableType}) = false
 Extension point: add the aux variables that the evaluator registered under `T` produces,
 and bind each one with [`bind_aux_variable!`](@ref).
 The domain package calls it after it stores `data` with `add_evaluation_data!`.
-The default adds nothing.
+Each evaluation data type must implement it.
 """
 function add_evaluator_aux_variables!(
     ::OptimizationContainer,
-    ::DataType,
-    ::AbstractEvaluationData,
+    T::DataType,
+    data::AbstractEvaluationData,
     ::Any,
 )
-    return
+    error(
+        "`add_evaluator_aux_variables!` not implemented for evaluator $T with data $(typeof(data)).",
+    )
 end
 
 """

@@ -302,14 +302,14 @@ end
     @test isempty(get_bound_aux_var_keys(container, MockEvaluator))
 end
 
-@testset "add_evaluator_aux_variables! defaults to a no-op" begin
+@testset "add_evaluator_aux_variables! errors without a method for the data" begin
     container = _binding_container()
-    @test add_evaluator_aux_variables!(
+    @test_throws ErrorException add_evaluator_aux_variables!(
         container,
         MockEvaluator,
         get_evaluation_data(container, MockEvaluator),
         MockSystem(100.0),
-    ) === nothing
+    )
 end
 
 @testset "Calculating aux variables rejects an unbound evaluator aux variable" begin
