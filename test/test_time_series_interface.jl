@@ -73,13 +73,17 @@ IOM.build_static_time_series_reader(sys::MockSystem; kwargs...) =
         resolution = Dates.Hour(1),
     )
 
-    reader = IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "ts")
+    reader = @inferred IOM.get_time_series_reader!(
+        model,
+        IS.DeterministicSingleTimeSeries,
+        "ts",
+    )
     @test IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "ts") ===
           reader
     IS.read_forecast_window!(reader, t0 + Dates.Hour(1))
     @test IS.get_forecast_window(reader, 1) == [2.0, 3.0, 4.0, 5.0]
 
-    static = IOM.get_time_series_reader!(model, IS.SingleTimeSeries, "ts")
+    static = @inferred IOM.get_time_series_reader!(model, IS.SingleTimeSeries, "ts")
     IS.read_static_time_series_values!(static, t0 + Dates.Hour(2))
     @test IS.get_static_time_series_value(static, 1) == 3.0
 
