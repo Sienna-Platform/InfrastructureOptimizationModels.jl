@@ -615,3 +615,75 @@ end
         @test isapprox(JuMP.value(p["gen1", 3]), 1.5; atol = 1e-6)
     end
 end
+
+struct StatusConstantMinGenFormulation <: IOM.AbstractDeviceFormulation end
+struct StatusMinGenCommitFormulation <: IOM.AbstractDeviceFormulation end
+IOM._include_constant_min_gen_power_in_constraint(
+    ::Type{MockThermalGen},
+    ::Type{TestVariableType},
+    ::Type{StatusConstantMinGenFormulation},
+) = true
+IOM._include_min_gen_power_in_constraint(
+    ::Type{MockThermalGen},
+    ::Type{TestVariableType},
+    ::Type{StatusMinGenCommitFormulation},
+) = true
+
+@testset "Block offer minimum power offset scales by the component status" begin
+    time_steps = 1:2
+    breakpoints = [10.0, 50.0, 100.0]
+    statuses = [0.0 1.0; 1.0 0.5]
+
+    function block_offer_rows(::Type{F}; with_on_variable) where {F}
+        container = make_test_container(time_steps; base_power = 100.0)
+        devices = [make_mock_thermal("committed"), make_mock_thermal("must_run")]
+        names = get_name.(devices)
+        IOM.add_variable_container!(
+            container, TestVariableType, MockThermalGen, names, time_steps)
+        power = IOM.get_variable(container, TestVariableType, MockThermalGen)
+        jump_model = IOM.get_jump_model(container)
+        for name in names, t in time_steps
+            power[name, t] = JuMP.@variable(jump_model)
+        end
+        if with_on_variable
+            on = IOM.add_variable_container!(
+                container, IOM.OnVariable, MockThermalGen, ["committed"], time_steps)
+            for t in time_steps
+                on["committed", t] = JuMP.@variable(jump_model, binary = true)
+            end
+        end
+        set_test_statuses!(container, MockThermalGen, names, statuses)
+        for device in devices, t in time_steps
+            pwl_vars = IOM.add_pwl_variables_delta!(
+                container, IOM.PiecewiseLinearBlockIncrementalOffer, MockThermalGen,
+                get_name(device), t, 2; upper_bound = Inf)
+            IOM.add_pwl_constraint_delta!(
+                container, device, TestVariableType, F, breakpoints, pwl_vars, t,
+                IOM.PiecewiseLinearBlockIncrementalOfferConstraint)
+        end
+        rows = IOM.get_constraint(
+            container, IOM.PiecewiseLinearBlockIncrementalOfferConstraint,
+            MockThermalGen)
+        return container, rows
+    end
+
+    @testset "constant offset" begin
+        _, rows =
+            block_offer_rows(StatusConstantMinGenFormulation; with_on_variable = false)
+        for (i, name) in enumerate(["committed", "must_run"]), t in time_steps
+            @test JuMP.normalized_rhs(rows[name, t]) ≈ 10.0 * statuses[i, t]
+        end
+    end
+
+    @testset "commitment offset; names without an OnVariable read the status" begin
+        container, rows =
+            block_offer_rows(StatusMinGenCommitFormulation; with_on_variable = true)
+        on = IOM.get_variable(container, IOM.OnVariable, MockThermalGen)
+        for t in time_steps
+            @test JuMP.normalized_coefficient(rows["committed", t], on["committed", t]) ≈
+                  -10.0
+            @test JuMP.normalized_rhs(rows["committed", t]) ≈ 0.0
+            @test JuMP.normalized_rhs(rows["must_run", t]) ≈ 10.0 * statuses[2, t]
+        end
+    end
+end

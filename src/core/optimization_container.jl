@@ -97,6 +97,9 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     default_time_series_type::Type
     evaluation_data::EvaluationDataContainer
     serialization_task::Union{Nothing, Task}
+    # The `ComponentStatusArray` of each status parameter, built once per container (see
+    # `get_component_status_array`); entries are `ComponentStatusArray`s.
+    component_status_cache::Dict{ParameterKey, Any}
 end
 
 function OptimizationContainer(
@@ -147,6 +150,7 @@ function OptimizationContainer(
         T,
         EvaluationDataContainer(),
         nothing,
+        Dict{ParameterKey, Any}(),
     )
 end
 
@@ -449,6 +453,18 @@ function init_optimization_container!(
     return
 end
 
+"""
+    reset_optimization_model!(container)
+
+Empty the container for a rebuild: its variables, auxiliary variables, constraints,
+expressions, duals, objective function, initial-condition data and the JuMP model itself.
+
+The parameter containers (`container.parameters`) and initial conditions are kept unchanged,
+with the values and multipliers written for the current step, so a rebuild reuses them (see
+[`should_add_parameter`](@ref)). A model that rebuilds holds them as `Float64` (see
+[`get_param_eltype`](@ref)); entries held as JuMP parameters would refer to the emptied JuMP
+model.
+"""
 function reset_optimization_model!(container::OptimizationContainer)
     for field in [:variables, :aux_variables, :constraints, :expressions, :duals]
         empty!(getfield(container, field))
@@ -459,6 +475,7 @@ function reset_optimization_model!(container::OptimizationContainer)
     container.initial_conditions_data = InitialConditionsData()
     container.objective_function = ObjectiveFunction()
     container.primal_values_cache = PrimalValuesCache()
+    empty!(container.component_status_cache)
     JuMP.empty!(get_jump_model(container))
     return
 end
@@ -984,8 +1001,12 @@ end
 ##################################### Parameter Container ##################################
 
 """
-Determine the element type for parameter arrays: JuMP.VariableRef for recurrent solves,
-Float64 otherwise.
+    get_param_eltype(container)
+    get_param_eltype(container, ::Type{P})
+
+Determine the element type for parameter arrays: `JuMP.VariableRef` for a model built for
+recurrent solves without rebuilds, `Float64` otherwise. With a parameter type, `Float64` for a
+parameter that [`requires_rebuild`](@ref).
 """
 function get_param_eltype(container::OptimizationContainer)
     if built_for_recurrent_solves(container) && !get_rebuild_model(get_settings(container))
@@ -994,6 +1015,75 @@ function get_param_eltype(container::OptimizationContainer)
         return Float64
     end
 end
+
+get_param_eltype(container::OptimizationContainer, ::Type{P}) where {P <: ParameterType} =
+    requires_rebuild(P) ? Float64 : get_param_eltype(container)
+
+"""
+    requires_rebuild(::Type{<:ParameterType}) -> Bool
+
+Extension point: whether the values of a parameter type enter the model as fixed numbers
+(constraint coefficients, the model's structure) rather than as JuMP parameters, so that a
+model holding it must be rebuilt at every step of a recurrent solve to read refreshed
+values. Default `false`; `true` for [`LeftHandSideTimeSeriesParameter`](@ref).
+
+Such a parameter is stored as `Float64` (see [`get_param_eltype`](@ref)). Allocating one in a
+container built for recurrent solves while `rebuild_model` is off throws an
+`IS.ConflictingInputsError`: the formulation package sets `rebuild_model = true` before the
+build, typically at template validation, so that every parameter and initial condition is
+allocated as a number.
+"""
+requires_rebuild(::Type{<:ParameterType}) = false
+requires_rebuild(::Type{<:LeftHandSideTimeSeriesParameter}) = true
+
+function _check_rebuild_required(container::OptimizationContainer, key::ParameterKey)
+    P = get_entry_type(key)
+    requires_rebuild(P) || return
+    built_for_recurrent_solves(container) || return
+    get_rebuild_model(get_settings(container)) && return
+    throw(
+        IS.ConflictingInputsError(
+            "$(nameof(P)) requires a rebuild at every step of a recurrent solve: set \
+             rebuild_model = true in the model settings before the build (formulation \
+             packages set it at template validation).",
+        ),
+    )
+end
+
+"""
+    should_add_parameter(container, key) -> Bool
+    should_add_parameter(container, key, devices, model) -> Bool
+
+Whether a build adds the parameter container `key`. A model that rebuilds every step (see
+`get_rebuild_model`) keeps its parameter containers across rebuilds, with the values written
+for the current step (see [`reset_optimization_model!`](@ref)), so an existing container is
+reused rather than added again.
+
+The four-argument form calls [`on_parameter_reused!`](@ref)`(container, key, devices, model)`
+when it returns `false`, so per-build values derived from the parameter can be recomputed.
+"""
+should_add_parameter(container::OptimizationContainer, key::ParameterKey) =
+    !(get_rebuild_model(get_settings(container)) && haskey(container.parameters, key))
+
+function should_add_parameter(
+    container::OptimizationContainer,
+    key::ParameterKey,
+    devices,
+    model,
+)
+    should_add_parameter(container, key) && return true
+    on_parameter_reused!(container, key, devices, model)
+    return false
+end
+
+"""
+    on_parameter_reused!(container, key, devices, model)
+
+Extension point called by [`should_add_parameter`](@ref) when a rebuild reuses the parameter
+container `key` instead of adding it. A method recomputes what a build derives from the
+parameter, such as its multipliers, for `devices` under `model`. Default: no-op.
+"""
+on_parameter_reused!(::OptimizationContainer, ::ParameterKey, devices, model) = nothing
 
 """
 Allocate a parameter container where param and multiplier arrays share the same axes.
@@ -1017,6 +1107,7 @@ function add_param_container_shared_axes!(
     _check_container_dims(key, param_array)
     _check_container_dims(key, multiplier_array)
     param_container = ParameterContainer(attribute, param_array, multiplier_array)
+    _check_rebuild_required(container, key)
     _assign_container!(container.parameters, key, param_container)
     return param_container
 end
@@ -1056,6 +1147,7 @@ function add_param_container_split_axes!(
             )
     end
     param_container = ParameterContainer(attribute, param_array, multiplier_array)
+    _check_rebuild_required(container, key)
     _assign_container!(container.parameters, key, param_container)
     return param_container
 end
@@ -1173,7 +1265,7 @@ function read_parameters(container::OptimizationContainer)
         # place and be consistent in behavior.
         #params_dict[k] = to_dataframe(calculate_parameter_values(v))
         param_array = get_parameter_values(v)
-        multiplier_array = get_multiplier_array(v)
+        multiplier_array = _status_scaled_multiplier(container, k, get_multiplier_array(v))
         params_dict[k] = _calculate_parameter_values(k, param_array, multiplier_array)
     end
     return params_dict
@@ -1724,7 +1816,7 @@ lookup_value(container::OptimizationContainer, key::AuxVarKey) =
     get_aux_variable(container, key)
 
 lookup_value(container::OptimizationContainer, key::ParameterKey) =
-    calculate_parameter_values(get_parameter(container, key))
+    calculate_parameter_values(container, key)
 
 lookup_value(
     container::OptimizationContainer,
