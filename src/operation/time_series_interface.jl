@@ -88,45 +88,27 @@ function get_time_series_values!(
 end
 
 """
-The model's reader over every `T` series named `name` at the model resolution, read at
-`timestamp`. The reader is built on first use and read at most once per timestamp, so the
-parameters that share a series name share one read and decode per step. A forecast reader
-serves a `DecisionModel` window; a static reader serves an `EmulationModel` value.
-
-Read a model's readers only through this function. A direct `IS.read_forecast_window!` or
-`IS.read_static_time_series_values!` moves the reader without updating the timestamp
-recorded here, so a later call at that timestamp would return another time's values.
-`empty_time_series_cache!` drops the readers.
+The model's reader over every `T` series named `name` at the model resolution, built on
+first use. A forecast reader serves a `DecisionModel` window at each step; a static reader
+serves an `EmulationModel` value. `empty_time_series_cache!` drops the readers.
 """
 function get_time_series_reader!(
     model::AbstractOptimizationModel,
     ::Type{T},
     name::String,
-    timestamp::Dates.DateTime,
 ) where {T <: IS.TimeSeriesData}
     resolution = get_resolution(model)
-    states = get_time_series_readers(get_internal(model))
-    state = get!(states, (T, name, resolution)) do
-        TimeSeriesReaderState(
-            _build_time_series_reader(get_system(model), T, name, resolution),
-            nothing,
-        )
-    end
+    readers = get_time_series_readers(get_internal(model))
     # The readers are stored untyped; `T` fixes which reader comes back, so assert it.
-    reader = state.reader::_time_series_reader_type(T)
-    if state.timestamp != timestamp
-        # A failed read leaves the reader empty, so forget the old timestamp first.
-        state.timestamp = nothing
-        _read_time_series_reader!(reader, timestamp)
-        state.timestamp = timestamp
-    end
-    return reader
+    return get!(readers, (T, name, resolution)) do
+        _build_time_series_reader(
+            get_system(model),
+            T,
+            name,
+            resolution,
+        )
+    end::_time_series_reader_type(T)
 end
-
-_read_time_series_reader!(reader::IS.ForecastReader, timestamp) =
-    IS.read_forecast_window!(reader, timestamp)
-_read_time_series_reader!(reader::IS.StaticTimeSeriesReader, timestamp) =
-    IS.read_static_time_series_values!(reader, timestamp)
 
 _time_series_reader_type(::Type{T}) where {T <: IS.Forecast} = IS.ForecastReader{T}
 _time_series_reader_type(::Type{<:IS.StaticTimeSeries}) = IS.StaticTimeSeriesReader
