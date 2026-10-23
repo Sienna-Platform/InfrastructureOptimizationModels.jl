@@ -73,27 +73,21 @@ IOM.build_static_time_series_reader(sys::MockSystem; kwargs...) =
         resolution = Dates.Hour(1),
     )
 
-    t1, t2 = t0 + Dates.Hour(1), t0 + Dates.Hour(2)
     reader = @inferred IOM.get_time_series_reader!(
         model,
         IS.DeterministicSingleTimeSeries,
         "ts",
-        t1,
     )
-    windows = IS.get_forecast_group_windows(reader, 1)
-    @test only(windows) == [2.0, 3.0, 4.0, 5.0]
-    # A second request at the same timestamp skips the read, which would drop the windows
-    # IS has already decoded.
-    @test IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "ts", t1) ===
+    @test IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "ts") ===
           reader
-    @test IS.get_forecast_group_windows(reader, 1) === windows
-    IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "ts", t2)
-    @test only(IS.get_forecast_group_windows(reader, 1)) == [3.0, 4.0, 5.0, 6.0]
+    IS.read_forecast_window!(reader, t0 + Dates.Hour(1))
+    @test IS.get_forecast_window(reader, 1) == [2.0, 3.0, 4.0, 5.0]
 
-    static = @inferred IOM.get_time_series_reader!(model, IS.SingleTimeSeries, "ts", t2)
+    static = @inferred IOM.get_time_series_reader!(model, IS.SingleTimeSeries, "ts")
+    IS.read_static_time_series_values!(static, t0 + Dates.Hour(2))
     @test IS.get_static_time_series_value(static, 1) == 3.0
 
     IOM.empty_time_series_cache!(model)
-    @test IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "ts", t1) !==
+    @test IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "ts") !==
           reader
 end
