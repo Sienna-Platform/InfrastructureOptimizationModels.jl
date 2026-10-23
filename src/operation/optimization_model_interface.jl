@@ -107,7 +107,11 @@ set_run_status!(model::AbstractOptimizationModel, status) =
     set_run_status!(get_simulation_info(model), status)
 get_time_series_cache(model::AbstractOptimizationModel) =
     get_time_series_cache(get_internal(model))
-empty_time_series_cache!(x::AbstractOptimizationModel) = empty!(get_time_series_cache(x))
+function empty_time_series_cache!(x::AbstractOptimizationModel)
+    empty!(get_time_series_cache(x))
+    empty!(get_time_series_readers(get_internal(x)))
+    return
+end
 
 function get_current_timestamp(model::AbstractOptimizationModel)
     # For EmulationModel interval and resolution are the same.

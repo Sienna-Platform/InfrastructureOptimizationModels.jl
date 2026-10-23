@@ -107,6 +107,11 @@ function get_operation_cost end
 function get_dc_bus end
 function get_bustype end
 function has_service end
+# Timestamp-oriented time series readers over a whole system. Not exported: PSY exports
+# its own functions of these names, and a package re-exporting both would leave them
+# ambiguous.
+function build_forecast_reader end
+function build_static_time_series_reader end
 
 # Operation-model lifecycle extension points — downstream (e.g. POM) supplies methods
 # dispatched on concrete problem types.
