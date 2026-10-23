@@ -99,10 +99,19 @@ function get_time_series_reader!(
 ) where {T <: IS.TimeSeriesData}
     resolution = get_resolution(model)
     readers = get_time_series_readers(get_internal(model))
+    # The readers are stored untyped; `T` fixes which reader comes back, so assert it.
     return get!(readers, (T, name, resolution)) do
-        _build_time_series_reader(get_system(model), T, name, resolution)
-    end
+        _build_time_series_reader(
+            get_system(model),
+            T,
+            name,
+            resolution,
+        )
+    end::_time_series_reader_type(T)
 end
+
+_time_series_reader_type(::Type{T}) where {T <: IS.Forecast} = IS.ForecastReader{T}
+_time_series_reader_type(::Type{<:IS.StaticTimeSeries}) = IS.StaticTimeSeriesReader
 
 _build_time_series_reader(sys, ::Type{T}, name, resolution) where {T <: IS.Forecast} =
     build_forecast_reader(sys, T; resolution = resolution, name = name)
