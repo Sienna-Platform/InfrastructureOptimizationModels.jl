@@ -30,6 +30,9 @@ IOM.should_write_resulting_value(::Type{MockExpression2}) = false
     ic_key = InitialConditionKey(MockInitialCondition, IS.TestComponent)
     @test IOM.encode_key(ic_key) ==
           Symbol("MockInitialCondition__TestComponent")
+    @test @inferred(VariableKey(MockVariable, IS.TestComponent)) == var_key
+    @test @inferred(ExpressionKey(MockExpression, IS.TestComponent, "meta")) ==
+          ExpressionKey(MockExpression, IS.TestComponent, "meta")
 
     @test_throws ArgumentError ExpressionKey(
         MockExpression,

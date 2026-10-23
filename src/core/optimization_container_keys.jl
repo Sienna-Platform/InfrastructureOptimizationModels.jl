@@ -97,16 +97,20 @@ _canonical_type(::Type{ComponentPairKey{A, B}}) where {A, B} =
     return :($(_canonical_type(U)))
 end
 
-# see https://discourse.julialang.org/t/parametric-constructor-where-type-being-constructed-is-parameter/129866/3
-function (M::Type{S} where {S <: OptimizationContainerKey})(
+# `S` is a static parameter so that Julia specializes on the key type and infers the result.
+function (::Type{S})(
     ::Type{T},
     ::Type{U},
     meta = CONTAINER_KEY_EMPTY_META,
-) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType}
+) where {
+    S <: OptimizationContainerKey,
+    T <: OptimizationKeyType,
+    U <: InfrastructureSystemsType,
+}
     check_meta_chars(meta)
     K = canonical_component_type(U)
     maybe_throw_if_abstract(T, K)
-    return M{T, K}(meta)
+    return S{T, K}(meta)
 end
 
 function make_key(
