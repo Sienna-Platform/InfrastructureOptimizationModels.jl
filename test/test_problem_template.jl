@@ -41,3 +41,28 @@ IOM.get_network_model(::DefaultCopyTestTemplate) = nothing
         @test template_.data !== template.data
     end
 end
+
+mutable struct EvaluationsTestTemplate <: IOM.AbstractProblemTemplate
+    evaluations::IOM.EvaluationContainer
+end
+IOM.get_evaluations(t::EvaluationsTestTemplate) = t.evaluations
+function IOM.set_evaluations!(t::EvaluationsTestTemplate, ec::IOM.EvaluationContainer)
+    t.evaluations = ec
+    return
+end
+
+struct NoEvaluationsTestTemplate <: IOM.AbstractProblemTemplate end
+
+@testset "Template evaluator interface" begin
+    err = @test_throws ArgumentError IOM.get_evaluations(NoEvaluationsTestTemplate())
+    @test occursin("NoEvaluationsTestTemplate", err.value.msg)
+    @test_throws ArgumentError IOM.set_evaluations!(
+        NoEvaluationsTestTemplate(),
+        IOM.EvaluationContainer(),
+    )
+
+    template = EvaluationsTestTemplate(IOM.EvaluationContainer())
+    ec = IOM.EvaluationContainer()
+    IOM.set_evaluations!(template, ec)
+    @test IOM.get_evaluations(template) === ec
+end
