@@ -114,8 +114,10 @@ end
 _time_series_reader_type(::Type{T}) where {T <: IS.Forecast} = IS.ForecastReader{T}
 _time_series_reader_type(::Type{<:IS.StaticTimeSeries}) = IS.StaticTimeSeriesReader
 
+# Lazy readers hand back multi-dimensional windows as views over the stored values, so
+# a refresh writes each step from memory the read already holds instead of a copy.
 _build_time_series_reader(sys, ::Type{T}, name, resolution) where {T <: IS.Forecast} =
-    build_forecast_reader(sys, T; resolution = resolution, name = name)
+    build_forecast_reader(sys, T; resolution = resolution, name = name, lazy = true)
 
 _build_time_series_reader(sys, ::Type{<:IS.StaticTimeSeries}, name, resolution) =
-    build_static_time_series_reader(sys; resolution = resolution, name = name)
+    build_static_time_series_reader(sys; resolution = resolution, name = name, lazy = true)
