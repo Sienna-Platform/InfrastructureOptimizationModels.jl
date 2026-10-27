@@ -86,3 +86,36 @@ function get_time_series_values!(
     ts = IS.get_time_series_array!(ts_cache, initial_time)
     return TimeSeries.values(ts)
 end
+
+"""
+The model's reader over every `T` series named `name` at the model resolution, built on
+first use. A forecast reader serves a `DecisionModel` window at each step; a static reader
+serves an `EmulationModel` value. `empty_time_series_cache!` drops the readers.
+"""
+function get_time_series_reader!(
+    model::AbstractOptimizationModel,
+    ::Type{T},
+    name::String,
+) where {T <: IS.TimeSeriesData}
+    resolution = get_resolution(model)
+    readers = get_time_series_readers(get_internal(model))
+    # The dict's values are abstractly typed, but `T` fixes which reader comes back.
+    # Asserting it lets callers infer the concrete reader type and specialize on it.
+    return get!(readers, (T, name, resolution)) do
+        _build_time_series_reader(
+            get_system(model),
+            T,
+            name,
+            resolution,
+        )
+    end::_time_series_reader_type(T)
+end
+
+_time_series_reader_type(::Type{T}) where {T <: IS.Forecast} = IS.ForecastReader{T}
+_time_series_reader_type(::Type{<:IS.StaticTimeSeries}) = IS.StaticTimeSeriesReader
+
+_build_time_series_reader(sys, ::Type{T}, name, resolution) where {T <: IS.Forecast} =
+    build_forecast_reader(sys, T; resolution = resolution, name = name)
+
+_build_time_series_reader(sys, ::Type{<:IS.StaticTimeSeries}, name, resolution) =
+    build_static_time_series_reader(sys; resolution = resolution, name = name)
