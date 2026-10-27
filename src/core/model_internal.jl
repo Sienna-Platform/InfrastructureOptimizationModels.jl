@@ -12,9 +12,11 @@ mutable struct ModelInternal{T <: AbstractOptimizationContainer}
     # Concrete value type (not `<:TimeSeriesCache`, a UnionAll field) — matches what
     # the constructor builds; reads happen per parameter per solve step.
     time_series_cache::Dict{TimeSeriesCacheKey, TimeSeriesCache}
-    # One reader per (time series type, name, resolution), built on first use. The
-    # values are `IS.ForecastReader{T}` or `IS.StaticTimeSeriesReader`.
-    time_series_readers::Dict{Tuple{Type, String, Dates.Millisecond}, Any}
+    # One reader per (time series type, name, resolution), built on first use.
+    time_series_readers::Dict{
+        Tuple{Type, String, Dates.Millisecond},
+        Union{IS.ForecastReader, IS.StaticTimeSeriesReader},
+    }
     recorders::Vector{Symbol}
     console_level::Base.CoreLogging.LogLevel
     file_level::Base.CoreLogging.LogLevel
@@ -37,7 +39,10 @@ function ModelInternal(
         0,
         nothing,
         Dict{TimeSeriesCacheKey, TimeSeriesCache}(),
-        Dict{Tuple{Type, String, Dates.Millisecond}, Any}(),
+        Dict{
+            Tuple{Type, String, Dates.Millisecond},
+            Union{IS.ForecastReader, IS.StaticTimeSeriesReader},
+        }(),
         recorders,
         Logging.Warn,
         Logging.Info,
