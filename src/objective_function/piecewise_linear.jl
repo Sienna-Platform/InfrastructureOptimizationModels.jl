@@ -40,8 +40,7 @@ function get_pwl_cost_expression_lambda(
         base_power,
         device_base_power,
     )
-    resolution = get_resolution(container)
-    dt = Dates.value(resolution) / MILLISECONDS_IN_HOUR
+    dt = get_resolution_in_hours(container)
     multiplier = _get_pwl_cost_multiplier(cost_function, U, V)
     name = get_name(component)
     fuel_consumption_expression = get_pwl_cost_expression_lambda(

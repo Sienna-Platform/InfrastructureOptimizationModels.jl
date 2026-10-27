@@ -157,6 +157,21 @@ Extension point: downstream packages override this method to skip the proportion
 skip_proportional_cost(d::IS.InfrastructureSystemsComponent, ::Type{<:VariableType}) =
     skip_proportional_cost(d)
 
+"""
+Extension point: hours that one step of a proportional cost covers. The default is the step
+length, since a proportional cost is priced per hour of the quantity held over the step.
+Variables whose value already grows with the step length return 1.0.
+"""
+proportional_cost_hours(container::OptimizationContainer, ::Type{<:VariableType}) =
+    get_resolution_in_hours(container)
+
+# A ramp slack is the change over one step beyond the ramp limit (rate times step length),
+# so it already grows with the step and its penalty applies once per step.
+proportional_cost_hours(
+    ::OptimizationContainer,
+    ::Type{<:Union{RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown}},
+) = 1.0
+
 ###############################
 #### System query stubs #######
 ###############################
