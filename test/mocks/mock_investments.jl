@@ -16,18 +16,6 @@ struct MockStoreOpsExpr <: IOM.OperationsExpressionType end
 
 struct MockInvestProblem <: IOM.AbstractOptimizationProblem end
 
-# Minimal sub-models for the template accessors.
-struct MockCapitalModel
-    investment_years::Vector{Tuple{Date, Date}}
-end
-struct MockOperationModel
-    representative_series::Vector{Vector{DateTime}}
-    series_weights::Vector{Float64}
-end
-struct MockFeasibilityModel
-    sample_periods::Vector{Vector{DateTime}}
-end
-
 # The first `operation_step_count` time steps are operational
 struct MockInvestTimeMapping <: IOM.AbstractTimeMapping
     base_date::Date
@@ -74,28 +62,10 @@ function build_empty_mock_invest_time_mapping()
 end
 
 mutable struct MockInvestTemplate <: IOM.AbstractProblemTemplate
-    technology_models::Dict{Symbol, Any}
-    branch_models::Dict{Symbol, Any}
-    requirement_models::Dict{Symbol, Any}
-    transport_model::Any
-    capital_model::MockCapitalModel
-    operation_model::MockOperationModel
-    feasibility_model::MockFeasibilityModel
     finalized::Bool
 end
 
-function build_mock_invest_template()
-    return MockInvestTemplate(
-        Dict{Symbol, Any}(),
-        Dict{Symbol, Any}(),
-        Dict{Symbol, Any}(),
-        nothing,
-        MockCapitalModel([(Date(2030, 1, 1), Date(2030, 12, 31))]),
-        MockOperationModel([[DateTime(2030, 1, 1, 0), DateTime(2030, 1, 1, 1)]], [1.0]),
-        MockFeasibilityModel(Vector{Vector{DateTime}}()),
-        false,
-    )
-end
+build_mock_invest_template() = MockInvestTemplate(false)
 
 # Construction-time extension points; they record that they ran so the tests can check
 # the constructor calls them, and on which template.

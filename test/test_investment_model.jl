@@ -1,19 +1,8 @@
 """
 Unit tests for InvestmentModel (investments/investment_model.jl) and the investment
-`init_optimization_container!` build hook, plus the investment-template accessors now
-hosted in operation/problem_template.jl. Uses mocks (mock_investments.jl) + HiGHS — no
+`init_optimization_container!` build hook. Uses mocks (mock_investments.jl) + HiGHS — no
 PowerSystems dependency.
 """
-
-@testset "Investment template accessors" begin
-    t = build_mock_invest_template()
-    @test IOM.get_capital_model(t) === t.capital_model
-    @test IOM.get_operation_model(t) === t.operation_model
-    @test IOM.get_feasibility_model(t) === t.feasibility_model
-    @test IOM.get_transport_model(t) === t.transport_model
-    @test IOM.get_technology_models(t) === t.technology_models
-    @test IOM.get_requirement_models(t) === t.requirement_models
-end
 
 @testset "InvestmentModel construction and accessors" begin
     t = build_mock_invest_template()
