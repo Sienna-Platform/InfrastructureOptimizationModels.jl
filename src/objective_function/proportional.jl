@@ -22,7 +22,7 @@ function add_proportional_cost!(
     multiplier = objective_function_multiplier(U, V)
     # Scale by the timestep to match variable/VOM cost dt-scaling (else sub-hourly
     # resolutions over-weight proportional costs).
-    dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
+    dt = proportional_cost_hours(container, U)
     for d in devices
         op_cost_data = get_operation_cost(d)
         cost_term = proportional_cost(op_cost_data, U, d, V)
@@ -64,7 +64,7 @@ function add_proportional_cost_maybe_time_variant!(
 }
     multiplier = objective_function_multiplier(U, V)
     # Same dt scaling as the time-invariant proportional path above.
-    dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
+    dt = proportional_cost_hours(container, U)
     for d in devices
         op_cost_data = get_operation_cost(d)
         name = get_name(d)

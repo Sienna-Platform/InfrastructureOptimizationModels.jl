@@ -557,6 +557,7 @@ export get_model_base_power
 export get_optimizer_stats
 export get_timestamps
 export get_resolution
+export get_resolution_in_hours
 
 export get_contributing_devices
 export get_contributing_devices_map

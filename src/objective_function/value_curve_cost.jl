@@ -332,7 +332,7 @@ function _add_ts_incremental_pwl_cost!(
     W = _block_offer_var(dir)
     X = _block_offer_constraint(dir)
     name = get_name(component)
-    dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
+    dt = get_resolution_in_hours(container)
     sign_dt = _objective_sign(dir) * dt
     model_base_power = get_model_base_power(container)
 

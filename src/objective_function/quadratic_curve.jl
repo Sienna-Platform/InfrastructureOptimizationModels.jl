@@ -7,8 +7,7 @@ function _add_quadraticcurve_variable_term_to_model!(
     quadratic_term_per_unit::Float64,
     time_period::Int,
 ) where {T <: VariableType, V <: IS.InfrastructureSystemsComponent}
-    resolution = get_resolution(container)
-    dt = Dates.value(resolution) / MILLISECONDS_IN_HOUR
+    dt = get_resolution_in_hours(container)
     name = get_name(component)
     var = get_variable(container, T, V)[name, time_period]
 

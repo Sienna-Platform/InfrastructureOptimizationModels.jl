@@ -141,6 +141,20 @@ function setup_skip_gen_container(time_steps::UnitRange{Int})
     return container
 end
 
+# Ramp slacks priced on mock thermals, to check they skip the step-length factor.
+const _RAMP_SLACKS =
+    (IOM.RateofChangeConstraintSlackUp, IOM.RateofChangeConstraintSlackDown)
+IOM.proportional_cost(
+    op_cost::MockOperationCost,
+    ::Type{<:Union{_RAMP_SLACKS...}},
+    ::MockThermalGen,
+    ::Type{TestProportionalFormulation},
+) = op_cost.proportional_term
+IOM.objective_function_multiplier(
+    ::Type{<:Union{_RAMP_SLACKS...}},
+    ::Type{TestProportionalFormulation},
+) = 1.0
+
 @testset "Proportional Cost Objective Functions" begin
     @testset "add_proportional_cost! adds to invariant objective" begin
         time_steps = 1:3
@@ -494,6 +508,42 @@ end
             expr = IOM.get_expression(container, IOM.ProductionCostExpression, MockSkipGen)
             for t in time_steps
                 @test JuMP.constant(expr["gen1", t]) ≈ cost_value
+            end
+        end
+    end
+
+    @testset "proportional costs scale by the step length, ramp slacks do not" begin
+        time_steps = 1:2
+        cost_value = 15.0
+        device = make_mock_thermal(
+            "gen1";
+            operation_cost = MockOperationCost(cost_value, false),
+        )
+        for (step, hours) in
+            ((Dates.Hour(1), 1.0), (Dates.Minute(5), 5 / 60), (Dates.Hour(2), 2.0))
+            container =
+                setup_proportional_test_container(time_steps, [device]; resolution = step)
+            @test IOM.get_resolution_in_hours(container) ≈ hours
+            IOM.add_proportional_cost!(
+                container,
+                TestProportionalVariable,
+                make_device_iterator([device]),
+                TestProportionalFormulation,
+            )
+            @test verify_objective_coefficients(
+                container, TestProportionalVariable, MockThermalGen, "gen1",
+                cost_value * hours)
+            for V in _RAMP_SLACKS
+                slack = IOM.add_variable_container!(
+                    container, V, MockThermalGen, ["gen1"], time_steps)
+                for t in time_steps
+                    slack["gen1", t] = JuMP.@variable(IOM.get_jump_model(container))
+                end
+                IOM.add_proportional_cost!(
+                    container, V, make_device_iterator([device]),
+                    TestProportionalFormulation)
+                @test verify_objective_coefficients(
+                    container, V, MockThermalGen, "gen1", cost_value)
             end
         end
     end
