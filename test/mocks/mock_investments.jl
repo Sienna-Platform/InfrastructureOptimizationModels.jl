@@ -7,8 +7,6 @@ investment template whose construction-time hooks record that they ran.
 struct MockInvestTechForm <: IOM.InvestmentTechnologyFormulation end
 struct MockOpsTechForm <: IOM.OperationsTechnologyFormulation end
 struct MockFeasTechForm <: IOM.FeasibilityTechnologyFormulation end
-struct MockReqForm <: IOM.RequirementFormulation end
-struct MockTransportAgg <: IOM.AbstractTransportAggregation end
 
 # Operation/investment entry types for store classification and sizing.
 struct MockStoreInvestVar <: IOM.InvestmentVariableType end
@@ -79,7 +77,7 @@ mutable struct MockInvestTemplate <: IOM.AbstractProblemTemplate
     technology_models::Dict{Symbol, Any}
     branch_models::Dict{Symbol, Any}
     requirement_models::Dict{Symbol, Any}
-    transport_model::IOM.TransportModel
+    transport_model::Any
     capital_model::MockCapitalModel
     operation_model::MockOperationModel
     feasibility_model::MockFeasibilityModel
@@ -91,7 +89,7 @@ function build_mock_invest_template()
         Dict{Symbol, Any}(),
         Dict{Symbol, Any}(),
         Dict{Symbol, Any}(),
-        IOM.TransportModel(MockTransportAgg),
+        nothing,
         MockCapitalModel([(Date(2030, 1, 1), Date(2030, 12, 31))]),
         MockOperationModel([[DateTime(2030, 1, 1, 0), DateTime(2030, 1, 1, 1)]], [1.0]),
         MockFeasibilityModel(Vector{Vector{DateTime}}()),

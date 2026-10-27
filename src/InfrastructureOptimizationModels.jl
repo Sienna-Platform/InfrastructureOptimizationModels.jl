@@ -191,9 +191,6 @@ export FixedOutput
 export get_device_cache
 export AbstractEventModel, AbstractEventKey
 export get_events, set_event_model!
-export TechnologyModel
-export RequirementModel
-export TransportModel, AbstractTransportAggregation
 
 # Parameter Container Infrastructure
 export ParameterContainer
@@ -700,11 +697,8 @@ include("operation/time_series_interface.jl")
 include("operation/optimization_debugging.jl")
 include("operation/model_numerical_analysis_utils.jl")
 
-include("investments/technology_model.jl")
-include("investments/requirement_model.jl")
 include("investments/investment_model_store.jl")
 include("investments/investment_model.jl")
-include("investments/transport_model.jl")
 
 include("initial_conditions/calculate_initial_condition.jl")
 
