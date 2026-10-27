@@ -20,6 +20,10 @@ function InvestmentModelStore()
     )
 end
 
+# Implemented by the investment time mapping of the downstream package
+function get_base_date end
+function get_total_operation_period_count end
+
 function initialize_storage!(
     store::InvestmentModelStore,
     container::AbstractOptimizationContainer,
@@ -31,7 +35,7 @@ function initialize_storage!(
     end
     base_timestamp = get_base_date(time_mapping)
     op_time_steps_count = get_total_operation_period_count(time_mapping)
-    cap_time_steps_count = get_total_investment_period_count(time_mapping)
+    cap_time_steps_count = get_period_count(time_mapping)
     for type in STORE_CONTAINERS
         if type == :parameters
             continue

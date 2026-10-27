@@ -1,130 +1,119 @@
 """
-Unit tests for the TimeMapping time abstraction (core/time_mapping.jl).
-Pure-logic tests — no mocks required.
+Unit tests for the time mapping abstraction (core/time_mapping.jl): the generic functions on
+`AbstractTimeMapping`, `validate_time_mapping`, and `NestedTimeMapping`.
 """
 
 using Test
 using InfrastructureOptimizationModels
 using Dates
 
-@testset "TimeMapping" begin
-    @testset "Empty / `nothing` constructor" begin
-        tm = IOM.TimeMapping()
-        @test isempty(IOM.get_time_stamps(tm))
-        @test isempty(IOM.get_investment_time_stamps(tm))
-        @test IOM.get_total_period_count(tm) == 0
-        @test IOM.get_total_investment_period_count(tm) == 0
+@testset "Time mapping" begin
+    @testset "Generic functions on a multi-block mapping" begin
+        tm = build_mock_invest_time_mapping()
+
+        @test IOM.get_time_steps(tm) == 1:8
+        @test IOM.get_periods(tm) == 1:2
+        @test IOM.get_blocks(tm, 1) == [1, 2]
+        @test IOM.get_blocks(tm, 2) == [3, 4]
+        @test IOM.get_period_time_steps(tm, 1) == [1, 2, 3, 4]
+        @test IOM.get_period_time_steps(tm, 2) == [5, 6, 7, 8]
+        @test IOM.get_period_index(tm, 1) == 1
+        @test IOM.get_period_index(tm, 4) == 1
+        @test IOM.get_period_index(tm, 5) == 2
+        @test_throws ErrorException IOM.get_period_index(tm, 9)
+        @test IOM.get_last_time_step(tm, 1) == 4
+        @test IOM.get_last_time_step(tm, 2) == 8
+        @test IOM.get_block_weights(tm) == ones(4)
+        @test IOM.validate_time_mapping(tm) === nothing
+    end
+
+    @testset "Empty mapping" begin
+        tm = build_empty_mock_invest_time_mapping()
         @test IOM.get_time_steps(tm) == 1:0
-        @test IOM.get_investment_time_steps(tm) == 1:0
-        @test IOM.is_feasibility_empty(tm)
-        @test isempty(IOM.get_operational_indexes(tm))
-        @test isempty(IOM.get_feasibility_indexes(tm))
-        @test isempty(IOM.get_all_indexes(tm))
+        @test IOM.get_periods(tm) == 1:0
+        @test isempty(IOM.get_block_weights(tm))
+        @test IOM.validate_time_mapping(tm) === nothing
     end
 
-    @testset "Two investment intervals, no feasibility" begin
-        invest = [
-            (Date(2030, 1, 1), Date(2030, 12, 31)),
-            (Date(2040, 1, 1), Date(2040, 12, 31)),
-        ]
-        ops = [
-            [DateTime(2030, 1, 1, 0), DateTime(2030, 1, 1, 1)],
-            [DateTime(2040, 1, 1, 0), DateTime(2040, 1, 1, 1)],
-        ]
-        feas = Vector{Vector{DateTime}}()
-        tm = IOM.TimeMapping(invest, ops, feas)
+    @testset "validate_time_mapping rejects malformed mappings" begin
+        ts = [DateTime(2030, 1, 1, h) for h in 0:3]
+        mock(ranges, index; periods = 2) =
+            MockInvestTimeMapping(Date(2030, 1, 1), ts, ranges, index, periods, 4)
 
-        @test IOM.get_base_date(tm) == Date(2030, 1, 1)
-        @test IOM.get_investment_time_stamps(tm) == invest
-        @test IOM.get_total_investment_period_count(tm) == 2
-        @test IOM.get_investment_time_steps(tm) == 1:2
-
-        # 2 slices x 2 timestamps = 4 operational timestamps
-        @test IOM.get_total_period_count(tm) == 4
-        @test length(IOM.get_time_stamps(tm)) == 4
-        @test IOM.get_time_steps(tm) == 1:4
-        @test IOM.get_total_operation_period_count(tm) == 4
-        @test IOM.get_operational_time_steps(tm) == 1:4
-
-        @test IOM.get_operational_indexes(tm) == [1, 2]
-        @test IOM.is_feasibility_empty(tm)
-        @test isempty(IOM.get_feasibility_indexes(tm))
-        @test IOM.get_all_indexes(tm) == [1, 2]
-
-        # consecutive (1-based) period indices per slice
-        @test IOM.get_consecutive_slices(tm) == [[1, 2], [3, 4]]
-
-        # each slice maps back to its investment interval
-        @test IOM.get_inverse_invest_mapping(tm) == [1, 2]
-
-        invest_map = IOM.get_investment_map_to_operational_slices(tm)
-        @test invest_map[1] == [1]
-        @test invest_map[2] == [2]
-    end
-
-    @testset "With feasibility periods" begin
-        invest = [(Date(2030, 1, 1), Date(2030, 12, 31))]
-        ops = [[DateTime(2030, 1, 1, 0), DateTime(2030, 1, 1, 1)]]
-        feas = [[DateTime(2030, 6, 1, 0)]]
-        tm = IOM.TimeMapping(invest, ops, feas)
-
-        @test !IOM.is_feasibility_empty(tm)
-        @test IOM.get_operational_indexes(tm) == [1]
-        @test IOM.get_feasibility_indexes(tm) == [2]       # slice 2 is the feasibility slice
-        @test IOM.get_all_indexes(tm) == [1, 2]
-        @test IOM.get_total_operation_period_count(tm) == 2   # 1 op slice x 2 ts
-        @test IOM.get_total_feasibility_period_count(tm) == 3 # + 1 feasibility ts
-        @test IOM.get_feasibility_time_steps(tm) == 3:3
-    end
-
-    @testset "Slice outside all investment intervals errors" begin
-        invest = [(Date(2030, 1, 1), Date(2030, 12, 31))]
-        ops = [[DateTime(2050, 1, 1, 0)]]  # not contained in any interval
-        feas = Vector{Vector{DateTime}}()
-        @test_throws Exception IOM.TimeMapping(invest, ops, feas)
-    end
-
-    @testset "Operational weights" begin
-        invest = [(Date(2030, 1, 1), Date(2030, 12, 31))]
-        ops = [[DateTime(2030, 1, 1, 0)], [DateTime(2030, 6, 1, 0)]]
-        feas = Vector{Vector{DateTime}}()
-
-        # Default: uniform 1.0 per operational slice.
-        tm = IOM.TimeMapping(invest, ops, feas)
-        @test IOM.get_operational_weights(tm) == [1.0, 1.0]
-
-        # Explicit weights are stored and indexed by operational slice.
-        tm_w = IOM.TimeMapping(invest, ops, feas; operational_weights = [90.0, 275.0])
-        w = IOM.get_operational_weights(tm_w)
-        @test w == [90.0, 275.0]
-        @test [w[op_ix] for op_ix in IOM.get_operational_indexes(tm_w)] == [90.0, 275.0]
-
-        # Empty mapping has empty weights.
-        @test isempty(IOM.get_operational_weights(IOM.TimeMapping()))
-
-        # Length mismatch is rejected.
-        @test_throws ErrorException IOM.TimeMapping(
-            invest,
-            ops,
-            feas;
-            operational_weights = [1.0],
+        # gap between blocks
+        @test_throws r"must be non-empty and start at time step 3" IOM.validate_time_mapping(
+            mock([1:2, 4:4], [1, 2]),
+        )
+        # overlapping blocks
+        @test_throws r"start at time step 3" IOM.validate_time_mapping(
+            mock([1:2, 2:4], [1, 2]),
+        )
+        # blocks do not reach the last time stamp
+        @test_throws r"cover 3 time steps" IOM.validate_time_mapping(
+            mock([1:2, 3:3], [1, 2]),
+        )
+        # block in a period that does not exist
+        @test_throws r"belongs to period 3" IOM.validate_time_mapping(
+            mock([1:2, 3:4], [1, 3]),
+        )
+        # one period index per block
+        @test_throws r"2 blocks but 1 block period indexes" IOM.validate_time_mapping(
+            mock([1:2, 3:4], [1]),
         )
     end
 
-    @testset "periods outside every investment interval are rejected" begin
-        invest = [(Date(2030, 1, 1), Date(2030, 12, 31))]
-        inside = [DateTime(2030, 6, 1, 0), DateTime(2030, 6, 1, 1)]
-        outside = [DateTime(2031, 6, 1, 0), DateTime(2031, 6, 1, 1)]
+    @testset "NestedTimeMapping" begin
+        start = DateTime(2030, 1, 1)
+        tm = IOM.NestedTimeMapping(start, Hour(1), 1:48, Day(1))
 
-        @test_throws r"Operational period 2 .* does not fall within any investment interval" IOM.TimeMapping(
-            invest,
-            [inside, outside],
-            Vector{Vector{DateTime}}(),
+        @test tm isa IOM.AbstractTimeMapping
+        @test IOM.get_period_count(tm) == 2
+        @test IOM.get_block_ranges(tm) == [1:24, 25:48]
+        @test IOM.get_block_period_index(tm) == [1, 2]
+        @test IOM.get_blocks(tm, 2) == [2]
+        @test IOM.get_period_time_steps(tm, 1) == collect(1:24)
+        @test IOM.get_period_index(tm, 25) == 2
+        @test IOM.get_last_time_step(tm, 1) == 24
+        @test first(IOM.get_timestamps(tm)) == start
+        @test last(IOM.get_timestamps(tm)) == start + Hour(47)
+        @test IOM.get_time_steps(tm) == 1:48
+        @test IOM.validate_time_mapping(tm) === nothing
+
+        weekly = IOM.NestedTimeMapping(start, Hour(4), 1:84, Week(1))
+        @test IOM.get_block_ranges(weekly) == [1:42, 43:84]
+
+        @test_throws r"allow_partial" IOM.NestedTimeMapping(start, Hour(1), 1:30, Day(1))
+        partial =
+            IOM.NestedTimeMapping(start, Hour(1), 1:30, Day(1); allow_partial = true)
+        @test IOM.get_block_ranges(partial) == [1:24, 25:30]
+        @test IOM.get_last_time_step(partial, 2) == 30
+        @test IOM.validate_time_mapping(partial) === nothing
+
+        @test_throws r"not a positive multiple" IOM.NestedTimeMapping(
+            start,
+            Hour(5),
+            1:24,
+            Day(1),
         )
-        @test_throws r"Feasibility period 1 .* does not fall within any investment interval" IOM.TimeMapping(
-            invest,
-            [inside],
-            [outside],
+    end
+
+    @testset "Container accepts any AbstractTimeMapping" begin
+        sys = MockSystem(100.0)
+        settings = IOM.Settings(
+            sys;
+            horizon = Dates.Hour(24),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
         )
+        container = IOM.OptimizationContainer(sys, settings, nothing, MockDeterministic)
+        @test IOM.get_time_mapping(container) === nothing
+
+        nested = IOM.NestedTimeMapping(DateTime(2030, 1, 1), Hour(1), 1:24, Day(1))
+        IOM.set_time_mapping!(container, nested)
+        @test IOM.get_time_mapping(container) === nested
+
+        invest = build_mock_invest_time_mapping()
+        IOM.set_time_mapping!(container, invest)
+        @test IOM.get_time_mapping(container) === invest
     end
 end

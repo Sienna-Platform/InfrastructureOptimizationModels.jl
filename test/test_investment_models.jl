@@ -109,12 +109,8 @@ end
     # Default is unset (`nothing`) until a mapping is attached.
     @test IOM.get_time_mapping(container) === nothing
 
-    tmap = IOM.TimeMapping(
-        [(Date(2030, 1, 1), Date(2030, 12, 31))],
-        [[DateTime(2030, 1, 1, 0)]],
-        Vector{Vector{DateTime}}(),
-    )
+    tmap = build_mock_invest_time_mapping()
     IOM.set_time_mapping!(container, tmap)
     @test IOM.get_time_mapping(container) === tmap
-    @test IOM.get_total_investment_period_count(IOM.get_time_mapping(container)) == 1
+    @test IOM.get_period_count(IOM.get_time_mapping(container)) == 2
 end

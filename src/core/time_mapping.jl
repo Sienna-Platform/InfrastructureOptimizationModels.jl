@@ -1,158 +1,134 @@
-struct InvestmentIntervals
-    time_stamps::Vector{NTuple{2, Dates.Date}}
-    map_to_operational_slices::Dict{Int, Vector{Int}}
-    map_to_feasibility_slices::Dict{Int, Vector{Int}}
+"""
+Relates an upper time scale (periods) to the model's time steps. Each period contains one or
+more blocks, and each block is a contiguous range of time steps.
+
+Subtypes implement:
+
+  - `get_period_count(tm)`: number of periods
+  - `get_block_ranges(tm)`: the time steps of each block, ordered and contiguous
+  - `get_block_period_index(tm)`: the period each block belongs to
+  - `get_timestamps(tm)`: the time stamp of each time step
+"""
+abstract type AbstractTimeMapping end
+
+function get_period_count end
+function get_block_ranges end
+function get_block_period_index end
+
+get_time_steps(tm::AbstractTimeMapping) = 1:length(get_timestamps(tm))
+get_periods(tm::AbstractTimeMapping) = 1:get_period_count(tm)
+get_blocks(tm::AbstractTimeMapping, period::Int) =
+    findall(==(period), get_block_period_index(tm))
+
+function get_period_time_steps(tm::AbstractTimeMapping, period::Int)
+    ranges = get_block_ranges(tm)
+    return mapreduce(b -> collect(ranges[b]), vcat, get_blocks(tm, period); init = Int[])
 end
 
-function InvestmentIntervals()
-    return InvestmentIntervals(
-        Vector{NTuple{2, Dates.Date}}(),
-        Dict{Int, Vector{Int}}(),
-        Dict{Int, Vector{Int}}(),
-    )
+function get_period_index(tm::AbstractTimeMapping, t::Int)
+    block = findfirst(r -> t in r, get_block_ranges(tm))
+    if block === nothing
+        error("Time step $t is not in any block of the time mapping.")
+    end
+    return get_block_period_index(tm)[block]
 end
 
-struct OperationalPeriods
-    time_stamps::Vector{Dates.DateTime}
-    consecutive_slices::Vector{Vector{Int}}
-    inverse_invest_mapping::Vector{Int}
-    feasibility_indexes::Vector{Int}
-    operational_indexes::Vector{Int}
-    operational_weights::Vector{Float64}
-end
+get_last_time_step(tm::AbstractTimeMapping, period::Int) =
+    last(get_block_ranges(tm)[last(get_blocks(tm, period))])
 
-function OperationalPeriods()
-    return OperationalPeriods(
-        Vector{Dates.DateTime}(),
-        Vector{Vector{Int}}(),
-        Vector{Int}(),
-        Vector{Int}(),
-        Vector{Int}(),
-        Vector{Float64}(),
-    )
-end
+get_block_weights(tm::AbstractTimeMapping) = ones(length(get_block_ranges(tm)))
 
-struct TimeMapping
-    investment::InvestmentIntervals
-    operation::OperationalPeriods
-end
-
-function TimeMapping(
-    investment_intervals::Vector{NTuple{2, Dates.Date}},
-    operational_periods::Vector{Vector{Dates.DateTime}},
-    feasibility_periods::Vector{Vector{Dates.DateTime}};
-    operational_weights::Vector{Float64} = ones(length(operational_periods)),
-)
-    # TODO:
-    # Validation of the dates to avoid overlaps
-    # Validation of the dates to avoid gaps in the operational periods
-
-    if length(operational_weights) != length(operational_periods)
+"""
+Check that the blocks cover the time steps in order, without gaps or overlaps, and that each
+block belongs to a valid period.
+"""
+function validate_time_mapping(tm::AbstractTimeMapping)
+    ranges = get_block_ranges(tm)
+    period_index = get_block_period_index(tm)
+    if length(period_index) != length(ranges)
         error(
-            "operational_weights length ($(length(operational_weights))) must match the " *
-            "number of operational slices ($(length(operational_periods)))",
+            "The time mapping has $(length(ranges)) blocks but $(length(period_index)) " *
+            "block period indexes.",
         )
     end
-
-    op_index_last_slice = length(operational_periods)
-    all_operation_slices = [operational_periods; feasibility_periods]
-    total_count = sum(length(x) for x in all_operation_slices)
-    total_slice_count = length(operational_periods) + length(feasibility_periods)
-    time_stamps = Vector{Dates.DateTime}(undef, total_count)
-    consecutive_slices = Vector{Vector{Int}}(undef, total_slice_count)
-    inverse_invest_mapping = Vector{Int}(undef, total_slice_count)
-    map_to_operational_slices =
-        Dict{Int, Vector{Int}}(i => Vector{Int}() for i in 1:length(investment_intervals))
-    map_to_feasibility_slices =
-        Dict{Int, Vector{Int}}(i => Vector{Int}() for i in 1:length(investment_intervals))
-
-    ix = 1
-    slice_running_count = 0
-    for (sx, slice) in enumerate(all_operation_slices)
-        slice_length = length(slice)
-        slice_found_in_interval = false
-        for (ivx, investment_interval) in enumerate(investment_intervals)
-            if first(slice) >= investment_interval[1] &&
-               last(slice) <= investment_interval[2]
-                if sx <= op_index_last_slice
-                    push!(map_to_operational_slices[ivx], sx)
-                else
-                    push!(map_to_feasibility_slices[ivx], sx)
-                end
-                inverse_invest_mapping[sx] = ivx
-                slice_found_in_interval = true
-                break
-            end
-        end
-        if !slice_found_in_interval
-            period = if sx <= op_index_last_slice
-                "Operational period $sx"
-            else
-                "Feasibility period $(sx - op_index_last_slice)"
-            end
+    next_step = 1
+    for (b, r) in enumerate(ranges)
+        if isempty(r) || first(r) != next_step
             error(
-                "$period ($(first(slice)) to $(last(slice))) does not fall within any " *
-                "investment interval. Every operational and feasibility period must lie " *
-                "entirely inside one of the investment intervals: $(investment_intervals)",
+                "Block $b covers time steps $r; blocks must be non-empty and start at " *
+                "time step $next_step.",
             )
         end
-        slice_length = length(slice)
-        slice_indeces = range(slice_running_count + 1; length = slice_length)
-        consecutive_slices[sx] = collect(slice_indeces)
-        slice_running_count = last(slice_indeces)
-        for time_stamp in slice
-            time_stamps[ix] = time_stamp
-            ix += 1
+        next_step = last(r) + 1
+    end
+    step_count = length(get_timestamps(tm))
+    if next_step != step_count + 1
+        error(
+            "The blocks cover $(next_step - 1) time steps but the time mapping has " *
+            "$step_count time stamps.",
+        )
+    end
+    period_count = get_period_count(tm)
+    for (b, k) in enumerate(period_index)
+        if !(1 <= k <= period_count)
+            error("Block $b belongs to period $k, outside 1:$period_count.")
         end
     end
-
-    op_periods = OperationalPeriods(
-        time_stamps,
-        consecutive_slices,
-        inverse_invest_mapping,
-        collect(range(; start = op_index_last_slice + 1, stop = total_slice_count)),
-        collect(range(1, op_index_last_slice)),
-        operational_weights,
-    )
-
-    inv_periods = InvestmentIntervals(
-        investment_intervals,
-        map_to_operational_slices,
-        map_to_feasibility_slices,
-    )
-
-    TimeMapping(inv_periods, op_periods)
+    weight_count = length(get_block_weights(tm))
+    if weight_count != length(ranges)
+        error(
+            "The time mapping has $(length(ranges)) blocks but $weight_count block weights.",
+        )
+    end
+    return
 end
 
-get_consecutive_slices(tm::TimeMapping) = tm.operation.consecutive_slices
-get_operational_indexes(tm::TimeMapping) = tm.operation.operational_indexes
-get_operational_weights(tm::TimeMapping) = tm.operation.operational_weights
-get_feasibility_indexes(tm::TimeMapping) = tm.operation.feasibility_indexes
-get_all_indexes(tm::TimeMapping) =
-    [tm.operation.operational_indexes; tm.operation.feasibility_indexes]
-get_time_stamps(tm::TimeMapping) = tm.operation.time_stamps
-get_investment_time_stamps(tm::TimeMapping) = tm.investment.time_stamps
-get_inverse_invest_mapping(tm::TimeMapping) = tm.operation.inverse_invest_mapping
-get_base_date(tm::TimeMapping) = first(tm.investment.time_stamps)[1]
-get_total_period_count(tm::TimeMapping) = length(tm.operation.time_stamps)
-function get_total_operation_period_count(tm::TimeMapping)
-    consecutive_slices = get_consecutive_slices(tm)
-    operational_indexes = get_operational_indexes(tm)
-    return last(consecutive_slices[last(operational_indexes)])
+"""
+Time mapping with one block per period, all periods of equal length.
+
+    NestedTimeMapping(initial_time, resolution, time_steps, period; allow_partial = false)
+
+groups `time_steps` of length `resolution` starting at `initial_time` into periods of length
+`period`, e.g. `Dates.Day(1)` for daily windows in an hourly model. A last period shorter than
+the others is an error unless `allow_partial` is set.
+"""
+struct NestedTimeMapping <: AbstractTimeMapping
+    timestamps::Vector{Dates.DateTime}
+    block_ranges::Vector{UnitRange{Int}}
 end
-function get_total_feasibility_period_count(tm::TimeMapping)
-    consecutive_slices = get_consecutive_slices(tm)
-    return last(last(consecutive_slices))
+
+function NestedTimeMapping(
+    initial_time::Dates.DateTime,
+    resolution::Dates.Period,
+    time_steps::UnitRange{Int},
+    period::Dates.Period;
+    allow_partial::Bool = false,
+)
+    resolution_ms = Dates.value(Dates.Millisecond(resolution))
+    period_ms = Dates.value(Dates.Millisecond(period))
+    if resolution_ms <= 0 || period_ms % resolution_ms != 0
+        error(
+            "The period $period is not a positive multiple of the resolution $resolution.",
+        )
+    end
+    steps_per_period = period_ms ÷ resolution_ms
+    step_count = length(time_steps)
+    if step_count % steps_per_period != 0 && !allow_partial
+        error(
+            "$step_count time steps do not divide into periods of $steps_per_period " *
+            "time steps; set allow_partial = true to keep a shorter last period.",
+        )
+    end
+    timestamps =
+        [initial_time + Dates.Millisecond((t - 1) * resolution_ms) for t in 1:step_count]
+    block_ranges = [
+        s:min(s + steps_per_period - 1, step_count) for
+        s in 1:steps_per_period:step_count
+    ]
+    return NestedTimeMapping(timestamps, block_ranges)
 end
-get_total_investment_period_count(tm::TimeMapping) = length(tm.investment.time_stamps)
-get_time_steps(tm::TimeMapping) = 1:get_total_period_count(tm)
-get_operational_time_steps(tm::TimeMapping) = 1:get_total_operation_period_count(tm)
-get_feasibility_time_steps(tm::TimeMapping) =
-    (get_total_operation_period_count(tm) + 1):get_total_feasibility_period_count(tm)
-get_investment_time_steps(tm::TimeMapping) = 1:get_total_investment_period_count(tm)
-is_feasibility_empty(tm::TimeMapping) = isempty(tm.operation.feasibility_indexes)
-get_investment_map_to_operational_slices(tm::TimeMapping) =
-    tm.investment.map_to_operational_slices
-function TimeMapping()
-    return TimeMapping(InvestmentIntervals(), OperationalPeriods())
-end
+
+get_period_count(tm::NestedTimeMapping) = length(tm.block_ranges)
+get_block_ranges(tm::NestedTimeMapping) = tm.block_ranges
+get_block_period_index(tm::NestedTimeMapping) = collect(1:length(tm.block_ranges))
+get_timestamps(tm::NestedTimeMapping) = tm.timestamps

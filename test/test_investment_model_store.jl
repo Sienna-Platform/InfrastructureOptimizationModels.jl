@@ -1,7 +1,7 @@
 """
 Unit tests for InvestmentModelStore (investments/investment_model_store.jl):
 the empty constructor, operation/investment entry classification, optimizer-stats
-round-trip, and `initialize_storage!` row-count sizing from the TimeMapping.
+round-trip, and `initialize_storage!` row-count sizing from the time mapping.
 Uses mocks (mock_investments.jl) — no PowerSystems dependency.
 """
 
@@ -69,20 +69,13 @@ Uses mocks (mock_investments.jl) — no PowerSystems dependency.
         )
         container = IOM.OptimizationContainer(sys, settings, nothing, MockDeterministic)
 
-        # 1 investment interval, 1 operational slice of 2 timestamps, no feasibility
-        #   => operation period count = 2, investment period count = 1
-        tmap = IOM.TimeMapping(
-            [(Date(2030, 1, 1), Date(2030, 12, 31))],
-            [[DateTime(2030, 1, 1, 0), DateTime(2030, 1, 1, 1)]],
-            Vector{Vector{DateTime}}(),
-        )
-        IOM.set_time_mapping!(container, tmap)
+        IOM.set_time_mapping!(container, build_mock_invest_time_mapping())
 
         cols = ["c1", "c2"]
         ops_key = IOM.VariableKey(MockStoreOpsVar, MockComponentType)
         inv_key = IOM.VariableKey(MockStoreInvestVar, MockComponentType)
-        IOM.get_variables(container)[ops_key] = DenseAxisArray(zeros(2, 2), cols, 1:2)
-        IOM.get_variables(container)[inv_key] = DenseAxisArray(zeros(2, 1), cols, 1:1)
+        IOM.get_variables(container)[ops_key] = DenseAxisArray(zeros(2, 8), cols, 1:8)
+        IOM.get_variables(container)[inv_key] = DenseAxisArray(zeros(2, 2), cols, 1:2)
 
         store = IOM.InvestmentModelStore()
         params = IOM.ModelStoreParams(
@@ -99,10 +92,10 @@ Uses mocks (mock_investments.jl) — no PowerSystems dependency.
         @test haskey(store.variables, inv_key)
 
         base_ts = DateTime(2030, 1, 1)  # get_base_date -> Date, stored as DateTime key
-        # operations variable gets operation-period rows (2); investment variable gets
-        # investment-period rows (1). Columns match the injected axis in both cases.
-        @test size(store.variables[ops_key][base_ts]) == (2, 2)
-        @test size(store.variables[inv_key][base_ts]) == (2, 1)
+        # operations variable gets operation-period rows (8); investment variable gets
+        # investment-period rows (2). Columns match the injected axis in both cases.
+        @test size(store.variables[ops_key][base_ts]) == (2, 8)
+        @test size(store.variables[inv_key][base_ts]) == (2, 2)
 
         # get_column_names on the store resolves through the canonical helper.
         @test IOM.get_column_names(store, ops_key) == (cols,)
@@ -157,7 +150,7 @@ Uses mocks (mock_investments.jl) — no PowerSystems dependency.
             time_series_cache_size = 0,
         )
         container = IOM.OptimizationContainer(sys, settings, nothing, MockDeterministic)
-        IOM.set_time_mapping!(container, IOM.TimeMapping())  # empty mapping
+        IOM.set_time_mapping!(container, build_empty_mock_invest_time_mapping())
         store = IOM.InvestmentModelStore()
         params = IOM.ModelStoreParams(
             1,

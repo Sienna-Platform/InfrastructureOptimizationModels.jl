@@ -554,16 +554,10 @@ export log_values
 export InitialConditionsData
 
 # Time Mapping
-export TimeMapping, OperationalPeriods, InvestmentIntervals
-export get_consecutive_slices, get_operational_indexes, get_feasibility_indexes
-export get_operational_weights
-export get_all_indexes, get_time_stamps, get_investment_time_stamps
-export get_inverse_invest_mapping, get_base_date
-export get_total_period_count, get_total_operation_period_count
-export get_total_feasibility_period_count, get_total_investment_period_count
-export get_time_steps,
-    get_operational_time_steps, get_feasibility_time_steps, get_investment_time_steps
-export is_feasibility_empty, get_investment_map_to_operational_slices
+export AbstractTimeMapping, NestedTimeMapping
+export get_period_count, get_block_ranges, get_block_period_index
+export get_periods, get_blocks, get_period_time_steps
+export get_period_index, get_last_time_step, get_block_weights, validate_time_mapping
 export get_time_mapping, set_time_mapping!
 
 # Constants

@@ -134,8 +134,8 @@ end
 # No Base Power for Portfolio models. Always in Natural Units.
 get_problem_base_power(model::InvestmentModel) = 1.0
 get_portfolio(model::InvestmentModel) = get_system(model)
-get_time_stamps(model::InvestmentModel) =
-    get_time_stamps(get_time_mapping(get_optimization_container(model)))
+get_timestamps(model::InvestmentModel) =
+    get_timestamps(get_time_mapping(get_optimization_container(model)))
 
 # Portfolio-specific alias for Settings
 get_portfolio_to_file(settings::Settings) = get_system_to_file(settings)

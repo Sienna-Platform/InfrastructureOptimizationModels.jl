@@ -77,7 +77,7 @@ end
     )
 end
 
-@testset "init_optimization_container! builds the time mapping" begin
+@testset "init_optimization_container! leaves the time mapping to the caller" begin
     t = build_mock_invest_template()
     portfolio = MockSystem(100.0)
     settings = IOM.Settings(
@@ -89,16 +89,10 @@ end
     model = IOM.InvestmentModel{MockInvestProblem}(t, portfolio, settings; name = :cem)
     container = IOM.get_optimization_container(model)
 
-    @test IOM.get_time_mapping(container) === nothing
     IOM.init_optimization_container!(container, t, portfolio)
+    @test IOM.get_time_mapping(container) === nothing
 
-    tmap = IOM.get_time_mapping(container)
-    @test tmap isa IOM.TimeMapping
-    @test IOM.get_total_investment_period_count(tmap) == 1
-    @test IOM.get_base_date(tmap) == Date(2030, 1, 1)
-    @test IOM.get_total_operation_period_count(tmap) == 2
-    # Operational weights from operation_model.series_weights flow onto the TimeMapping,
-    # reachable both from the mapping and via the container convenience accessor.
-    @test IOM.get_operational_weights(tmap) == [1.0]
-    @test IOM.get_operational_weights(container) == [1.0]
+    tmap = build_mock_invest_time_mapping()
+    IOM.set_time_mapping!(container, tmap)
+    @test IOM.get_timestamps(model) == IOM.get_timestamps(tmap)
 end

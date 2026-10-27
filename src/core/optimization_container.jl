@@ -71,7 +71,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     JuMPmodel::JuMP.Model
     time_steps::UnitRange{Int}
     settings::Settings
-    time_mapping::Union{Nothing, TimeMapping}
+    time_mapping::Union{Nothing, AbstractTimeMapping}
     variables::OrderedDict{VariableKey, JuMPArray}
     aux_variables::OrderedDict{AuxVarKey, JuMPArray}
     duals::OrderedDict{ConstraintKey, JuMPArray}
@@ -198,13 +198,13 @@ get_serialization_task(container::OptimizationContainer) = container.serializati
 
 get_time_mapping(container::OptimizationContainer) = container.time_mapping
 
-function set_time_mapping!(container::OptimizationContainer, time_mapping::TimeMapping)
+function set_time_mapping!(
+    container::OptimizationContainer,
+    time_mapping::AbstractTimeMapping,
+)
     container.time_mapping = time_mapping
     return
 end
-
-get_operational_weights(container::OptimizationContainer) =
-    get_operational_weights(get_time_mapping(container))
 
 function set_serialization_task!(container::OptimizationContainer, task::Task)
     container.serialization_task = task
@@ -388,22 +388,7 @@ function init_optimization_container!(
     template::AbstractProblemTemplate,
     portfolio::IS.InfrastructureSystemsContainer,
 )
-    # The order of operations matter
     settings = get_settings(container)
-
-    # Build the generic time mapping from the template sub-models.
-    capital_model = get_capital_model(template)
-    operation_model = get_operation_model(template)
-    feasibility_model = get_feasibility_model(template)
-
-    time_map = TimeMapping(
-        capital_model.investment_years,
-        operation_model.representative_series,
-        feasibility_model.sample_periods;
-        operational_weights = operation_model.series_weights,
-    )
-
-    set_time_mapping!(container, time_map)
 
     stats = get_optimizer_stats(container)
     stats.detailed_stats = get_detailed_optimizer_stats(settings)
