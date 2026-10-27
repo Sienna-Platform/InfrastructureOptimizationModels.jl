@@ -33,9 +33,8 @@ abstract type AbstractModelStore end
 # - :variables
 # - :aux_variables
 # - :expressions
-
-# Required methods for subtypes:
-# - read_optimizer_stats
+# - :optimizer_stats (an ordered dict keyed by the store's index type; read and written by
+#   the generic `read_optimizer_stats` / `write_optimizer_stats!` in optimizer_stats.jl)
 #
 # Each subtype must have a field for each instance of STORE_CONTAINERS.
 
@@ -57,6 +56,27 @@ get_data_field(store::AbstractModelStore, ::Val{S}) where {S} = getfield(store, 
     type::Symbol,
 ) =
     get_data_field(store, Val(type))
+
+function get_column_names(store::AbstractModelStore, key::OptimizationContainerKey)
+    container = get_data_field(store, get_store_container_type(key))
+    return get_column_names_from_axis_array(key, first(values(container[key])))
+end
+
+function read_outputs(
+    store::AbstractModelStore,
+    key::OptimizationContainerKey;
+    index = nothing,
+)
+    container = get_data_field(store, get_store_container_type(key))
+    data = container[key]
+    if isnothing(index)
+        @assert_op length(data) == 1
+        index = first(keys(data))
+    end
+
+    # Return a copy because callers may mutate it.
+    return deepcopy(data[index])
+end
 
 function Base.isempty(store::T) where {T <: AbstractModelStore}
     for (name, type) in zip(fieldnames(T), fieldtypes(T))

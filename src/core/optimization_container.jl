@@ -73,6 +73,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     JuMPmodel::JuMP.Model
     time_steps::UnitRange{Int}
     settings::Settings
+    time_mapping::Union{Nothing, AbstractTimeMapping}
     variables::OrderedDict{VariableKey, JuMPArray}
     aux_variables::OrderedDict{AuxVarKey, JuMPArray}
     duals::OrderedDict{ConstraintKey, JuMPArray}
@@ -124,6 +125,7 @@ function OptimizationContainer(
         isnothing(jump_model) ? JuMP.Model() : jump_model,
         1:1,
         settings,
+        nothing,
         OrderedDict{VariableKey, JuMPArray}(),
         OrderedDict{AuxVarKey, JuMPArray}(),
         OrderedDict{ConstraintKey, JuMPArray}(),
@@ -194,6 +196,16 @@ set_initial_conditions_data!(container::OptimizationContainer, data) =
 get_objective_expression(container::OptimizationContainer) = container.objective_function
 
 get_serialization_task(container::OptimizationContainer) = container.serialization_task
+
+get_time_mapping(container::OptimizationContainer) = container.time_mapping
+
+function set_time_mapping!(
+    container::OptimizationContainer,
+    time_mapping::AbstractTimeMapping,
+)
+    container.time_mapping = time_mapping
+    return
+end
 
 function set_serialization_task!(container::OptimizationContainer, task::Task)
     container.serialization_task = task
@@ -441,6 +453,20 @@ function init_optimization_container!(
             The total number of variables might be larger than 10e6 and could lead to large build or solve times."
         )
     end
+
+    stats = get_optimizer_stats(container)
+    stats.detailed_stats = get_detailed_optimizer_stats(settings)
+
+    finalize_jump_model!(container, settings)
+    return
+end
+
+function init_optimization_container!(
+    container::OptimizationContainer,
+    template::AbstractProblemTemplate,
+    portfolio::IS.InfrastructureSystemsContainer,
+)
+    settings = get_settings(container)
 
     stats = get_optimizer_stats(container)
     stats.detailed_stats = get_detailed_optimizer_stats(settings)
