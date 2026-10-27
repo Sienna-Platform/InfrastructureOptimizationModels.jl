@@ -99,7 +99,8 @@ function get_time_series_reader!(
 ) where {T <: IS.TimeSeriesData}
     resolution = get_resolution(model)
     readers = get_time_series_readers(get_internal(model))
-    # The readers are stored untyped; `T` fixes which reader comes back, so assert it.
+    # The dict's values are abstractly typed, but `T` fixes which reader comes back.
+    # Asserting it lets callers infer the concrete reader type and specialize on it.
     return get!(readers, (T, name, resolution)) do
         _build_time_series_reader(
             get_system(model),
