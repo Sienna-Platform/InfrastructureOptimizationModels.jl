@@ -30,7 +30,7 @@ end
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
         attributes = Dict{String, Any}(),
-        outages = IS.InfrastructureSystemsComponent[],
+        selected_outages = nothing,
     )
 
 Establishes the model for a particular device specified by type. Uses the keyword argument
@@ -45,14 +45,14 @@ Establishes the model for a particular device specified by type. Uses the keywor
   - `duals::Vector{DataType} = Vector{DataType}()`: use to pass constraint type to calculate the duals. The DataType needs to be a valid ConstraintType
   - `time_series_names::Dict{Type{<:TimeSeriesParameter}, String} = get_default_time_series_names(D, B)` : use to specify time series names associated to the device`
   - `attributes::Dict{String, Any} = get_default_attributes(D, B)` : use to specify attributes to the device
-  - `outages::Union{Nothing, AbstractVector{<:IS.SupplementalAttribute}} = nothing` :
+  - `selected_outages::Union{Nothing, AbstractVector{<:IS.SupplementalAttribute}} = nothing` :
     N-1 contingencies to model when the formulation is security-constrained. `nothing`
-    models every outage in the system; a vector models exactly those outages, so an
-    empty vector models none. The constructor stores `IS.get_id(outage)` of each entry,
-    readable with [`get_outage_selection`](@ref), so each outage must already be attached
-    to the system. Power-specific validation (e.g. checking that entries are `PSY.Outage`
-    subtypes) and the resolution of the selection into the model's `outages` field live
-    in `PowerOperationsModels`. If `B` is not security-constrained, a non-empty value is
+    means no selection, so every outage in the system is modeled; a vector models exactly
+    those outages, so an empty vector models none. The constructor stores
+    `IS.get_id(outage)` of each entry, readable with [`get_selected_outage_ids`](@ref), so
+    each outage must already be attached to the system. Power-specific validation (e.g.
+    checking that entries are `PSY.Outage` subtypes) and the resolution of the selection
+    into the model's `outages` field live in `PowerOperationsModels`. If `B` is not security-constrained, a non-empty value is
     dropped with a warning.
 
 # Example
@@ -74,8 +74,8 @@ mutable struct DeviceModel{
     subsystem::Union{Nothing, String}
     events::Dict{AbstractEventKey, AbstractEventModel}
     # Ids of the outages to model; `nothing` models every outage in the system.
-    outage_selection::Union{Nothing, Set{Int}}
-    # Maps outage UUIDs to monitored components grouped by device type. PNM indexes DF matrices with UUIDs.
+    selected_outage_ids::Union{Nothing, Set{Int}}
+    # Maps outage ids to monitored components grouped by device type. PNM indexes DF matrices with these ids.
     outages::Dict{Int, Dict{DataType, Set{String}}}
     device_cache::Vector{D}
     function DeviceModel(
@@ -86,7 +86,7 @@ mutable struct DeviceModel{
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
         attributes = Dict{String, Any}(),
-        outages::Union{Nothing, AbstractVector{<:IS.SupplementalAttribute}} = nothing,
+        selected_outages::Union{Nothing, AbstractVector{<:IS.SupplementalAttribute}} = nothing,
     ) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
         attributes_ = get_default_attributes(D, B)
         for (k, v) in attributes
@@ -104,39 +104,40 @@ mutable struct DeviceModel{
             attributes_,
             nothing,
             Dict{AbstractEventKey, AbstractEventModel}(),
-            _outage_selection(D, B, outages),
+            _selected_outage_ids(D, B, selected_outages),
             Dict{Int, Dict{DataType, Set{String}}}(),
             Vector{D}(),
         )
     end
 end
 
-_outage_selection(::Type, ::Type, ::Nothing) = nothing
+_selected_outage_ids(::Type, ::Type, ::Nothing) = nothing
 
-function _outage_selection(
+function _selected_outage_ids(
     ::Type{D},
     ::Type{B},
-    outages::AbstractVector{<:IS.SupplementalAttribute},
+    selected_outages::AbstractVector{<:IS.SupplementalAttribute},
 ) where {D <: IS.InfrastructureSystemsComponent, B <: AbstractDeviceFormulation}
     if !supports_outages(B)
-        isempty(outages) || @warn "DeviceModel{$D, $B}: 'outages' kwarg ignored — \
-                                   formulation does not support N-1 contingencies."
+        isempty(selected_outages) ||
+            @warn "DeviceModel{$D, $B}: 'selected_outages' kwarg ignored — \
+                   formulation does not support N-1 contingencies."
         return nothing
     end
-    selection = Set{Int}()
-    for outage in outages
+    ids = Set{Int}()
+    for outage in selected_outages
         id = IS.get_id(outage)
         if id == IS.UNASSIGNED_ID
             throw(
                 ArgumentError(
                     "DeviceModel{$D, $B}: outage $(summary(outage)) is not attached \
-                     to a system. Add it to the system before passing it to `outages`.",
+                     to a system. Add it to the system before passing it to `selected_outages`.",
                 ),
             )
         end
-        push!(selection, id)
+        push!(ids, id)
     end
-    return selection
+    return ids
 end
 
 """
@@ -166,12 +167,12 @@ get_attribute(m::DeviceModel, key::String) = get(m.attributes, key, nothing)
 get_subsystem(m::DeviceModel) = m.subsystem
 get_events(m::DeviceModel) = m.events
 """
-    get_outage_selection(m::DeviceModel) -> Union{Nothing, Set{Int}}
+    get_selected_outage_ids(m::DeviceModel) -> Union{Nothing, Set{Int}}
 
-Ids of the outages passed to the `outages` constructor kwarg, or `nothing` when every
-outage in the system is modeled.
+Ids of the outages passed to the `selected_outages` constructor kwarg, or `nothing` when
+no outages were selected and every outage in the system is modeled.
 """
-get_outage_selection(m::DeviceModel) = m.outage_selection
+get_selected_outage_ids(m::DeviceModel) = m.selected_outage_ids
 get_outages(m::DeviceModel) = m.outages
 get_device_cache(m::DeviceModel) = m.device_cache
 

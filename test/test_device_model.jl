@@ -103,7 +103,7 @@ using InfrastructureOptimizationModels
 
     @testset "Outage selection defaults to all outages" begin
         model = IOM.DeviceModel(MockBranch, MockSecurityConstrainedFormulation)
-        @test IOM.get_outage_selection(model) === nothing
+        @test IOM.get_selected_outage_ids(model) === nothing
         @test isempty(IOM.get_outages(model))
     end
 
@@ -111,9 +111,9 @@ using InfrastructureOptimizationModels
         model = IOM.DeviceModel(
             MockBranch,
             MockSecurityConstrainedFormulation;
-            outages = [MockIdentifiedOutage(7), MockIdentifiedOutage(11)],
+            selected_outages = [MockIdentifiedOutage(7), MockIdentifiedOutage(11)],
         )
-        @test IOM.get_outage_selection(model) == Set([7, 11])
+        @test IOM.get_selected_outage_ids(model) == Set([7, 11])
         @test isempty(IOM.get_outages(model))
     end
 
@@ -121,16 +121,16 @@ using InfrastructureOptimizationModels
         model = IOM.DeviceModel(
             MockBranch,
             MockSecurityConstrainedFormulation;
-            outages = MockIdentifiedOutage[],
+            selected_outages = MockIdentifiedOutage[],
         )
-        @test IOM.get_outage_selection(model) == Set{Int}()
+        @test IOM.get_selected_outage_ids(model) == Set{Int}()
     end
 
     @testset "Outage selection rejects outages not attached to a system" begin
         @test_throws ArgumentError IOM.DeviceModel(
             MockBranch,
             MockSecurityConstrainedFormulation;
-            outages = [MockIdentifiedOutage(IS.UNASSIGNED_ID)],
+            selected_outages = [MockIdentifiedOutage(IS.UNASSIGNED_ID)],
         )
     end
 
@@ -139,9 +139,9 @@ using InfrastructureOptimizationModels
             model = IOM.DeviceModel(
                 MockThermalGen,
                 TestDeviceFormulation;
-                outages = [MockIdentifiedOutage(7)],
+                selected_outages = [MockIdentifiedOutage(7)],
             )
-            @test IOM.get_outage_selection(model) === nothing
+            @test IOM.get_selected_outage_ids(model) === nothing
         end
     end
 
