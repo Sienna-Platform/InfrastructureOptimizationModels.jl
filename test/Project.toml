@@ -29,8 +29,8 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 UnoSolver = "1baa60ac-02f7-4b39-a7a8-2f4f58486b05"
 
 [sources]
-InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "lk/lazy-reader-windows"}
-InfraStore = {url = "https://github.com/NatLabRockies/infrastore.git", rev = "lk/lazy-permute-reader-values", subdir = "julia/InfraStore.jl"}
+InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "IS4"}
+InfraStore = {url = "https://github.com/NatLabRockies/infrastore.git", rev = "main", subdir = "julia/InfraStore.jl"}
 InfrastructureOptimizationModels = {path = ".."}
 
 [compat]

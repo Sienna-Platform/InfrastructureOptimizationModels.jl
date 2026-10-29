@@ -46,4 +46,4 @@ TimerOutputs = "1"
 julia = "^1.10"
 
 [sources]
-InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "lk/lazy-reader-windows"}
+InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "IS4"}
