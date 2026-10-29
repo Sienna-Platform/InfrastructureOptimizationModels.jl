@@ -91,3 +91,51 @@ IOM.build_static_time_series_reader(sys::MockSystem; kwargs...) =
     @test IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "ts") !==
           reader
 end
+
+@testset "A model's readers hand back multi-dimensional values as lazy views" begin
+    data = IS.SystemData()
+    component = IS.TestComponent("c", 5)
+    IS.add_component!(data, component)
+    t0 = Dates.DateTime("2020-01-01")
+    m = reshape(collect(1.0:18.0), 6, 3)
+    IS.add_time_series!(
+        data,
+        component,
+        IS.SingleTimeSeries(
+            "m",
+            t0,
+            Dates.Hour(1),
+            m;
+            value_axes = [IS.TimeSeriesAxis("bus", [1, 2, 3])],
+        ),
+    )
+    IS.transform_single_time_series!(
+        data,
+        IS.DeterministicSingleTimeSeries,
+        Dates.Hour(4),
+        Dates.Hour(1),
+    )
+    sys = MockSystem(100.0, false)
+    sys.time_series[:data] = data
+    model = IOM.DecisionModel{TSInterfaceProblem}(
+        TSInterfaceTemplate(),
+        sys;
+        resolution = Dates.Hour(1),
+    )
+
+    reader = IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "m")
+    for t in 1:2
+        IS.read_forecast_window!(reader, t0 + Dates.Hour(t))
+        window = IS.get_forecast_window(reader, 1)
+        @test window isa PermutedDimsArray
+        @test window == m[(t + 1):(t + 4), :]
+    end
+
+    static = IOM.get_time_series_reader!(model, IS.SingleTimeSeries, "m")
+    for t in 2:3
+        IS.read_static_time_series_values!(static, t0 + Dates.Hour(t))
+        values = IS.get_static_time_series_group_values(static, 1)
+        @test values isa PermutedDimsArray
+        @test values == m[(t + 1):(t + 1), :]
+    end
+end
