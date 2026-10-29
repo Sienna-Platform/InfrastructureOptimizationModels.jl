@@ -101,6 +101,50 @@ using InfrastructureOptimizationModels
         )
     end
 
+    @testset "Outage selection defaults to all outages" begin
+        model = IOM.DeviceModel(MockBranch, MockSecurityConstrainedFormulation)
+        @test IOM.get_selected_outage_ids(model) === nothing
+        @test isempty(IOM.get_outages(model))
+    end
+
+    @testset "Outage selection stores the ids of the given outages" begin
+        model = IOM.DeviceModel(
+            MockBranch,
+            MockSecurityConstrainedFormulation;
+            selected_outages = [MockIdentifiedOutage(7), MockIdentifiedOutage(11)],
+        )
+        @test IOM.get_selected_outage_ids(model) == Set([7, 11])
+        @test isempty(IOM.get_outages(model))
+    end
+
+    @testset "An empty outage list selects no outages" begin
+        model = IOM.DeviceModel(
+            MockBranch,
+            MockSecurityConstrainedFormulation;
+            selected_outages = MockIdentifiedOutage[],
+        )
+        @test IOM.get_selected_outage_ids(model) == Set{Int}()
+    end
+
+    @testset "Outage selection rejects outages not attached to a system" begin
+        @test_throws ArgumentError IOM.DeviceModel(
+            MockBranch,
+            MockSecurityConstrainedFormulation;
+            selected_outages = [MockIdentifiedOutage(IS.UNASSIGNED_ID)],
+        )
+    end
+
+    @testset "Outage selection is dropped for formulations without outages" begin
+        @test_logs (:warn, r"does not support") match_mode = :any begin
+            model = IOM.DeviceModel(
+                MockThermalGen,
+                TestDeviceFormulation;
+                selected_outages = [MockIdentifiedOutage(7)],
+            )
+            @test IOM.get_selected_outage_ids(model) === nothing
+        end
+    end
+
     @testset "set_model!" begin
         dict = Dict{Symbol, Any}()
         model = IOM.DeviceModel(MockThermalGen, TestDeviceFormulation)

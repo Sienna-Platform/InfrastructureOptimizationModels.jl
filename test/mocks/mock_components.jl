@@ -151,6 +151,17 @@ get_rate(b::MockBranch) = b.rating
 # attributes, not components.
 struct MockOutageAttribute <: IS.SupplementalAttribute end
 
+# Mock outage carrying an `IS.get_id`-readable id, for `DeviceModel` outage selection.
+struct MockIdentifiedOutage <: IS.SupplementalAttribute
+    internal::IS.InfrastructureSystemsInternal
+end
+MockIdentifiedOutage(id::Int) = MockIdentifiedOutage(IS.InfrastructureSystemsInternal(; id))
+IS.get_internal(x::MockIdentifiedOutage) = x.internal
+
+# Mock formulation that consumes `DeviceModel` outages.
+struct MockSecurityConstrainedFormulation <: IOM.AbstractDeviceFormulation end
+IOM.supports_outages(::Type{MockSecurityConstrainedFormulation}) = true
+
 # Mock component type for use as type parameter in container keys
 # This replaces PSY.ThermalStandard etc. in tests that don't need real PSY types
 # Subtypes IS.InfrastructureSystemsComponent so it works with VariableKey, ConstraintKey, etc.
