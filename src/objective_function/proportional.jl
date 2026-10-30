@@ -8,6 +8,11 @@
 Default implementation for proportional cost, where the cost term is not time variant.
 See also: `add_proportional_cost_maybe_time_variant!` for a common basis for devices that
 might have time-variant proportional costs.
+
+A component whose cost is skipped (see [`skip_proportional_cost`](@ref)) is committed
+whenever it is active: its cost is booked in `FixedCostExpression`, outside the objective,
+scaled by its status (see [`get_component_statuses`](@ref)), so nothing is booked at an
+inactive step.
 """
 function add_proportional_cost!(
     container::OptimizationContainer,
@@ -23,6 +28,7 @@ function add_proportional_cost!(
     # Scale by the timestep to match variable/VOM cost dt-scaling (else sub-hourly
     # resolutions over-weight proportional costs).
     dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
+    statuses = get_component_statuses(container, T)
     for d in devices
         op_cost_data = get_operation_cost(d)
         cost_term = proportional_cost(op_cost_data, U, d, V)
@@ -32,9 +38,12 @@ function add_proportional_cost!(
         skip = skip_proportional_cost(d, U)
         for t in get_time_steps(container)
             if skip
-                # must-run etc.: bookkeep in FixedCostExpression but not in objective
+                # Always committed: booked in FixedCostExpression at the active steps only,
+                # outside the objective.
+                active_rate = rate * get_component_status(statuses, name, t)
+                iszero(active_rate) && continue
                 add_cost_to_expression!(
-                    container, FixedCostExpression, rate, T, name, t)
+                    container, FixedCostExpression, active_rate, T, name, t)
             else
                 variable = get_variable(container, U, T)[name, t]
                 add_cost_term_invariant!(
@@ -48,7 +57,9 @@ function add_proportional_cost!(
 end
 
 """
-Common basis for maybe time variant proportional costs for devices that might have must-run behavior.
+Common basis for maybe time variant proportional costs for devices that might be always
+committed (see [`skip_proportional_cost`](@ref)); their cost is booked as in
+[`add_proportional_cost!`](@ref), scaled by the component status.
 Currently used for `(ThermalGen, AbstractThermal)` and `(ControllableLoad, PowerLoadInterruption)`
 device, formulation pairs.
 """
@@ -65,6 +76,7 @@ function add_proportional_cost_maybe_time_variant!(
     multiplier = objective_function_multiplier(U, V)
     # Same dt scaling as the time-invariant proportional path above.
     dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
+    statuses = get_component_statuses(container, T)
     for d in devices
         op_cost_data = get_operation_cost(d)
         name = get_name(d)
@@ -77,11 +89,14 @@ function add_proportional_cost_maybe_time_variant!(
             rate = cost_term * multiplier * dt
 
             if skip
-                # Only add to expression, not objective
+                # Always committed: booked in FixedCostExpression at the active steps only,
+                # outside the objective.
+                active_rate = rate * get_component_status(statuses, name, t)
+                iszero(active_rate) && continue
                 add_cost_to_expression!(
                     container,
                     FixedCostExpression,
-                    rate,
+                    active_rate,
                     T,
                     name,
                     t,

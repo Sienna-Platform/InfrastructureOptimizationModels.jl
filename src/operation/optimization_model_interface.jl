@@ -397,3 +397,46 @@ function serialize_optimization_model(
     end
     return
 end
+
+"""
+    build_problem!(container, template, sys)
+
+Extension point: build the optimization problem described by `template` for the system `sys`
+into `container`, whose JuMP model is empty. Downstream packages add a method for their
+template and system types; [`rebuild_model!`](@ref) calls it.
+"""
+function build_problem! end
+
+"""
+    rebuild_model!(model; initial_time)
+
+Rebuild `model` for the step that starts at `initial_time`: empty its container with
+[`reset_optimization_model!`](@ref), which keeps the parameter values written for the step,
+then build the problem again with [`build_problem!`](@ref) while the model's initial time is
+`initial_time`, so the build reads its time series from that step. The model's initial time
+is restored afterwards.
+"""
+function rebuild_model!(model::AbstractOptimizationModel; initial_time::Dates.DateTime)
+    container = get_optimization_container(model)
+    reset_optimization_model!(container)
+    original_time = get_initial_time(model)
+    set_initial_time!(model, initial_time)
+    try
+        build_problem!(container, get_template(model), get_system(model))
+    finally
+        set_initial_time!(model, original_time)
+    end
+    return
+end
+
+"""
+    update_model_parameters!(container, model, state)
+
+Extension point: refresh, once per model per simulation step, the parameters whose values
+come from the model itself (for example from its own system and the step's window) rather
+than from the simulation `state`. The simulation calls it before updating each parameter key
+with [`update_container_parameter_values!`](@ref); in the Sienna stack, PowerSimulations
+drives that loop. Default: no-op.
+"""
+update_model_parameters!(::OptimizationContainer, ::AbstractOptimizationModel, state) =
+    nothing
