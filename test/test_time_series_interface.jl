@@ -46,19 +46,11 @@ IOM.build_forecast_reader(sys::MockSystem, ::Type{T}; kwargs...) where {T} =
 IOM.build_static_time_series_reader(sys::MockSystem; kwargs...) =
     IS.build_static_time_series_reader(sys.time_series[:data]; kwargs...)
 
-@testset "A model builds each time series reader once and drops it with the cache" begin
+function _reader_model(series::IS.SingleTimeSeries)
     data = IS.SystemData()
     component = IS.TestComponent("c", 5)
     IS.add_component!(data, component)
-    t0 = Dates.DateTime("2020-01-01")
-    IS.add_time_series!(
-        data,
-        component,
-        IS.SingleTimeSeries(;
-            name = "ts",
-            data = IOM.TS.TimeArray(t0 .+ Dates.Hour.(0:5), collect(1.0:6.0)),
-        ),
-    )
+    IS.add_time_series!(data, component, series)
     IS.transform_single_time_series!(
         data,
         IS.DeterministicSingleTimeSeries,
@@ -67,10 +59,23 @@ IOM.build_static_time_series_reader(sys::MockSystem; kwargs...) =
     )
     sys = MockSystem(100.0, false)
     sys.time_series[:data] = data
-    model = IOM.DecisionModel{TSInterfaceProblem}(
+    return IOM.DecisionModel{TSInterfaceProblem}(
         TSInterfaceTemplate(),
         sys;
         resolution = Dates.Hour(1),
+    )
+end
+
+_is_lazy_view(::PermutedDimsArray) = true
+_is_lazy_view(::AbstractArray) = false
+
+@testset "A model builds each time series reader once and drops it with the cache" begin
+    t0 = Dates.DateTime("2020-01-01")
+    model = _reader_model(
+        IS.SingleTimeSeries(;
+            name = "ts",
+            data = IOM.TS.TimeArray(t0 .+ Dates.Hour.(0:5), collect(1.0:6.0)),
+        ),
     )
 
     reader = @inferred IOM.get_time_series_reader!(
@@ -93,14 +98,9 @@ IOM.build_static_time_series_reader(sys::MockSystem; kwargs...) =
 end
 
 @testset "A model's readers hand back multi-dimensional values as lazy views" begin
-    data = IS.SystemData()
-    component = IS.TestComponent("c", 5)
-    IS.add_component!(data, component)
     t0 = Dates.DateTime("2020-01-01")
     m = reshape(collect(1.0:18.0), 6, 3)
-    IS.add_time_series!(
-        data,
-        component,
+    model = _reader_model(
         IS.SingleTimeSeries(
             "m",
             t0,
@@ -109,25 +109,12 @@ end
             value_axes = [IS.TimeSeriesAxis("bus", [1, 2, 3])],
         ),
     )
-    IS.transform_single_time_series!(
-        data,
-        IS.DeterministicSingleTimeSeries,
-        Dates.Hour(4),
-        Dates.Hour(1),
-    )
-    sys = MockSystem(100.0, false)
-    sys.time_series[:data] = data
-    model = IOM.DecisionModel{TSInterfaceProblem}(
-        TSInterfaceTemplate(),
-        sys;
-        resolution = Dates.Hour(1),
-    )
 
     reader = IOM.get_time_series_reader!(model, IS.DeterministicSingleTimeSeries, "m")
     for t in 1:2
         IS.read_forecast_window!(reader, t0 + Dates.Hour(t))
         window = IS.get_forecast_window(reader, 1)
-        @test window isa PermutedDimsArray
+        @test _is_lazy_view(window)
         @test window == m[(t + 1):(t + 4), :]
     end
 
@@ -135,7 +122,7 @@ end
     for t in 2:3
         IS.read_static_time_series_values!(static, t0 + Dates.Hour(t))
         values = IS.get_static_time_series_group_values(static, 1)
-        @test values isa PermutedDimsArray
+        @test _is_lazy_view(values)
         @test values == m[(t + 1):(t + 1), :]
     end
 end
