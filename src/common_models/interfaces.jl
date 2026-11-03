@@ -157,6 +157,19 @@ Extension point: downstream packages override this method to skip the proportion
 skip_proportional_cost(d::IS.InfrastructureSystemsComponent, ::Type{<:VariableType}) =
     skip_proportional_cost(d)
 
+"""
+Extension point: whether a variable's proportional cost is a per-hour rate, multiplied by
+the step length in hours. Return `false` for variables whose value already grows with the
+step length, so their cost applies once per step.
+"""
+cost_scales_with_resolution(::Type{<:VariableType}) = true
+
+# A ramp slack is the change over one step beyond the ramp limit (rate times step length),
+# so it already grows with the step and its penalty applies once per step.
+cost_scales_with_resolution(
+    ::Type{<:Union{RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown}},
+) = false
+
 ###############################
 #### System query stubs #######
 ###############################

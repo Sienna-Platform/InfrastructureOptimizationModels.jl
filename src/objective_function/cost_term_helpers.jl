@@ -217,7 +217,7 @@ function add_proportional_cost_invariant!(
     device_base_power = get_base_power(component)
     cost_per_unit = get_proportional_cost_per_system_unit(
         cost_term, power_units, base_power, device_base_power)
-    dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
+    dt = get_resolution_in_hours(container)
     name = get_name(component)
     rate = cost_per_unit * multiplier * dt
     for t in get_time_steps(container)

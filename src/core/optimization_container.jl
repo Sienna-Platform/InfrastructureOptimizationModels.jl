@@ -185,6 +185,11 @@ get_metadata(container::OptimizationContainer) = container.metadata
 get_optimizer_stats(container::OptimizationContainer) = container.optimizer_stats
 get_parameters(container::OptimizationContainer) = container.parameters
 get_resolution(container::OptimizationContainer) = get_resolution(container.settings)
+"""
+Step length in hours. Costs and penalties given per hour multiply by it.
+"""
+get_resolution_in_hours(container::OptimizationContainer) =
+    Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
 get_settings(container::OptimizationContainer) = container.settings
 get_time_steps(container::OptimizationContainer) = container.time_steps
 get_variables(container::OptimizationContainer) = container.variables
