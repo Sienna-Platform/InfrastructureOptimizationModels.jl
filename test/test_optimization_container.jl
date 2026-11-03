@@ -22,6 +22,30 @@ struct NoContextTestTemplate <: IOM.AbstractProblemTemplate end
 
 const RECEIVED_SOLVE_CONTEXTS = IOM.AbstractSolveContext[]
 
+# A solver that takes integer variables but not binary ones.
+IOM.MOI.Utilities.@model(
+    IntegerOnlyModel,
+    (IOM.MOI.Integer,),
+    (IOM.MOI.EqualTo, IOM.MOI.GreaterThan, IOM.MOI.LessThan, IOM.MOI.Interval),
+    (),
+    (),
+    (),
+    (IOM.MOI.ScalarAffineFunction,),
+    (),
+    (),
+)
+
+function IOM.MOI.supports_constraint(
+    ::IntegerOnlyModel,
+    ::Type{IOM.MOI.VariableIndex},
+    ::Type{IOM.MOI.ZeroOne},
+)
+    return false
+end
+
+IOM.MOI.supports(::IntegerOnlyModel, ::IOM.MOI.Silent) = true
+IOM.MOI.set(::IntegerOnlyModel, ::IOM.MOI.Silent, ::Bool) = nothing
+
 function IOM.calculate_aux_variable_value!(
     container::IOM.OptimizationContainer,
     key::IOM.AuxVarKey{PrimalProbeAux, MockComponentType},
@@ -575,6 +599,87 @@ end
         @test IOM.execute_optimizer!(container, MockSystem(100.0), context) ==
               IOM.RunStatus.SUCCESSFULLY_FINALIZED
         @test only(RECEIVED_SOLVE_CONTEXTS) === context
+    end
+
+    @testset "Direct mode bridges constraints the solver lacks" begin
+        mock_sys = MockSystem(100.0)
+        settings = IOM.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+            optimizer = IntegerOnlyModel{Float64},
+            direct_mode_optimizer = true,
+        )
+        container =
+            IOM.OptimizationContainer(mock_sys, settings, nothing, MockDeterministic)
+        IOM.finalize_jump_model!(container, settings)
+        model = IOM.get_jump_model(container)
+        @test JuMP.mode(model) == JuMP.DIRECT
+        x = JuMP.@variable(model, binary = true)
+        @test JuMP.is_binary(x)
+    end
+
+    @testset "process_duals restores bridged binaries in direct mode" begin
+        MOI = IOM.MOI
+        mock_sys = MockSystem(100.0)
+        mock_optimizer =
+            () -> begin
+                mock = MOI.Utilities.MockOptimizer(
+                    IntegerOnlyModel{Float64}();
+                    eval_variable_constraint_dual = false,
+                )
+                MOI.Utilities.set_mock_optimize!(
+                    mock,
+                    m -> MOI.Utilities.mock_optimize!(
+                        m,
+                        MOI.OPTIMAL,
+                        (MOI.FEASIBLE_POINT, [1.0, 0.5]),
+                        MOI.FEASIBLE_POINT,
+                        (MOI.ScalarAffineFunction{Float64}, MOI.GreaterThan{Float64}) =>
+                            [1.0],
+                    ),
+                )
+                return mock
+            end
+        settings = IOM.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+            optimizer = MOI.OptimizerWithAttributes(mock_optimizer),
+            direct_mode_optimizer = true,
+        )
+        container =
+            IOM.OptimizationContainer(mock_sys, settings, nothing, MockDeterministic)
+        IOM.finalize_jump_model!(container, settings)
+        IOM.set_time_steps!(container, 1:1)
+        model = IOM.get_jump_model(container)
+
+        names = ["g1"]
+        var = IOM.add_variable_container!(
+            container, TestVariableType, MockComponentType, names, 1:1,
+        )
+        b = JuMP.@variable(model, binary = true)
+        var["g1", 1] = b
+        y = JuMP.@variable(model, lower_bound = 0.0)
+        cons = IOM.add_constraints_container!(
+            container, TestConstraintType, MockComponentType, names, 1:1,
+        )
+        cons["g1", 1] = JuMP.@constraint(model, b + y >= 1.5)
+        IOM.add_dual_container!(
+            container, TestConstraintType, MockComponentType, names, 1:1,
+        )
+        JuMP.@objective(model, Min, 2 * b + y)
+        JuMP.optimize!(model)
+
+        @test IOM.process_duals(container, nothing) ==
+              IOM.RunStatus.SUCCESSFULLY_FINALIZED
+        dual_key = IOM.ConstraintKey(TestConstraintType, MockComponentType)
+        @test IOM.get_duals(container)[dual_key]["g1", 1] == 1.0
+        @test JuMP.is_binary(b)
+        @test !JuMP.is_fixed(b)
+        @test JuMP.has_lower_bound(y) && JuMP.lower_bound(y) == 0.0
     end
 
     @testset "Key-based InitialCondition constructor (Task 2.4)" begin

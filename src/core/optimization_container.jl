@@ -363,8 +363,11 @@ function finalize_jump_model!(container::OptimizationContainer, settings::Settin
     end
 
     if get_direct_mode_optimizer(settings)
-        optimizer = () -> MOI.instantiate(get_optimizer(settings))
-        container.JuMPmodel = JuMP.direct_model(optimizer())
+        # A direct-mode model has no caching layer in front of the solver, so the bridges
+        # reformulate here any constraint the solver lacks (e.g. binaries on a solver that
+        # only takes integers); constraints the solver supports pass through unbridged.
+        optimizer = MOI.instantiate(get_optimizer(settings); with_bridge_type = Float64)
+        container.JuMPmodel = JuMP.direct_model(optimizer)
     elseif isnothing(get_optimizer(settings))
         @debug "The optimization model has no optimizer attached" _group =
             LOG_GROUP_OPTIMIZATION_CONTAINER
