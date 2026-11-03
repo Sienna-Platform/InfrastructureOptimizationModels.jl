@@ -265,6 +265,7 @@ _rebuild_with_value_curve(c::IS.CostCurve, vc) =
 _rebuild_with_value_curve(c::IS.FuelCurve, vc) = IS.FuelCurve(;
     value_curve = vc,
     power_units = IS.get_power_units(c),
+    fuel_units = IS.get_fuel_units(c),
     fuel_cost = IS.get_fuel_cost(c),
     fuel_cost_time_series = IS.get_fuel_cost_time_series(c),
 )
