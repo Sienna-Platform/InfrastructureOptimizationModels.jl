@@ -463,6 +463,7 @@ end
         fuel_curve = IS.FuelCurve(
             IS.PiecewisePointCurve([(0.0, 0.0), (50.0, 300.0), (100.0, 700.0)]),
             IS.NaturalUnit(),
+            IS.CommodityUnits.MMBtu,
             3.0,  # $/MMBTU
         )
 

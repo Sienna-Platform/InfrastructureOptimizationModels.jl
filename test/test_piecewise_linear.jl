@@ -144,6 +144,7 @@ function setup_pwl_test(;
         cost_curve = IS.FuelCurve(
             IS.InputOutputCurve(pwl_data),
             unit_system,
+            IS.CommodityUnits.MMBtu,
             fuel_cost,
         )
     end
@@ -861,6 +862,7 @@ end
         fuel_curve = IS.FuelCurve(
             incremental_curve,
             IS.NaturalUnit(),
+            IS.CommodityUnits.MMBtu,
             fuel_cost,
         )
         op_cost = MockOperationCost(0.0, false, fuel_cost)
