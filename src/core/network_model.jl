@@ -64,6 +64,8 @@ Establishes the NetworkModel for a given AC network formulation type.
     selector to bus numbers. The default selects no component.
 - `duals::Vector{DataType}` = Vector{DataType}()
     Constraint types for which duals should be recorded.
+- `attributes::Dict{String, Any}` = Dict{String, Any}()
+    Free-form options for the network model. Read them with `get_attribute`.
 
 # Notes
 - `network_data` holds every matrix and the reduction data derived from
@@ -85,6 +87,7 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
     subnetworks::Dict{Int, Set{Int}}
     bus_area_map::Dict{IS.InfrastructureSystemsComponent, Int}
     duals::Vector{DataType}
+    attributes::Dict{String, Any}
     network_data::Union{Nothing, AbstractNetworkData}
     subsystem::Union{Nothing, String}
     hvdc_network_model::Union{Nothing, AbstractHVDCNetworkModel}
@@ -98,6 +101,7 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
         irreducible_buses::IS.ComponentSelector = IS.make_selector(),
         duals = Vector{DataType}(),
         hvdc_network_model = nothing,
+        attributes = Dict{String, Any}(),
     ) where {T <: AbstractNetworkModel}
         _check_network_formulation(T)
         new{T}(
@@ -107,6 +111,7 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
             Dict{Int, Set{Int}}(),
             Dict{IS.InfrastructureSystemsComponent, Int}(),
             duals,
+            attributes,
             # Populated by the network-matrix-aware instantiation code (POM); IOM
             # holds it behind an abstract type so it carries no PNM dependency.
             nothing,
@@ -123,6 +128,8 @@ get_network_source(m::NetworkModel) = m.network_source
 get_irreducible_buses(m::NetworkModel) = m.irreducible_buses
 get_network_data(m::NetworkModel) = m.network_data
 get_duals(m::NetworkModel) = m.duals
+get_attributes(m::NetworkModel) = m.attributes
+get_attribute(m::NetworkModel, key::String) = get(m.attributes, key, nothing)
 
 """
 The network matrix derived during instantiation. Implemented in the matrix-aware
