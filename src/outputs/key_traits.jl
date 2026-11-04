@@ -1,5 +1,5 @@
 # Output unit traits of the key types that IOM defines.
-# Unit rules: design section 5.6 and 8.2; allowed natural units: SiennaSchemas/Core/units.json.
+# Allowed natural units: SiennaSchemas/Core/units.json.
 
 # Variables
 
@@ -157,9 +157,6 @@ IS.Optimization.natural_units(::Type{StartUpCostExpression}) = "USD"
 IS.Optimization.output_unit_system(::Type{VOMCostExpression}) = IS.NU
 IS.Optimization.quantity_kind(::Type{VOMCostExpression}) = "Money"
 IS.Optimization.natural_units(::Type{VOMCostExpression}) = "USD"
-IS.Optimization.output_unit_system(::Type{FuelConsumptionExpression}) = IS.NU
-IS.Optimization.quantity_kind(::Type{FuelConsumptionExpression}) = "HeatRate"
-IS.Optimization.natural_units(::Type{FuelConsumptionExpression}) = "MMBtu/MWh"
 
 # The approximation variables are internal to the model. Their containers have a second
 # axis that is a breakpoint index, not a component, and no consumer reads them.

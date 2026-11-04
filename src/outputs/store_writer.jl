@@ -115,11 +115,7 @@ function _decision_values(d::IS.OutputDataset, array::DenseAxisArray)
     if "horizon" in d.axes
         return _dataset_values(d, slice)
     end
-    slice = dropdims(slice; dims = 1)
-    if isempty(d.component_type)
-        return dropdims(slice; dims = 1)
-    end
-    return slice
+    return dropdims(slice; dims = 1)
 end
 
 function _axis_lengths(reg::AxisRegistry, axes::Vector{String})

@@ -76,7 +76,8 @@ struct HVDCPowerBalance <: ExpressionType end
 
 # Output writing configuration for expression types
 should_write_resulting_value(::Type{<:CostExpressions}) = true
-should_write_resulting_value(::Type{FuelConsumptionExpression}) = true
+# The outputs need a fuel energy quantity kind before they write this expression.
+should_write_resulting_value(::Type{FuelConsumptionExpression}) = false
 should_write_resulting_value(::Type{RawACE}) = true
 should_write_resulting_value(::Type{ActivePowerBalance}) = true
 should_write_resulting_value(::Type{ReactivePowerBalance}) = true

@@ -229,6 +229,21 @@ end
         @test size(normal) == (3, 2, 2)
     end
 
+    @testset "componentless single step key" begin
+        store = IOM.DecisionModelStore()
+        key = IOM.VariableKey(TestVariableType2, MockComponentType)
+        store.variables[key] = IOM.OrderedDict(
+            DateTime(2024, 1, 1) => DenseAxisArray([11.0], 1:1),
+            DateTime(2024, 1, 2) => DenseAxisArray([21.0], 1:1),
+        )
+        store.optimizer_stats[DateTime(2024, 1, 1)] = _test_stats(1.0, 0.0)
+        store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
+        a = IS.open_outputs(_test_write(mktempdir(), store, 2))
+        (vals, axes) = IS.read_dataset(a, "m", "TestVariableType2", "")
+        @test axes == ["execution"]
+        @test vals == [11.0, 21.0]
+    end
+
     @testset "time step count mismatch fails" begin
         store = _test_decision_store()
         key = IOM.VariableKey(TestVariableType2, MockComponentType)
