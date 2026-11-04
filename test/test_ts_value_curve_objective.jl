@@ -47,6 +47,18 @@ end
         @test cc isa IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}
     end
 
+    @testset "is_nontrivial_offer reads the association id" begin
+        placeholder = IS.CostCurve(
+            IS.TimeSeriesPiecewiseIncrementalCurve(
+                _make_pwl_forecast_key(0),
+                _make_scalar_forecast_key(0),
+                _make_scalar_forecast_key(0),
+            ),
+        )
+        @test !IOM.is_nontrivial_offer(placeholder)
+        @test IOM.is_nontrivial_offer(_make_ts_incremental_cost_curve())
+    end
+
     @testset "Delta formulation with static parameters" begin
         time_steps = 1:3
         names = ["gen1"]
