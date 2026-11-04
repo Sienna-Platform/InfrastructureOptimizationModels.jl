@@ -80,6 +80,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     objective_function::ObjectiveFunction
     expressions::OrderedDict{ExpressionKey, JuMPArray}
     parameters::OrderedDict{ParameterKey, ParameterContainer}
+    parameter_coefficients::Dict{ParameterKey, Vector{ParameterCoefficientTerm}}
     primal_values_cache::PrimalValuesCache
     initial_conditions::OrderedDict{InitialConditionKey, Vector{<:InitialCondition}}
     initial_conditions_data::InitialConditionsData
@@ -131,6 +132,7 @@ function OptimizationContainer(
         ObjectiveFunction(),
         OrderedDict{ExpressionKey, JuMPArray}(),
         OrderedDict{ParameterKey, ParameterContainer}(),
+        Dict{ParameterKey, Vector{ParameterCoefficientTerm}}(),
         PrimalValuesCache(),
         # Match the field's exact type (UnionAll value): stored IC vectors are
         # concretely union-typed and must be kept by reference (callers fill them

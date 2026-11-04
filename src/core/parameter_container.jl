@@ -500,3 +500,16 @@ end
     end
     return
 end
+
+"""
+One constraint coefficient driven by a parameter: the coefficient of `variable` in
+`constraint` is kept at `base` times the parameter's value at `(i, t)`, the integer position
+in the parameter array.
+"""
+struct ParameterCoefficientTerm
+    constraint::JuMP.ConstraintRef
+    variable::JuMP.VariableRef
+    base::Float64
+    i::Int
+    t::Int
+end
