@@ -155,6 +155,12 @@ struct MockOutageAttribute <: IS.SupplementalAttribute end
 # This replaces PSY.ThermalStandard etc. in tests that don't need real PSY types
 # Subtypes IS.InfrastructureSystemsComponent so it works with VariableKey, ConstraintKey, etc.
 struct MockComponentType <: IS.InfrastructureSystemsComponent end
+struct MockComponentType2 <: IS.InfrastructureSystemsComponent end
+
+IOM.component_ids(::MockSystem, ::Type{MockComponentType}, labels::Vector{String}) =
+    [parse(Int, l[end:end]) for l in labels]
+IOM.component_ids(::MockSystem, ::Type{MockComponentType2}, labels::Vector{String}) =
+    [parse(Int, l[end:end]) for l in labels]
 
 # Structures for the network problem
 struct MockNetworkNode <: IS.InfrastructureSystemsComponent

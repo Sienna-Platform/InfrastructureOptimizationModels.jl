@@ -116,6 +116,9 @@ function run_tests()
                     # TODO outputs_by_time.jl
                     # TODO service_model.jl
                     include(joinpath(TEST_DIR, "test_settings.jl"))
+                    include(joinpath(TEST_DIR, "test_outputs_descriptors.jl"))
+                    include(joinpath(TEST_DIR, "test_outputs_component_axes.jl"))
+                    include(joinpath(TEST_DIR, "test_outputs_store_writer.jl"))
                     include(joinpath(TEST_DIR, "test_time_series_interface.jl"))
                     include(joinpath(TEST_DIR, "test_problem_template.jl"))
                     # standard_variables_expressions.jl: low complexity
