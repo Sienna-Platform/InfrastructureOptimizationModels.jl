@@ -68,7 +68,40 @@ function register_component_axis!(
     )
 end
 
-"Add one component axis per label vector of `key` to `reg`. Return the axis keys."
+"Add a label axis for `labels` to `reg` under `key`. Return `key`."
+function register_label_axis!(
+    reg::AxisRegistry,
+    labels::Vector{String},
+    key::String,
+    dataset_name::String,
+)
+    axis = IS.LabelAxis("label", labels)
+    if !haskey(reg.axes, key)
+        reg.axes[key] = axis
+        return key
+    end
+    if reg.axes[key] == axis
+        return key
+    end
+    throw(
+        ArgumentError(
+            "Label axis $key already exists with different labels. Dataset: $dataset_name.",
+        ),
+    )
+end
+
+function _label_axis_key(dataset_name::String, i::Int, count::Int)
+    if isone(count)
+        return _lower_snake(dataset_name)
+    end
+    return _lower_snake(dataset_name) * "_" * string(i)
+end
+
+"""
+Add one axis per label vector of `key` to `reg`. The first label vectors, one per type of the
+key component, are component axes. Every other label vector is a label axis. Return the axis
+keys.
+"""
 function dataset_axes!(
     reg::AxisRegistry,
     sys,
@@ -78,9 +111,14 @@ function dataset_axes!(
 ) where {T, U}
     types = _axis_types(U)
     axis_keys = String[]
-    for (i, column) in enumerate(labels)
-        type = types[min(i, length(types))]
+    for (type, column) in zip(types, labels)
         push!(axis_keys, register_component_axis!(reg, sys, type, column, dataset_name))
+    end
+    extra = labels[(length(types) + 1):end]
+    for (j, column) in enumerate(extra)
+        i = length(types) + j
+        label_key = _label_axis_key(dataset_name, i, length(extra))
+        push!(axis_keys, register_label_axis!(reg, column, label_key, dataset_name))
     end
     return axis_keys
 end

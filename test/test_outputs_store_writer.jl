@@ -316,6 +316,29 @@ end
         @test metas(IOM.VariableKey(TestVariableType, MockComponentType)) == [""]
     end
 
+    @testset "tranche column is a label axis" begin
+        store = IOM.DecisionModelStore()
+        key = IOM.VariableKey(TestVariableType, MockComponentType)
+        key2 = IOM.VariableKey(TestVariableType2, MockComponentType)
+        executions = _test_executions(["g1", "g2"], ["t1", "t2", "t3"], 3)
+        store.variables[key] = executions
+        store.variables[key2] = _test_executions(["g1", "g2"], ["u1", "u2", "u3"], 3)
+        store.optimizer_stats[DateTime(2024, 1, 1)] = _test_stats(1.0, 0.0)
+        store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
+        a = IS.open_outputs(_test_write(mktempdir(), store, 2))
+        snake = "testvariabletype__mockcomponenttype"
+        (vals, axes) = IS.read_dataset(a, "m", "TestVariableType", "MockComponentType")
+        @test axes == ["horizon", snake, "MockComponentType", "execution"]
+        @test size(vals) == (3, 3, 2, 2)
+        @test vals[:, :, :, 2] ==
+              permutedims(last(collect(values(executions))).data, (3, 2, 1))
+        @test IS.get_axis(a, "m", snake) == IS.LabelAxis("label", ["t1", "t2", "t3"])
+        @test IS.get_axis(a, "m", "testvariabletype2__mockcomponenttype") ==
+              IS.LabelAxis("label", ["u1", "u2", "u3"])
+        @test size(IS.read_dataset(a, "m", "TestVariableType2", "MockComponentType")[1]) ==
+              (3, 3, 2, 2)
+    end
+
     @testset "pair keys with the same first type" begin
         store = IOM.DecisionModelStore()
         for B in (MockComponentType, MockComponentType2)

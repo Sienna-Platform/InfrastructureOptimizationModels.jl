@@ -78,6 +78,26 @@ end
         @test !IOM.is_componentless(key, [["g1"]])
     end
 
+    @testset "extra columns are label axes" begin
+        reg = _test_registry()
+        key = IOM.VariableKey(
+            TestVariableType,
+            IOM.ComponentPairKey{MockComponentType, MockComponentType2},
+        )
+        keys = IOM.dataset_axes!(
+            reg, sys, key, [["a1", "a2"], ["b1"], ["t1", "t2", "t3"]], "Name__X",
+        )
+        @test keys == ["MockComponentType", "MockComponentType2", "name__x"]
+        @test reg.axes["name__x"] == IS.LabelAxis("label", ["t1", "t2", "t3"])
+        keys = IOM.dataset_axes!(
+            reg, sys, key, [["a1", "a2"], ["b1"], ["t1"], ["u1", "u2"]], "Other",
+        )
+        @test keys[3:4] == ["other_3", "other_4"]
+        @test_throws ArgumentError IOM.dataset_axes!(
+            reg, sys, key, [["a1", "a2"], ["b1"], ["t9"]], "Name__X",
+        )
+    end
+
     @testset "three d two axes" begin
         reg = _test_registry()
         key = IOM.VariableKey(
