@@ -45,6 +45,24 @@ end
         )
     end
 
+    @testset "canonical labels replace bus numbers" begin
+        reg = _test_registry()
+        k = IOM.register_component_axis!(reg, sys, MockBusType, ["1", "2"], "d")
+        @test reg.data[("m", k)].labels == ["bus1" "bus2"]
+        @test reg.data[("m", k)].ids == [1 2]
+        k2 = IOM.register_component_axis!(reg, sys, MockBusType, ["1", "2"], "e")
+        @test k2 == k
+        @test length(reg.axes) == 1
+    end
+
+    @testset "label only axis" begin
+        reg = _test_registry()
+        k = IOM.register_component_axis!(reg, sys, MockLabelOnlyType, ["x", "y"], "d")
+        @test !reg.axes[k].columns[1].has_ids
+        @test isempty(reg.data[("m", k)].ids)
+        @test reg.data[("m", k)].labels == ["x" "y"]
+    end
+
     @testset "encoded labels no ids" begin
         reg = _test_registry()
         k = IOM.register_component_axis!(

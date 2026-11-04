@@ -79,9 +79,9 @@
         @test occursin("HiGHS", IOM.settings_dict(s2)["optimizer"])
     end
 
-    @testset "component ids stub" begin
-        @test_throws ArgumentError IOM.component_ids(
-            MockSystem(),
+    @testset "resolve component axis stub" begin
+        @test_throws ArgumentError IOM.resolve_component_axis(
+            nothing,
             MockComponentType,
             ["a"],
         )

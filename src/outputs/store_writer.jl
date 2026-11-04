@@ -81,10 +81,46 @@ function _store_keys(store::AbstractModelStore)
     return sort!(keys_found; by = encode_key_as_string)
 end
 
-_data_axes(::DecisionModelStore, components::Vector{String}) =
-    vcat(["execution"], components, ["horizon"])
-_data_axes(::EmulationModelStore, components::Vector{String}) =
+function _trailing_axes(
+    ::DecisionModelStore,
+    key::OptimizationContainerKey,
+    array::DenseAxisArray,
+    params::ModelStoreParams,
+)
+    horizon = get_horizon_count(params)
+    steps = length(axes(array)[end])
+    if steps == horizon
+        return ["horizon"]
+    end
+    if isone(steps)
+        return String[]
+    end
+    throw(
+        ArgumentError(
+            "Key $(encode_key_as_string(key)) has $steps time steps, expected $horizon or 1.",
+        ),
+    )
+end
+
+_trailing_axes(::EmulationModelStore, ::OptimizationContainerKey, ::DenseAxisArray, ::Any) =
+    String[]
+
+_data_axes(::DecisionModelStore, components::Vector{String}, trailing::Vector{String}) =
+    vcat(["execution"], components, trailing)
+_data_axes(::EmulationModelStore, components::Vector{String}, ::Vector{String}) =
     vcat(["time"], components)
+
+function _decision_values(d::IS.OutputDataset, array::DenseAxisArray)
+    slice = execution_slice(array)
+    if "horizon" in d.axes
+        return _dataset_values(d, slice)
+    end
+    slice = dropdims(slice; dims = 1)
+    if isempty(d.component_type)
+        return dropdims(slice; dims = 1)
+    end
+    return slice
+end
 
 function _axis_lengths(reg::AxisRegistry, axes::Vector{String})
     return Int[IS.axis_length(reg.axes[a]) for a in axes]
@@ -95,10 +131,13 @@ function _key_dataset!(
     store::AbstractModelStore,
     sys,
     key::OptimizationContainerKey,
+    params::ModelStoreParams,
 )
-    labels = column_labels(key, first(store_arrays(store, key)))
+    array = first(store_arrays(store, key))
+    labels = column_labels(key, array)
+    trailing = _trailing_axes(store, key, array, params)
     if is_componentless(key, labels)
-        axes = _data_axes(store, String[])
+        axes = _data_axes(store, String[], trailing)
         return dataset_descriptor_componentless(
             key;
             model = reg.model,
@@ -107,7 +146,7 @@ function _key_dataset!(
         )
     end
     components = dataset_axes!(reg, sys, key, labels, encode_key_as_string(key))
-    axes = _data_axes(store, components)
+    axes = _data_axes(store, components, trailing)
     return dataset_descriptor(
         key;
         model = reg.model,
@@ -133,7 +172,7 @@ function outputs_metadata(
     reg = AxisRegistry(model_axes(store, params, initial_time, model)..., model)
     datasets = Tuple{OptimizationContainerKey, IS.OutputDataset}[]
     for key in _store_keys(store)
-        push!(datasets, (key, _key_dataset!(reg, store, sys, key)))
+        push!(datasets, (key, _key_dataset!(reg, store, sys, key, params)))
     end
     uuid = get_system_uuid(params)
     entry = IS.ModelEntry(
@@ -178,7 +217,7 @@ function write_executions!(
                 w,
                 model,
                 IS.dataset_key(d),
-                _dataset_values(d, execution_slice(array)),
+                _decision_values(d, array),
                 i,
             )
         end

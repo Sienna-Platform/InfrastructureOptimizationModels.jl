@@ -157,10 +157,30 @@ struct MockOutageAttribute <: IS.SupplementalAttribute end
 struct MockComponentType <: IS.InfrastructureSystemsComponent end
 struct MockComponentType2 <: IS.InfrastructureSystemsComponent end
 
-IOM.component_ids(::MockSystem, ::Type{MockComponentType}, labels::Vector{String}) =
-    [parse(Int, l[end:end]) for l in labels]
-IOM.component_ids(::MockSystem, ::Type{MockComponentType2}, labels::Vector{String}) =
-    [parse(Int, l[end:end]) for l in labels]
+struct MockBusType <: IS.InfrastructureSystemsComponent end
+struct MockLabelOnlyType <: IS.InfrastructureSystemsComponent end
+
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{MockComponentType},
+    labels::Vector{String},
+) =
+    ([parse(Int, l[end:end]) for l in labels], labels)
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{MockComponentType2},
+    labels::Vector{String},
+) =
+    ([parse(Int, l[end:end]) for l in labels], labels)
+# Bus labels are numbers. The canonical labels are the bus names.
+IOM.resolve_component_axis(::MockSystem, ::Type{MockBusType}, labels::Vector{String}) =
+    ([parse(Int, l) for l in labels], ["bus" * l for l in labels])
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{MockLabelOnlyType},
+    labels::Vector{String},
+) =
+    (Int[], labels)
 
 # Structures for the network problem
 struct MockNetworkNode <: IS.InfrastructureSystemsComponent

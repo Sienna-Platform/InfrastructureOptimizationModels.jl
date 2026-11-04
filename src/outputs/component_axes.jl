@@ -18,6 +18,13 @@ end
 "Return `true` if a label contains the name delimiter."
 is_encoded(labels::Vector{String}) = any(l -> occursin(PSI_NAME_DELIMITER, l), labels)
 
+function _id_matrix(ids::Vector{Int64})
+    if isempty(ids)
+        return Matrix{Int64}(undef, 0, 0)
+    end
+    return reshape(ids, 1, :)
+end
+
 function _same_labels(reg::AxisRegistry, key::String, labels::Matrix{String})
     return reg.data[(reg.model, key)].labels == labels
 end
@@ -30,21 +37,24 @@ function register_component_axis!(
     labels::Vector{String},
     dataset_name::String,
 ) where {U}
-    has_ids = !is_encoded(labels)
-    label_matrix = reshape(labels, 1, :)
+    ids = Int64[]
+    names = labels
+    if !is_encoded(labels)
+        (resolved_ids, names) = resolve_component_axis(sys, U, labels)
+        ids = Vector{Int64}(resolved_ids)
+    end
+    has_ids = !isempty(ids)
+    label_matrix = reshape(names, 1, :)
     for subset in ("", _lower_snake(dataset_name))
         columns = [IS.AxisColumn(string(nameof(U)), has_ids)]
         key =
             IS.axis_key(IS.ComponentAxis("component", columns, length(labels), "", subset))
         if !haskey(reg.axes, key)
-            ids = Matrix{Int64}(undef, 0, 0)
-            if has_ids
-                ids = reshape(Vector{Int64}(component_ids(sys, U, labels)), 1, :)
-            end
             reg.axes[key] = IS.ComponentAxis(
                 "component", columns, length(labels), "/$(reg.model)/axes/$key", subset,
             )
-            reg.data[(reg.model, key)] = IS.AxisData(ids, label_matrix, Dates.DateTime[])
+            reg.data[(reg.model, key)] =
+                IS.AxisData(_id_matrix(ids), label_matrix, Dates.DateTime[])
             return key
         end
         if _same_labels(reg, key, label_matrix)

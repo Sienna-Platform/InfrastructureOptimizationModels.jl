@@ -1,14 +1,23 @@
-"Return the labels of `sys` components of type `U` as integer ids. A system type extends this."
-function component_ids(sys, ::Type{U}, labels::Vector{String}) where {U}
+"""
+Return the ids and the component names of the `labels` of type `U` in `sys`, in the order of
+`labels`. An empty id vector gives a label-only axis. A system type extends this.
+"""
+function resolve_component_axis(sys, ::Type{U}, labels::Vector{String}) where {U}
     throw(
         ArgumentError(
-            "component_ids is not implemented for system type $(typeof(sys)).",
+            "resolve_component_axis is not implemented for system type $(typeof(sys)).",
         ),
     )
 end
 
-"Return the meta string of `key`."
-get_meta(key::OptimizationContainerKey) = key.meta
+_dataset_meta(::Type{U}, meta::String) where {U} = meta
+
+function _dataset_meta(::Type{ComponentPairKey{A, B}}, meta::String) where {A, B}
+    return join(filter(!isempty, [string(nameof(B)), meta]), "_")
+end
+
+"Return the meta string of the dataset of `key`. A pair key puts its second type name first, joined to `meta` with `_`."
+get_meta(key::OptimizationContainerKey{T, U}) where {T, U} = _dataset_meta(U, key.meta)
 
 "Return the tuple of component types that form the axes of component type `U`."
 _axis_types(::Type{U}) where {U} = (U,)
