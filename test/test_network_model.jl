@@ -40,3 +40,10 @@ end
     @test IOM.get_irreducible_buses(nw) == IS.make_selector()
     @test isempty(IOM.get_subnetworks(nw))
 end
+
+@testset "NetworkModel attributes" begin
+    @test isempty(IOM.get_attributes(IOM.NetworkModel(TestPowerModel)))
+    nw = IOM.NetworkModel(TestPowerModel; attributes = Dict{String, Any}("key" => 1))
+    @test IOM.get_attribute(nw, "key") == 1
+    @test IOM.get_attribute(nw, "missing") === nothing
+end
