@@ -158,6 +158,14 @@ struct MockComponentType <: IS.InfrastructureSystemsComponent end
 struct MockComponentType2 <: IS.InfrastructureSystemsComponent end
 
 struct MockBusType <: IS.InfrastructureSystemsComponent end
+struct ParamMarkerA end
+struct ParamMarkerB end
+struct ParamComponent{D} <: IS.InfrastructureSystemsComponent end
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{<:ParamComponent},
+    labels::Vector{String},
+) = ([parse(Int, l[end:end]) for l in labels], labels)
 struct MockLabelOnlyType <: IS.InfrastructureSystemsComponent end
 
 IOM.resolve_component_axis(

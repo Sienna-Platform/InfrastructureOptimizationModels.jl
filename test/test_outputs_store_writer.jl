@@ -279,6 +279,43 @@ end
         @test isnothing(IS.validate_metadata(metadata))
     end
 
+    @testset "type parameters keep datasets apart" begin
+        function metas(keys...)
+            store = IOM.DecisionModelStore()
+            for key in keys
+                store.variables[key] = _test_executions(["g1", "g2"], 3)
+            end
+            store.optimizer_stats[DateTime(2024, 1, 1)] = _test_stats(1.0, 0.0)
+            store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
+            table = first(IOM.optimizer_stats_table(store.optimizer_stats, "m"))
+            (metadata, _, datasets) = IOM.outputs_metadata(
+                "m", store, _test_params(2), MockSystem(),
+                IOM.Settings(
+                    MockSystem(); horizon = Hour(3), interval = Hour(24),
+                    resolution = Hour(1),
+                ),
+                _TEST_PRODUCER, DateTime(2024, 1, 1), table,
+            )
+            return sort!([d.meta for (_, d) in datasets])
+        end
+        @test metas(
+            IOM.VariableKey(ParamVar{ParamMarkerA}, MockComponentType),
+            IOM.VariableKey(ParamVar{ParamMarkerB}, MockComponentType),
+        ) == ["ParamMarkerA", "ParamMarkerB"]
+        @test metas(
+            IOM.VariableKey(TestVariableType, ParamComponent{ParamMarkerA}),
+            IOM.VariableKey(TestVariableType, ParamComponent{ParamMarkerB}),
+        ) == ["ParamMarkerA", "ParamMarkerB"]
+        @test metas(
+            IOM.VariableKey(
+                TestVariableType,
+                IOM.ComponentPairKey{ParamComponent{ParamMarkerA}, MockComponentType2},
+            ),
+        ) == ["ParamMarkerA_MockComponentType2"]
+        @test metas(IOM.VariableKey(TestVariableType, MockComponentType, "x")) == ["x"]
+        @test metas(IOM.VariableKey(TestVariableType, MockComponentType)) == [""]
+    end
+
     @testset "pair keys with the same first type" begin
         store = IOM.DecisionModelStore()
         for B in (MockComponentType, MockComponentType2)

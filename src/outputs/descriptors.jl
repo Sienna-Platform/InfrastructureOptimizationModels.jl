@@ -10,14 +10,35 @@ function resolve_component_axis(sys, ::Type{U}, labels::Vector{String}) where {U
     )
 end
 
-_dataset_meta(::Type{U}, meta::String) where {U} = meta
+_param_name(p::Type) = string(nameof(p))
+_param_name(p) = string(p)
 
-function _dataset_meta(::Type{ComponentPairKey{A, B}}, meta::String) where {A, B}
-    return join(filter(!isempty, [string(nameof(B)), meta]), "_")
+"Return the names of the type parameters of `T`. A type parameter that is not a type gives its `string`."
+function _type_params(::Type{T}) where {T}
+    return String[_param_name(p) for p in Base.unwrap_unionall(T).parameters]
 end
 
-"Return the meta string of the dataset of `key`. A pair key puts its second type name first, joined to `meta` with `_`."
-get_meta(key::OptimizationContainerKey{T, U}) where {T, U} = _dataset_meta(U, key.meta)
+_component_parts(::Type{U}) where {U} = _type_params(U)
+
+function _component_parts(::Type{ComponentPairKey{A, B}}) where {A, B}
+    return vcat(_type_params(A), [string(nameof(B))], _type_params(B))
+end
+
+"""
+Return the dataset meta of a key with the types `T` and `U` and the meta `meta`. The meta
+joins with `_` the names of the type parameters of `T`, the names of the type parameters of
+`U` (a pair key adds the second type name and its parameters), and `meta`. Empty parts are
+skipped.
+"""
+function _dataset_meta(::Type{T}, ::Type{U}, meta::String) where {T, U}
+    parts = vcat(_type_params(T), _component_parts(U), [meta])
+    return join(filter(!isempty, parts), "_")
+end
+
+"Return the dataset meta of `key`. The type parameters of the key types keep the datasets apart."
+function get_meta(key::OptimizationContainerKey{T, U}) where {T, U}
+    return _dataset_meta(T, U, key.meta)
+end
 
 "Return the tuple of component types that form the axes of component type `U`."
 _axis_types(::Type{U}) where {U} = (U,)
