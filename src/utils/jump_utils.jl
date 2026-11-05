@@ -18,6 +18,10 @@ Drop the terms of `expr` with a coefficient within `EXPRESSION_ROUNDING_TOL` of 
 coefficients within that tolerance of 1 or -1 to exactly 1 or -1. Leave the other
 coefficients and the constant unchanged. Call it once, after all additions into `expr` are
 complete.
+
+The function drops zero coefficients to keep dense PTDF rows sparse. Radial branches and island
+bridges must have a coefficient of exactly 1 or -1. The matrix inversion can return a value
+that differs from 1 or -1 by a rounding error, so the function rounds it.
 """
 function round_to_zero_or_one!(expr::JuMP.GenericAffExpr{C}) where {C}
     atol = C(EXPRESSION_ROUNDING_TOL)
