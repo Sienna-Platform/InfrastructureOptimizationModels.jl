@@ -339,7 +339,6 @@ export OnStatusParameter
 # parameter container builders
 export LeftHandSideTimeSeriesParameter
 export get_lhs_parameter_values, has_lhs_parameter_component, get_value_length
-export add_parameter_coefficient!, update_parameter_coefficients!
 export set_rebuild_model!
 export add_time_series_parameter_container!,
     add_cost_function_parameter_container!,
@@ -612,7 +611,6 @@ include("core/outputs_by_time.jl")
 include("operation/problem_template.jl")
 include("core/optimization_container.jl")
 include("core/lhs_parameters.jl")
-include("core/parameter_coefficients.jl")
 include("core/dual_processing.jl")
 
 # Standard variable and expression types (after OptimizationContainer is defined)
