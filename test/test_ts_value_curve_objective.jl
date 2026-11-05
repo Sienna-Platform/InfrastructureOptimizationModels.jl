@@ -478,6 +478,35 @@ end
             IOM.PiecewiseLinearBlockIncrementalOfferConstraint,
             MockThermalGen,
         )
+        con_rhs(c) = JuMP.normalized_rhs(
+            IOM.get_constraint(
+                c, IOM.PiecewiseLinearBlockIncrementalOfferConstraint, MockThermalGen,
+            )[
+                "gen1",
+                1,
+            ],
+        )
+        @test con_rhs(container) == 10.0
+
+        # An OnStatusParameter (e.g. a SemiContinuousFeedforward) scales the offset.
+        for on_status in (0.0, 1.0)
+            c = make_test_container(time_steps; base_power = 100.0)
+            add_test_variable!(c, TestVariableType, MockThermalGen, "gen1", 1)
+            add_test_parameter!(
+                c, IOM.OnStatusParameter, MockThermalGen, ["gen1"], time_steps,
+                fill(on_status, 1, 1),
+            )
+            vars = IOM.add_pwl_variables_delta!(
+                c, IOM.PiecewiseLinearBlockIncrementalOffer, MockThermalGen, "gen1", 1,
+                2;
+                upper_bound = Inf,
+            )
+            IOM.add_pwl_constraint_delta!(
+                c, device, TestVariableType, TestConstantMinGenFormulation, breakpoints,
+                vars, 1, IOM.PiecewiseLinearBlockIncrementalOfferConstraint,
+            )
+            @test con_rhs(c) == 10.0 * on_status
+        end
     end
 
     @testset "add_pwl_constraint_delta! with OnVariable min-gen offset" begin

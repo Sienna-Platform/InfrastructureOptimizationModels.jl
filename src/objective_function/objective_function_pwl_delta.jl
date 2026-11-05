@@ -232,7 +232,15 @@ function add_pwl_constraint_delta!(
     name = get_name(component)
 
     min_power_offset = if _include_constant_min_gen_power_in_constraint(T, U, D)
-        jump_fixed_value(first(break_points))::Float64
+        p0::Float64 = jump_fixed_value(first(break_points))
+        # An OnStatusParameter (e.g. from a SemiContinuousFeedforward) can switch the unit
+        # off, so the offset follows it. Devices outside its axis are always on.
+        if has_container_key(container, OnStatusParameter, T)
+            on_status = get_parameter_array(container, OnStatusParameter, T)
+            name in axes(on_status, 1) ? p0 * on_status[name, period] : p0
+        else
+            p0
+        end
     elseif _include_min_gen_power_in_constraint(T, U, D)
         p1::Float64 = jump_fixed_value(first(break_points))
         on_vars = get_variable(container, OnVariable, T)
