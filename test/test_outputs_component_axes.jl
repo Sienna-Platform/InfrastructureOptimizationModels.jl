@@ -72,20 +72,16 @@ end
         @test isempty(reg.data[("m", k)].ids)
     end
 
-    @testset "mixed encoded and plain labels fail" begin
-        @test IOM.is_encoded("a", ["s1__g1", "s1__g2"])
-        @test !IOM.is_encoded("a", ["g1", "g2"])
-        err = try
-            IOM.is_encoded("a", ["s1__g1", "g2"])
-        catch e
-            sprint(showerror, e)
-        end
-        @test occursin("Axis a", err)
-        @test occursin("s1__g1", err)
-        @test !occursin("g2", err)
-        @test_throws ArgumentError IOM.register_component_axis!(
-            _test_registry(), sys, MockComponentType, ["s1__g1", "g2"], "d",
+    @testset "mixed labels resolve by name" begin
+        @test IOM.is_encoded(["s1__g1", "s1__g2"])
+        @test !IOM.is_encoded(["g1", "g2"])
+        @test !IOM.is_encoded(["s1__g1", "g2"])
+        reg = _test_registry()
+        k = IOM.register_component_axis!(
+            reg, sys, MockComponentType, ["s1__g1", "g2"], "d",
         )
+        @test reg.axes[k].columns[1].has_ids
+        @test reg.data[("m", k)].labels == ["s1__g1" "g2"]
     end
 
     @testset "resolver result length mismatch fails" begin

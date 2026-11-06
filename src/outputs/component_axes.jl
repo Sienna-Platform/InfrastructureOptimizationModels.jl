@@ -16,23 +16,11 @@ function is_componentless(key::OptimizationContainerKey, labels::Vector{Vector{S
 end
 
 """
-Return `true` if every label of `axis` contains the name delimiter, `false` if none does.
-Throw if only some labels contain it.
+Return `true` if every label contains the name delimiter. A mix is plain names: a component
+name can contain the delimiter.
 """
-function is_encoded(axis::String, labels::Vector{String})
-    encoded = [l for l in labels if occursin(PSI_NAME_DELIMITER, l)]
-    if isempty(encoded)
-        return false
-    end
-    if length(encoded) == length(labels)
-        return true
-    end
-    throw(
-        ArgumentError(
-            "Axis $axis mixes encoded and plain labels. Labels with '$PSI_NAME_DELIMITER': " *
-            "$(join(encoded, ", ")).",
-        ),
-    )
+function is_encoded(labels::Vector{String})
+    return !isempty(labels) && all(l -> occursin(PSI_NAME_DELIMITER, l), labels)
 end
 
 function _check_resolved(axis::String, ids, names, labels::Vector{String})
@@ -68,7 +56,7 @@ function register_component_axis!(
 ) where {U}
     ids = Int64[]
     names = labels
-    if !is_encoded(string(nameof(U)), labels)
+    if !is_encoded(labels)
         (resolved_ids, names) = resolve_component_axis(sys, U, labels)
         _check_resolved(string(nameof(U)), resolved_ids, names, labels)
         ids = Vector{Int64}(resolved_ids)
