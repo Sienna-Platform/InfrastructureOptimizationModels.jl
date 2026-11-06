@@ -251,3 +251,69 @@ end
         @test length(kept) == 1
     end
 end
+
+struct StatusRampDispatchFormulation <: IOM.AbstractThermalDispatchFormulation end
+IOM._get_initial_condition_type(
+    ::Type{TestConstraintType},
+    ::Type{MockThermalGen},
+    ::Type{StatusRampDispatchFormulation},
+) = MockInitialCondition
+
+@testset "An outage does not relax the dispatch ramp rows" begin
+    time_steps = 1:3
+    devices = [make_mock_thermal("committed"), make_mock_thermal("must_run")]
+    names = get_name.(devices)
+    mock_sys = MockSystem(100.0)
+    settings = IOM.Settings(
+        mock_sys;
+        horizon = Dates.Hour(length(time_steps)),
+        resolution = Dates.Hour(1),
+        time_series_cache_size = 0,
+    )
+    container = IOM.OptimizationContainer(mock_sys, settings, nothing, MockDeterministic)
+    IOM.set_time_steps!(container, time_steps)
+    jump_model = IOM.get_jump_model(container)
+    power = IOM.add_variable_container!(
+        container, IOM.ActivePowerVariable, MockThermalGen, names, time_steps)
+    for name in names, t in time_steps
+        power[name, t] = JuMP.@variable(jump_model)
+    end
+    add_test_parameter!(
+        container, IOM.OnStatusParameter, MockThermalGen, ["committed"], time_steps,
+        ones(1, 3))
+    ics = IOM.add_initial_condition_container!(
+        container, MockInitialCondition(), MockThermalGen, names)
+    for (i, device) in enumerate(devices)
+        ics[i] = IOM.InitialCondition(MockInitialCondition, device, 50.0)
+    end
+    set_test_statuses!(container, MockThermalGen, names, [1.0 1.0 0.0; 1.0 1.0 0.0])
+    model = IOM.DeviceModel(MockThermalGen, StatusRampDispatchFormulation)
+    IOM.add_linear_ramp_constraints!(
+        container, TestConstraintType, IOM.ActivePowerVariable, devices, model,
+        TestPowerModel)
+    up = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "up")
+    dn = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "dn")
+    ramp_up = 0.1 * 60
+    ramp_dn = 0.2 * 60
+    # At t = 1 the initial power, 50, moves to the right-hand side.
+    initial = [50.0, 0.0, 0.0]
+    # Both units leave service at t = 3. The committed unit follows its upstream commitment;
+    # the always-committed unit is treated as committed throughout, so it must still ramp
+    # down to zero within its limit.
+    for name in ("committed", "must_run"), t in time_steps
+        @test JuMP.normalized_rhs(up[name, t]) ≈ ramp_up + initial[t]
+        @test JuMP.normalized_rhs(dn[name, t]) ≈ ramp_dn - initial[t]
+    end
+end
+
+@testset "Semicontinuous ramp rows skip the start/stop term of always-committed units" begin
+    device = make_mock_thermal("gen1"; limits = (min = 30.0, max = 100.0), must_run = true)
+    container = _make_ramp_container(device, 1:2)
+    model = IOM.DeviceModel(MockThermalGen, RampTestFormulation)
+    IOM.add_semicontinuous_ramp_constraints!(
+        container, TestConstraintType, IOM.ActivePowerVariable, [device], model,
+        TestPowerModel)
+    up = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "up")
+    start = IOM.get_variable(container, IOM.StartVariable, MockThermalGen)
+    @test iszero(JuMP.normalized_coefficient(up["gen1", 1], start["gen1", 1]))
+end

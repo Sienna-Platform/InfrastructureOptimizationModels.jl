@@ -223,8 +223,10 @@ function add_linear_ramp_constraints!(
     # Commitment path from UC as a PARAMETER (fixed 0/1)
     on_param = get_parameter(container, OnStatusParameter, V)
     on_status = on_param.parameter_array  # on_status[name, t] ∈ {0,1} (fixed)
-    # The feedforward parameter path only stores non-must-run units; a name absent from
-    # this axis is must-run and always committed (on_status ≡ 1.0).
+    # The feedforward parameter path only stores the components that are not always
+    # committed; a name absent from this axis is always committed, so its commitment is the
+    # constant 1.0. An outage does not relax its ramp rows: ramp limits still apply while
+    # it is inactive.
     on_status_names = Set(axes(on_status, 1))
 
     ic_power_by_name = Dict(
@@ -265,9 +267,11 @@ function add_linear_ramp_constraints!(
                     slack)
             end
         else
-            # Must-run: commitment is the constant 1.0. At t = 1 this reduces to
+            # Always committed: the commitment is the constant 1.0, whether or not the
+            # component is active. At t = 1 this reduces to
             # power_limits.max * (2 - y_init - 1.0); for t ≥ 2, yprev = ycur = 1.0 makes
-            # big_m = 0 — no start/stop relaxation, only the ramp limits apply.
+            # big_m = 0, so only the ramp limits apply and an outage must be reached within
+            # them.
             big_m_1 = power_limits.max * (2 - y_init - 1.0)
             startstop_1 = (up = big_m_1, down = big_m_1)
             cur_1 = (up = variable[name, 1], down = variable[name, 1])
@@ -358,7 +362,7 @@ function add_semicontinuous_ramp_constraints!(
         ic_power = get_value(ic)
         @debug "add rate_of_change_constraint" name ic_power
 
-        must_run = hasmethod(get_must_run, Tuple{V}) && get_must_run(device)
+        must_run = is_always_committed(device)
 
         for t in time_steps
             slack = _get_ramp_slack_vars(container, model, name, t)

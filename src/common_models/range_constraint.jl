@@ -4,24 +4,19 @@ get_bound_direction(::RangeConstraintLBExpressions) = LowerBound()
 get_bound_direction(::RangeConstraintUBExpressions) = UpperBound()
 
 @doc raw"""
-Constructs min/max range constraint from device variable.
+Constructs min/max range constraints from a device variable or range expression:
 
+``` limits.min[t] * status[name, t] <= variable[name, t] <= limits.max[t] * status[name, t] ```
 
-If min and max within an epsilon width:
-
-``` variable[name, t] == limits.max ```
-
-Otherwise:
-
-``` limits.min <= variable[name, t] <= limits.max ```
-
-where limits in constraint_infos.
+where `limits` are the per-step values of [`get_min_max_limit_values`](@ref) and `status` is
+the component status of [`get_component_statuses`](@ref) (`1.0` unless a downstream package
+declares statuses). An inactive component is therefore bounded to zero. A variable that stays
+free while its component is inactive (its type is not [`fixed_when_inactive`](@ref)), such as
+a stored energy level, keeps its plain bounds.
 
 # LaTeX
 
-`` x = limits^{max}, \text{ for } |limits^{max} - limits^{min}| < \varepsilon ``
-
-`` limits^{min} \leq x \leq limits^{max}, \text{ otherwise } ``
+`` limits^{min}_t s_t \leq x_t \leq limits^{max}_t s_t ``
 """
 function add_range_constraints!(
     container::OptimizationContainer,
@@ -38,8 +33,11 @@ function add_range_constraints!(
     X <: AbstractNetworkModel,
 }
     array = get_variable(container, U, V)
-    _add_bound_range_constraints_impl!(container, T, LowerBound(), array, devices, model)
-    _add_bound_range_constraints_impl!(container, T, UpperBound(), array, devices, model)
+    statuses = _bound_statuses(container, U, V)
+    _add_bound_range_constraints_impl!(
+        container, T, LowerBound(), array, devices, model; statuses = statuses)
+    _add_bound_range_constraints_impl!(
+        container, T, UpperBound(), array, devices, model; statuses = statuses)
     return
 end
 
@@ -87,7 +85,8 @@ function _add_bound_range_constraints_impl!(
     dir::BoundDirection,
     array,
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    model::DeviceModel{V, W},
+    model::DeviceModel{V, W};
+    statuses::AbstractComponentStatuses = get_component_statuses(container, V),
 ) where {
     T <: ConstraintType,
     V <: IS.InfrastructureSystemsComponent,
@@ -106,7 +105,8 @@ function _add_bound_range_constraints_impl!(
         for t in time_steps
             add_range_bound_constraint!(
                 dir, jump_model, con, ci_name, t,
-                array[ci_name, t], get_bound(dir, limit_values, t))
+                array[ci_name, t], get_bound(dir, limit_values, t),
+                get_component_status(statuses, ci_name, t))
         end
     end
     return
@@ -288,7 +288,9 @@ function add_semicontinuous_range_constraints!(
     return
 end
 
-# Generic component version - always uses binary variable.
+# The bound scales by the `OnVariable` of each component in its axis. A component absent from
+# that axis must be always committed (see `is_always_committed`), and its bound scales by its
+# status instead.
 # `meta_suffix` is appended to the default constraint meta so callers can stack a second
 # OnVariable-keyed bound alongside another bound constraint (e.g. a reservation-keyed
 # one) on the same `(T, V)` without a meta collision — see `add_commitment_bound_range_constraints!`.
@@ -311,14 +313,30 @@ function _add_semicontinuous_bound_range_constraints_impl!(
     con = add_constraints_container!(
         container, T, V, names, time_steps; meta = constraint_meta(dir) * meta_suffix)
     varbin = get_variable(container, OnVariable, V)
+    committed = Set{String}(axes(varbin, 1))
+    statuses = get_component_statuses(container, V)
 
     for device in devices
         ci_name = IS.get_name(device)
         limit_values = get_min_max_limit_values(container, T, device, model)
+        has_commitment = ci_name in committed
+        if !has_commitment && !is_always_committed(device)
+            throw(
+                IS.ConflictingInputsError(
+                    "$(ci_name) has no $(nameof(OnVariable)) for its semicontinuous \
+                     $(nameof(T)) bound and is not always committed.",
+                ),
+            )
+        end
         for t in time_steps
+            on = if has_commitment
+                varbin[ci_name, t]
+            else
+                get_component_status(statuses, ci_name, t)
+            end
             add_range_bound_constraint!(
                 dir, jump_model, con, ci_name, t,
-                array[ci_name, t], get_bound(dir, limit_values, t), varbin[ci_name, t])
+                array[ci_name, t], get_bound(dir, limit_values, t), on)
         end
     end
     return
@@ -341,6 +359,8 @@ add_commitment_bound_range_constraints!(
 
 # Unified reserve range constraints impl
 # invert_binary: true for InputActivePower (uses 1-varbin), false for others (uses varbin)
+# The bounds hold power variables, so they scale by the component status like the plain
+# range rows: an inactive component's reservation is then free.
 function add_reserve_bound_range_constraints!(
     container::OptimizationContainer,
     ::Type{T},
@@ -348,7 +368,8 @@ function add_reserve_bound_range_constraints!(
     array,
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::DeviceModel{V, W},
-    invert_binary::Bool,
+    invert_binary::Bool;
+    statuses::AbstractComponentStatuses = get_component_statuses(container, V),
 ) where {
     T <: ConstraintType,
     V <: IS.InfrastructureSystemsComponent,
@@ -367,9 +388,10 @@ function add_reserve_bound_range_constraints!(
         limit_values = get_min_max_limit_values(container, T, device, model)
         for t in time_steps
             bin = invert_binary ? (1 - varbin[ci_name, t]) : varbin[ci_name, t]
+            bound =
+                get_bound(dir, limit_values, t) * get_component_status(statuses, ci_name, t)
             add_range_bound_constraint!(
-                dir, jump_model, con, ci_name, t,
-                array[ci_name, t], get_bound(dir, limit_values, t), bin)
+                dir, jump_model, con, ci_name, t, array[ci_name, t], bound, bin)
         end
     end
     return
@@ -417,7 +439,8 @@ function add_parameterized_bound_range_constraints(
 }
     array = get_variable(container, U, V)
     _add_parameterized_bound_range_constraints_impl!(
-        container, T, dir, array, P, devices, model)
+        container, T, dir, array, P, devices, model;
+        statuses = _bound_statuses(container, U, V))
     return
 end
 
@@ -431,6 +454,9 @@ depends on the parameter family:
   - `P <: EventParameter`: `get_max_active_power(device) * parameter[name, t]`
   - `P <: TimeSeriesParameter`: `multiplier[name, t] * parameter_column[t]`, and only devices
     that own the time series named in `get_time_series_names(model)[P]` are constrained.
+
+Each right-hand side is scaled by the component status of [`get_component_statuses`](@ref),
+except for a variable `U` that is not [`fixed_when_inactive`](@ref).
 
 Mirror of [`add_parameterized_upper_bound_range_constraints`](@ref).
 """
@@ -472,6 +498,9 @@ depends on the parameter family:
   - `P <: EventParameter`: `get_max_active_power(device) * parameter[name, t]`
   - `P <: TimeSeriesParameter`: `multiplier[name, t] * parameter_column[t]`, and only devices
     that own the time series named in `get_time_series_names(model)[P]` are constrained.
+
+Each right-hand side is scaled by the component status of [`get_component_statuses`](@ref),
+except for a variable `U` that is not [`fixed_when_inactive`](@ref).
 
 Mirror of [`add_parameterized_lower_bound_range_constraints`](@ref).
 """
@@ -516,7 +545,8 @@ function _add_parameterized_bound_range_constraints_impl!(
     array,
     ::Type{P},
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    model::DeviceModel{V, W},
+    model::DeviceModel{V, W};
+    statuses::AbstractComponentStatuses = get_component_statuses(container, V),
 ) where {
     T <: ConstraintType,
     P <: TimeSeriesParameter,
@@ -537,7 +567,7 @@ function _add_parameterized_bound_range_constraints_impl!(
         container, T, V, names, time_steps; meta = constraint_meta(dir))
 
     _bound_range_with_parameter!(
-        container, dir, constraint, array, P, devices, model)
+        container, dir, constraint, array, P, devices, model; statuses = statuses)
     return
 end
 
@@ -548,7 +578,8 @@ function _add_parameterized_bound_range_constraints_impl!(
     array,
     ::Type{P},
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    model::DeviceModel{V, W},
+    model::DeviceModel{V, W};
+    statuses::AbstractComponentStatuses = get_component_statuses(container, V),
 ) where {
     T <: ConstraintType,
     P <: ParameterType,
@@ -561,7 +592,7 @@ function _add_parameterized_bound_range_constraints_impl!(
         container, T, V, names, time_steps; meta = constraint_meta(dir))
 
     _bound_range_with_parameter!(
-        container, dir, constraint, array, P, devices, model)
+        container, dir, constraint, array, P, devices, model; statuses = statuses)
     return
 end
 
@@ -573,7 +604,8 @@ function _bound_range_with_parameter!(
     lhs_array,
     ::Type{P},
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    ::DeviceModel{V, W},
+    ::DeviceModel{V, W};
+    statuses::AbstractComponentStatuses = get_component_statuses(container, V),
 ) where {
     P <: ParameterType,
     V <: IS.InfrastructureSystemsComponent,
@@ -585,7 +617,8 @@ function _bound_range_with_parameter!(
     time_steps = axes(constraint_container)[2]
     for device in devices, t in time_steps
         name = IS.get_name(device)
-        rhs = param_multiplier[name, t] * param_array[name, t]
+        scale = param_multiplier[name, t] * get_component_status(statuses, name, t)
+        rhs = scale * param_array[name, t]
         constraint_container[name, t] =
             _make_bound_constraint(dir, jump_model, lhs_array[name, t], rhs)
     end
@@ -604,7 +637,8 @@ function _bound_range_with_parameter!(
     lhs_array,
     ::Type{P},
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    ::DeviceModel{V, W},
+    ::DeviceModel{V, W};
+    statuses::AbstractComponentStatuses = get_component_statuses(container, V),
 ) where {
     P <: EventParameter,
     V <: IS.InfrastructureSystemsComponent,
@@ -616,7 +650,7 @@ function _bound_range_with_parameter!(
     for device in devices, t in time_steps
         ub = get_max_active_power(device)
         name = IS.get_name(device)
-        rhs = ub * param_array[name, t]
+        rhs = (ub * get_component_status(statuses, name, t)) * param_array[name, t]
         constraint_container[name, t] =
             _make_bound_constraint(dir, jump_model, lhs_array[name, t], rhs)
     end
@@ -631,7 +665,8 @@ function _bound_range_with_parameter!(
     lhs_array,
     ::Type{P},
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-    model::DeviceModel{V, W},
+    model::DeviceModel{V, W};
+    statuses::AbstractComponentStatuses = get_component_statuses(container, V),
 ) where {
     P <: TimeSeriesParameter,
     V <: IS.InfrastructureSystemsComponent,
@@ -650,7 +685,7 @@ function _bound_range_with_parameter!(
         end
         param_col = get_parameter_column_refs(param_container, name)
         for t in time_steps
-            rhs = mult[name, t] * param_col[t]
+            rhs = (mult[name, t] * get_component_status(statuses, name, t)) * param_col[t]
             constraint_container[name, t] =
                 _make_bound_constraint(dir, jump_model, lhs_array[name, t], rhs)
         end

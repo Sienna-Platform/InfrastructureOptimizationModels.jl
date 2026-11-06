@@ -420,3 +420,32 @@ end
         )
     end
 end
+
+# A component type with no domain-specific "must run" accessor: the start-up and shut-down
+# builders read only the neutral `is_always_committed` trait, which defaults to false.
+struct MockPlainCostGen <: AbstractMockGenerator
+    name::String
+    operation_cost::MockOperationCost
+end
+get_name(g::MockPlainCostGen) = g.name
+IOM.get_operation_cost(g::MockPlainCostGen) = g.operation_cost
+
+@testset "Start-up and shut-down costs read is_always_committed" begin
+    @test IOM.is_always_committed(MockPlainCostGen("g", MockOperationCost(0.0))) == false
+    @test IOM.is_always_committed(make_mock_thermal("g"; must_run = true))
+    time_steps = 1:2
+    device = MockPlainCostGen("gen1", MockOperationCost(0.0, false, 0.0, 30.0, 20.0))
+    devices = IS.FlattenIteratorWrapper(MockPlainCostGen, Vector[[device]])
+    container = make_test_container(time_steps)
+    jump_model = IOM.get_jump_model(container)
+    for V in (TestStartVariable, TestShutDownVariable)
+        var = IOM.add_variable_container!(
+            container, V, MockPlainCostGen, ["gen1"], time_steps)
+        for t in time_steps
+            var["gen1", t] = JuMP.@variable(jump_model)
+        end
+    end
+    IOM.add_start_up_cost!(container, TestStartVariable, devices, TestDeviceFormulation)
+    IOM.add_shut_down_cost!(container, TestShutDownVariable, devices, TestDeviceFormulation)
+    @test count_objective_terms(container; variant = false) == 2 * length(time_steps)
+end
