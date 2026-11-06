@@ -53,6 +53,8 @@ Establishes the NetworkModel for a given AC network formulation type.
 # Accepted keyword arguments
 - `use_slacks::Bool` = false
     Adds slack buses to the network modeling.
+- `slack_penalty::Float64` = `BALANCE_SLACK_COST`
+    Objective cost of one unit of balance slack per hour, applied when `use_slacks` is `true`.
 - `network_source::AbstractNetworkSource` = `DefaultNetworkSource()`
     Declares which network the model is built on and how it is reduced. The default
     builds it from the system with no reductions. Concrete sources (a reduction
@@ -82,6 +84,7 @@ Establishes the NetworkModel for a given AC network formulation type.
 """
 mutable struct NetworkModel{T <: AbstractNetworkModel}
     use_slacks::Bool
+    slack_penalty::Float64
     network_source::AbstractNetworkSource
     irreducible_buses::IS.ComponentSelector
     subnetworks::Dict{Int, Set{Int}}
@@ -97,6 +100,7 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
     function NetworkModel(
         ::Type{T};
         use_slacks = false,
+        slack_penalty::Float64 = BALANCE_SLACK_COST,
         network_source = DefaultNetworkSource(),
         irreducible_buses::IS.ComponentSelector = IS.make_selector(),
         duals = Vector{DataType}(),
@@ -106,6 +110,7 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
         _check_network_formulation(T)
         new{T}(
             use_slacks,
+            slack_penalty,
             network_source,
             irreducible_buses,
             Dict{Int, Set{Int}}(),
@@ -124,6 +129,7 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
 end
 
 get_use_slacks(m::NetworkModel) = m.use_slacks
+get_slack_penalty(m::NetworkModel) = m.slack_penalty
 get_network_source(m::NetworkModel) = m.network_source
 get_irreducible_buses(m::NetworkModel) = m.irreducible_buses
 get_network_data(m::NetworkModel) = m.network_data

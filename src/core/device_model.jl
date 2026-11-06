@@ -27,6 +27,7 @@ end
         ::Type{B};
         feedforwards = Vector{AbstractAffectFeedforward}(),
         use_slacks = false,
+        slack_penalty = CONSTRAINT_VIOLATION_SLACK_COST,
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
         attributes = Dict{String, Any}(),
@@ -42,6 +43,7 @@ Establishes the model for a particular device specified by type. Uses the keywor
   - `::Type{B} where B<:AbstractDeviceFormulation`: Abstract Device Formulation
   - `feedforwards::Vector{<:AbstractAffectFeedforward} = Vector{AbstractAffectFeedforward}()` : use to pass parameters between models
   - `use_slacks::Bool = false` : Add slacks to the device model. Implementation is model dependent and not all models feature slacks
+  - `slack_penalty::Float64 = CONSTRAINT_VIOLATION_SLACK_COST` : Objective cost of one unit of slack per hour, applied when `use_slacks` is `true`
   - `duals::Vector{DataType} = Vector{DataType}()`: use to pass constraint type to calculate the duals. The DataType needs to be a valid ConstraintType
   - `time_series_names::Dict{Type{<:TimeSeriesParameter}, String} = get_default_time_series_names(D, B)` : use to specify time series names associated to the device`
   - `attributes::Dict{String, Any} = get_default_attributes(D, B)` : use to specify attributes to the device
@@ -67,6 +69,7 @@ mutable struct DeviceModel{
     # Heterogeneous by design: concrete Vector of the abstract type, not a UnionAll field.
     feedforwards::Vector{AbstractAffectFeedforward}
     use_slacks::Bool
+    slack_penalty::Float64
     duals::Vector{DataType}
     services::Vector{ServiceModel}
     time_series_names::Dict{Type{<:ParameterType}, String}
@@ -83,6 +86,7 @@ mutable struct DeviceModel{
         ::Type{B};
         feedforwards = Vector{AbstractAffectFeedforward}(),
         use_slacks = false,
+        slack_penalty::Float64 = CONSTRAINT_VIOLATION_SLACK_COST,
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
         attributes = Dict{String, Any}(),
@@ -98,6 +102,7 @@ mutable struct DeviceModel{
         new{D, B}(
             convert(Vector{AbstractAffectFeedforward}, feedforwards),
             use_slacks,
+            slack_penalty,
             duals,
             Vector{ServiceModel}(),
             time_series_names,
@@ -159,6 +164,7 @@ get_feedforwards(m::DeviceModel) = m.feedforwards
 get_services(m::DeviceModel) = m.services
 get_services(::Nothing) = nothing
 get_use_slacks(m::DeviceModel) = m.use_slacks
+get_slack_penalty(m::DeviceModel) = m.slack_penalty
 get_duals(m::DeviceModel) = m.duals
 get_time_series_names(m::DeviceModel) = m.time_series_names
 get_attributes(m::DeviceModel) = m.attributes

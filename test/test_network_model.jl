@@ -34,6 +34,14 @@ struct MockReductionTracker <: IOM.AbstractBranchReductionTracker end
     @test IOM.get_reduced_branch_tracker(nw) === tracker
 end
 
+@testset "NetworkModel slack penalty" begin
+    @test IOM.get_slack_penalty(IOM.NetworkModel(TestPowerModel)) ==
+          IOM.BALANCE_SLACK_COST
+    nw = IOM.NetworkModel(TestPowerModel; use_slacks = true, slack_penalty = 5.0e4)
+    @test IOM.get_slack_penalty(nw) == 5.0e4
+    @test_throws TypeError IOM.NetworkModel(TestPowerModel; slack_penalty = "1e4")
+end
+
 @testset "NetworkModel defaults to the neutral source" begin
     nw = IOM.NetworkModel(TestPowerModel)
     @test IOM.get_network_source(nw) === IOM.DefaultNetworkSource()

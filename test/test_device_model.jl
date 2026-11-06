@@ -17,6 +17,7 @@ using InfrastructureOptimizationModels
         @test IOM.get_formulation(model) == TestDeviceFormulation
         @test isempty(IOM.get_feedforwards(model))
         @test IOM.get_use_slacks(model) == false
+        @test IOM.get_slack_penalty(model) == IOM.CONSTRAINT_VIOLATION_SLACK_COST
         @test isempty(IOM.get_duals(model))
         @test isempty(IOM.get_services(model))
         @test IOM.get_subsystem(model) === nothing
