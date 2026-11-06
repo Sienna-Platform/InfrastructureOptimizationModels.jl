@@ -72,6 +72,34 @@ end
         @test isempty(reg.data[("m", k)].ids)
     end
 
+    @testset "mixed encoded and plain labels fail" begin
+        @test IOM.is_encoded("a", ["s1__g1", "s1__g2"])
+        @test !IOM.is_encoded("a", ["g1", "g2"])
+        err = try
+            IOM.is_encoded("a", ["s1__g1", "g2"])
+        catch e
+            sprint(showerror, e)
+        end
+        @test occursin("Axis a", err)
+        @test occursin("s1__g1", err)
+        @test !occursin("g2", err)
+        @test_throws ArgumentError IOM.register_component_axis!(
+            _test_registry(), sys, MockComponentType, ["s1__g1", "g2"], "d",
+        )
+    end
+
+    @testset "resolver result length mismatch fails" begin
+        for T in (MockShortIdsType, MockShortNamesType)
+            err = try
+                IOM.register_component_axis!(_test_registry(), sys, T, ["x", "y"], "d")
+            catch e
+                sprint(showerror, e)
+            end
+            @test occursin(string(nameof(T)), err)
+            @test occursin("for 2 labels", err)
+        end
+    end
+
     @testset "componentless" begin
         key = IOM.VariableKey(TestVariableType, MockComponentType)
         @test IOM.is_componentless(key, [[IOM.encode_key_as_string(key)]])

@@ -52,6 +52,7 @@ end
 const _TEST_PRODUCER = IS.ProducerInfo("Test", "0.0.0", string(VERSION))
 
 function _test_write(dir, store, num_executions; horizon::Int = 3)
+    mkpath(joinpath(dir, IOM.make_system_dirname(Base.UUID(UInt128(1)))))
     return IOM.write_store_outputs!(
         dir,
         "m",
@@ -116,6 +117,9 @@ end
         ]
         @test columns.execution == [1, 2]
         @test columns.objective_value == [1.5, 2.5]
+        @test isempty(table.columns[2].units)
+        @test isempty(table.columns[2].quantity_kind)
+        @test table.columns[6].units == "s"
         @test isnan(columns.objective_bound[1])
         @test columns.relative_gap[1] == 0.1
         @test isnan(columns.relative_gap[2])
@@ -371,6 +375,38 @@ end
                 a, "m", "TestVariableType", "MockComponentType"; meta = B,
             )
             @test size(vals) == (3, 3, 2, 2)
+        end
+    end
+
+    @testset "fuel consumption is skipped with a log, legacy store keeps it" begin
+        store = _test_decision_store()
+        key = IOM.ExpressionKey(IOM.FuelConsumptionExpression, MockComponentType)
+        store.expressions[key] = _test_executions(["g1", "g2"], 3)
+        @test IOM.should_write_resulting_value(key)
+        @test haskey(store.expressions, key)
+        dir = mktempdir()
+        @test_logs (:info, r"FuelConsumptionExpression") _test_write(dir, store, 2)
+        @test haskey(store.expressions, key)
+        metadata = IS.get_metadata(IS.open_outputs(dir))
+        names = [d.entry_type for d in metadata.models["m"].datasets]
+        @test !any(occursin("Fuel", n) for n in names)
+        @test "TestVariableType" in names
+    end
+
+    @testset "systems always declare the bundle" begin
+        for system_to_file in (true, false)
+            store = _test_decision_store()
+            table = first(IOM.optimizer_stats_table(store.optimizer_stats, "m"))
+            (metadata, _, _) = IOM.outputs_metadata(
+                "m", store, _test_params(2), MockSystem(),
+                IOM.Settings(
+                    MockSystem(); horizon = Hour(3), interval = Hour(24),
+                    resolution = Hour(1), system_to_file = system_to_file,
+                ),
+                _TEST_PRODUCER, DateTime(2024, 1, 1), table,
+            )
+            uuid = Base.UUID(UInt128(1))
+            @test metadata.systems == Dict(string(uuid) => IOM.make_system_dirname(uuid))
         end
     end
 

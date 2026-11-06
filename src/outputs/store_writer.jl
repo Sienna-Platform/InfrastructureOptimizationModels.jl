@@ -1,48 +1,44 @@
 _nan(::Missing) = NaN
 _nan(x::Real) = Float64(x)
 
-const _STATS_COLUMNS = (
-    (:objective_value, "f64", "Money", "USD"),
-    (:termination_status, "i64", "", ""),
-    (:primal_status, "i64", "", ""),
-    (:dual_status, "i64", "", ""),
-    (:solve_time, "f64", "Duration", "s"),
-    (:solver_solve_time, "f64", "Duration", "s"),
-    (:objective_bound, "f64", "Money", "USD"),
-    (:relative_gap, "f64", "Fraction", "1"),
-)
+_float_column(stats, field::Symbol) = Float64[_nan(getfield(s, field)) for s in stats]
+_int_column(stats, field::Symbol) = Int64[getfield(s, field) for s in stats]
 
-_stats_values(::Val{:f64}, stats::Vector, field::Symbol) =
-    Float64[_nan(getfield(s, field)) for s in stats]
-_stats_values(::Val{:i64}, stats::Vector, field::Symbol) =
-    Int64[getfield(s, field) for s in stats]
+_seconds_column(name::String) =
+    IS.OutputColumn(name, "f64", "Duration", "NATURAL_UNITS", "", "s")
 
-function _stats_column(field::Symbol, dtype::String, kind::String, units::String)
-    if isempty(kind)
-        return IS.OutputColumn(string(field), dtype)
-    end
-    return IS.OutputColumn(string(field), dtype, kind, "NATURAL_UNITS", "", units)
-end
-
+# The objective has no unit: IOM does not know the currency of the model.
 "Return the `optimizer_stats` table description and its columns for `stats`."
 function optimizer_stats_table(stats::AbstractDict, model::String)
     rows = collect(values(stats))
-    names = Symbol[:execution]
-    vectors = Any[collect(Int64, 1:length(rows))]
-    for (field, dtype, _, _) in _STATS_COLUMNS
-        push!(names, field)
-        push!(vectors, _stats_values(Val(Symbol(dtype)), rows, field))
-    end
     table = IS.OutputTable(
         "optimizer_stats",
         "/$model/tables/optimizer_stats",
         length(rows),
-        vcat(
-            [IS.OutputColumn("execution", "i64")],
-            [_stats_column(spec...) for spec in _STATS_COLUMNS],
-        ),
+        [
+            IS.OutputColumn("execution", "i64"),
+            IS.OutputColumn("objective_value", "f64"),
+            IS.OutputColumn("termination_status", "i64"),
+            IS.OutputColumn("primal_status", "i64"),
+            IS.OutputColumn("dual_status", "i64"),
+            _seconds_column("solve_time"),
+            _seconds_column("solver_solve_time"),
+            IS.OutputColumn("objective_bound", "f64"),
+            IS.OutputColumn("relative_gap", "f64", "Fraction", "NATURAL_UNITS", "", "1"),
+        ],
     )
-    return (table, NamedTuple{Tuple(names)}(Tuple(vectors)))
+    columns = (
+        execution = collect(Int64, 1:length(rows)),
+        objective_value = _float_column(rows, :objective_value),
+        termination_status = _int_column(rows, :termination_status),
+        primal_status = _int_column(rows, :primal_status),
+        dual_status = _int_column(rows, :dual_status),
+        solve_time = _float_column(rows, :solve_time),
+        solver_solve_time = _float_column(rows, :solver_solve_time),
+        objective_bound = _float_column(rows, :objective_bound),
+        relative_gap = _float_column(rows, :relative_gap),
+    )
+    return (table, columns)
 end
 
 "Return the arrays of `key` in `store`, one per execution, in execution order."
@@ -71,12 +67,18 @@ end
 
 function _store_keys(store::AbstractModelStore)
     keys_found = OptimizationContainerKey[]
+    skipped = String[]
     for type in STORE_CONTAINERS
         for key in Base.keys(get_data_field(store, type))
-            if should_write_resulting_value(key)
+            if writes_output_dataset(key)
                 push!(keys_found, key)
+            else
+                push!(skipped, encode_key_as_string(key))
             end
         end
+    end
+    if !isempty(skipped)
+        @info "Outputs artifact skips keys without a schema quantity kind: $(join(sort!(skipped), ", "))"
     end
     return sort!(keys_found; by = encode_key_as_string)
 end
@@ -181,14 +183,14 @@ function outputs_metadata(
         [table],
     )
     metadata = IS.OutputsMetadata(
-        IS._SCHEMA_VERSION,
+        IS.OUTPUTS_SCHEMA_VERSION,
         "single",
         producer,
         Dates.format(Dates.now(Dates.UTC), "yyyy-mm-ddTHH:MM:SS") * "Z",
         "RUNNING",
         Dict(string(uuid) => make_system_dirname(uuid)),
         Dict(model => entry),
-        nothing,
+        IS.NoSimulation(),
     )
     IS.validate_metadata(metadata)
     return (metadata, reg.data, datasets)
@@ -268,13 +270,17 @@ function write_store_outputs!(
         IS.write_table!(w, model, "optimizer_stats", columns)
         IS.finalize!(w; status = IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED)
     catch
-        IS._abort!(w)
+        IS.abort!(w)
         rethrow()
     end
     return dir
 end
 
-"Write the outputs artifact of `model` to its output directory. Return the directory."
+"""
+Write the outputs artifact of `model` to its output directory. Return the directory.
+The caller must write the system bundle at `joinpath(dir, make_system_dirname(uuid))` first.
+`system_to_file` does not apply: the artifact always declares the bundle.
+"""
 function write_model_outputs!(model::AbstractOptimizationModel, producer::IS.ProducerInfo)
     return write_store_outputs!(
         get_output_dir(model),

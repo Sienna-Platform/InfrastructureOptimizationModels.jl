@@ -15,8 +15,37 @@ function is_componentless(key::OptimizationContainerKey, labels::Vector{Vector{S
     return labels == collect(get_column_names_from_key(key))
 end
 
-"Return `true` if a label contains the name delimiter."
-is_encoded(labels::Vector{String}) = any(l -> occursin(PSI_NAME_DELIMITER, l), labels)
+"""
+Return `true` if every label of `axis` contains the name delimiter, `false` if none does.
+Throw if only some labels contain it.
+"""
+function is_encoded(axis::String, labels::Vector{String})
+    encoded = [l for l in labels if occursin(PSI_NAME_DELIMITER, l)]
+    if isempty(encoded)
+        return false
+    end
+    if length(encoded) == length(labels)
+        return true
+    end
+    throw(
+        ArgumentError(
+            "Axis $axis mixes encoded and plain labels. Labels with '$PSI_NAME_DELIMITER': " *
+            "$(join(encoded, ", ")).",
+        ),
+    )
+end
+
+function _check_resolved(axis::String, ids, names, labels::Vector{String})
+    if length(names) != length(labels) || (!isempty(ids) && length(ids) != length(labels))
+        throw(
+            ArgumentError(
+                "resolve_component_axis for $axis returned $(length(ids)) ids and " *
+                "$(length(names)) names for $(length(labels)) labels.",
+            ),
+        )
+    end
+    return
+end
 
 function _id_matrix(ids::Vector{Int64})
     if isempty(ids)
@@ -39,8 +68,9 @@ function register_component_axis!(
 ) where {U}
     ids = Int64[]
     names = labels
-    if !is_encoded(labels)
+    if !is_encoded(string(nameof(U)), labels)
         (resolved_ids, names) = resolve_component_axis(sys, U, labels)
+        _check_resolved(string(nameof(U)), resolved_ids, names, labels)
         ids = Vector{Int64}(resolved_ids)
     end
     has_ids = !isempty(ids)

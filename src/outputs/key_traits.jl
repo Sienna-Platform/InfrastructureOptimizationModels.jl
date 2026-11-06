@@ -158,22 +158,13 @@ IS.Optimization.output_unit_system(::Type{VOMCostExpression}) = IS.NU
 IS.Optimization.quantity_kind(::Type{VOMCostExpression}) = "Money"
 IS.Optimization.natural_units(::Type{VOMCostExpression}) = "USD"
 
-# The approximation variables are internal to the model. Their containers have a second
-# axis that is a breakpoint index, not a component, and no consumer reads them.
-should_write_resulting_value(::Type{QuadraticVariable}) = false
-should_write_resulting_value(::Type{ManualSOS2BinaryVariable}) = false
-should_write_resulting_value(::Type{NMDTBinaryVariable}) = false
-should_write_resulting_value(::Type{NMDTResidualVariable}) = false
-should_write_resulting_value(::Type{NMDTBinaryContinuousProductVariable}) = false
-should_write_resulting_value(::Type{NMDTResidualProductVariable}) = false
-should_write_resulting_value(::Type{PiecewiseMcCormickBinary}) = false
-should_write_resulting_value(::Type{PiecewiseMcCormickDisaggregated}) = false
-should_write_resulting_value(::Type{SawtoothAuxVariable}) = false
-should_write_resulting_value(::Type{SawtoothBinaryVariable}) = false
-should_write_resulting_value(::Type{SawtoothTightenedVariable}) = false
-should_write_resulting_value(::Type{BilinearProductVariable}) = false
-should_write_resulting_value(::Type{EpigraphVariable}) = false
-
+# The legacy store skips these. The outputs artifact follows the same rule.
 should_write_resulting_value(::Type{PiecewiseLinearCostVariable}) = false
 should_write_resulting_value(::Type{PiecewiseLinearBlockIncrementalOffer}) = false
 should_write_resulting_value(::Type{PiecewiseLinearBlockDecrementalOffer}) = false
+
+# The outputs artifact skips a key when this is false. SiennaSchemas has no fuel quantity kind.
+writes_output_dataset(::Type{T}) where {T} = should_write_resulting_value(T)
+writes_output_dataset(::Type{FuelConsumptionExpression}) = false
+writes_output_dataset(key::OptimizationContainerKey) =
+    writes_output_dataset(get_entry_type(key))

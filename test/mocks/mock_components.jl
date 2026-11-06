@@ -167,6 +167,15 @@ IOM.resolve_component_axis(
     labels::Vector{String},
 ) = ([parse(Int, l[end:end]) for l in labels], labels)
 struct MockLabelOnlyType <: IS.InfrastructureSystemsComponent end
+struct MockShortIdsType <: IS.InfrastructureSystemsComponent end
+struct MockShortNamesType <: IS.InfrastructureSystemsComponent end
+IOM.resolve_component_axis(::MockSystem, ::Type{MockShortIdsType}, labels::Vector{String}) =
+    ([1], labels)
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{MockShortNamesType},
+    labels::Vector{String},
+) = ([1, 2], labels[1:1])
 
 IOM.resolve_component_axis(
     ::MockSystem,
