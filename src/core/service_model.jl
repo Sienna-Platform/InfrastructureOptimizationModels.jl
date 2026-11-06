@@ -128,15 +128,6 @@ function add_contributing_device!(
         String(service_name),
     )
     devices = get!(Vector{D}, inner, D)::Vector{D}
-    _push_contributing_device!(devices, device)
-    return
-end
-
-# Type barrier: the push specializes on the concrete device type.
-function _push_contributing_device!(
-    devices::Vector{D},
-    device::D,
-) where {D <: IS.InfrastructureSystemsComponent}
     push!(devices, device)
     return
 end

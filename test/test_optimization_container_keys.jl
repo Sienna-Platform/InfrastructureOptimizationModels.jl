@@ -221,8 +221,4 @@ end
     @test typeof(devices_map[MockRenewableGen]) == Vector{MockRenewableGen}
     @test length(devices_map[MockRenewableGen]) == 1
     @test isempty(IOM.contributing_device_types(model, "other"))
-
-    devices = MockThermalGen[]
-    @inferred IOM._push_contributing_device!(devices, thermal1)
-    @test length(devices) == 1
 end
