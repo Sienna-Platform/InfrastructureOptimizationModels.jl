@@ -98,18 +98,39 @@ const _EMPTY_CONTRIBUTING_DEVICES_MAP =
 # One service's inner `device type -> devices` map (the empty const if the service is absent).
 get_contributing_devices_map(m::ServiceModel, service_name::AbstractString) =
     get(m.contributing_devices_map, service_name, _EMPTY_CONTRIBUTING_DEVICES_MAP)
-# All contributing devices across ALL services (flatten the nested map).
-# TODO(services stability): flattening across device types yields a Vector whose element
-# type widens to the abstract common ancestor when a service has more than one contributing
-# device type, so downstream builders lose type stability. Revisit by iterating the
-# per-(device type) map groups (each concretely typed) instead of flattening.
+# The flatten accessors below mix device types, so the element type widens.
+# Build code must iterate `get_contributing_devices_map` groups instead.
 get_contributing_devices(m::ServiceModel) =
     [z for inner in values(m.contributing_devices_map) for x in values(inner) for z in x]
-# One service's contributing devices (flattened Vector).
-# TODO(services stability): same multi-device-type widening as the all-services flatten
-# above; revisit to iterate the concretely-typed per-device-type map groups.
 get_contributing_devices(m::ServiceModel, service_name::AbstractString) =
     [z for x in values(get_contributing_devices_map(m, service_name)) for z in x]
+
+"""
+Return the device types that contribute to the service `service_name`.
+Return an empty collection if the service has no entry.
+"""
+contributing_device_types(m::ServiceModel, service_name::AbstractString) =
+    keys(get_contributing_devices_map(m, service_name))
+
+"""
+Add `device` to the contributing devices of the service `service_name`.
+The function creates the entry for the service and for the type `D` if they do not exist.
+Each device type keeps its own `Vector{D}`.
+"""
+function add_contributing_device!(
+    m::ServiceModel,
+    service_name::AbstractString,
+    device::D,
+) where {D <: IS.InfrastructureSystemsComponent}
+    inner = get!(
+        Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}},
+        m.contributing_devices_map,
+        String(service_name),
+    )
+    devices = get!(Vector{D}, inner, D)::Vector{D}
+    push!(devices, device)
+    return
+end
 get_subsystem(m::ServiceModel) = m.subsystem
 get_outages(m::ServiceModel) = m.outages
 
