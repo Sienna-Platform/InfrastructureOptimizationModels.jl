@@ -526,6 +526,37 @@ end
 
         # A device outside the parameter's axis (e.g. must-run) keeps the full offset.
         @test con_rhs(build_with_on_status(["gen2"], 0.0)) == 10.0
+
+        # update_pwl_offset! moves the row to a new first breakpoint the way the build sets it.
+        function update_to_30!(c)
+            row = IOM.get_constraint(
+                c, IOM.PiecewiseLinearBlockIncrementalOfferConstraint, MockThermalGen,
+            )[
+                "gen1",
+                1,
+            ]
+            IOM.update_pwl_offset!(
+                c, row, MockThermalGen, TestVariableType, TestConstantMinGenFormulation,
+                "gen1", 1, 30.0,
+            )
+            return row
+        end
+        update_to_30!(container)
+        @test con_rhs(container) == 30.0
+        for on_status in (0.0, 1.0)
+            c = build_with_on_status(["gen1"], on_status)
+            update_to_30!(c)
+            @test con_rhs(c) == 30.0 * on_status
+        end
+        c = build_with_on_status(["gen1"], 1.0; eltype = JuMP.VariableRef)
+        on_param =
+            IOM.get_parameter_array(c, IOM.OnStatusParameter, MockThermalGen)["gen1", 1]
+        row = update_to_30!(c)
+        @test JuMP.normalized_coefficient(row, on_param) == -30.0
+        @test con_rhs(c) == 0.0
+        c = build_with_on_status(["gen2"], 0.0)
+        update_to_30!(c)
+        @test con_rhs(c) == 30.0
     end
 
     @testset "add_pwl_constraint_delta! with OnVariable min-gen offset" begin
@@ -576,5 +607,21 @@ end
             IOM.PiecewiseLinearBlockIncrementalOfferConstraint,
             MockThermalGen,
         )
+        row = IOM.get_constraint(
+            container, IOM.PiecewiseLinearBlockIncrementalOfferConstraint,
+            MockThermalGen,
+        )[
+            "gen1",
+            1,
+        ]
+        on_var = on_var_container["gen1", 1]
+        @test JuMP.normalized_coefficient(row, on_var) == -10.0
+
+        IOM.update_pwl_offset!(
+            container, row, MockThermalGen, TestVariableType, TestCommitmentFormulation,
+            "gen1", 1, 30.0,
+        )
+        @test JuMP.normalized_coefficient(row, on_var) == -30.0
+        @test JuMP.normalized_rhs(row) == 0.0
     end
 end
