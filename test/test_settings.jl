@@ -19,7 +19,6 @@ IOM.get_network_model(::SettingsTestTemplate) = nothing
 struct SettingsTestProblem <: IOM.AbstractOptimizationProblem end
 IOM.validate_time_series!(::IOM.DecisionModel{SettingsTestProblem}) = nothing
 IOM.validate_time_series!(::IOM.EmulationModel{SettingsTestProblem}) = nothing
-IOM.get_time_series_counts_by_type(::MockSystem) = [Dict("type" => "Deterministic")]
 
 @testset "Settings" begin
     @testset "Construction with defaults" begin
