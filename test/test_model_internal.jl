@@ -56,6 +56,7 @@ IOM.validate_time_series!(::IOM.DecisionModel{ReleaseTestProblem}) = nothing
     @test occursin("Released", err.msg)
     @test occursin("release_model = true", err.msg)
     @test IOM.get_jump_model(IOM.get_optimization_container(model)) isa JuMP.Model
+    @test_throws ArgumentError IOM.solve_model!(model)
     IOM.set_released!(model, false)
     @test IOM.get_jump_model(model) isa JuMP.Model
 end

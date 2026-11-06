@@ -19,7 +19,7 @@ is_released(model::AbstractOptimizationModel) = is_released(get_internal(model))
 set_released!(model::AbstractOptimizationModel, val::Bool) =
     set_released!(get_internal(model), val)
 
-function get_jump_model(model::AbstractOptimizationModel)
+function _check_not_released(model::AbstractOptimizationModel)
     if is_released(model)
         throw(
             ArgumentError(
@@ -28,6 +28,11 @@ function get_jump_model(model::AbstractOptimizationModel)
             ),
         )
     end
+    return
+end
+
+function get_jump_model(model::AbstractOptimizationModel)
+    _check_not_released(model)
     return get_jump_model(get_container(get_internal(model)))
 end
 
@@ -155,6 +160,7 @@ end
 
 # Called `solve_impl!(model)` in PSI.
 function solve_model!(model::AbstractOptimizationModel)
+    _check_not_released(model)
     if !is_built(model)
         error(
             "Model $(get_name(model)) is not built (status $(get_status(model))); \
