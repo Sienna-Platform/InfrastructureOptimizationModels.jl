@@ -15,7 +15,7 @@
         @test axes(result) == axes(array)
     end
 
-    @testset "get_value infers a concrete type on both stores" begin
+    @testset "get_value does not infer Any on either store" begin
         decision_store = IOM.DecisionModelStore()
         key = IOM.VariableKey(TestVariableType, MockComponentType)
         decision_store.variables[key] = valtype(decision_store.variables)()
