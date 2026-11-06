@@ -209,3 +209,127 @@ end
         end
     end
 end
+
+@testset "Parameterized bounds scale by the component status" begin
+    time_steps = 1:3
+    devices = [make_mock_thermal("A"), make_mock_thermal("B")]
+    names = ["A", "B"]
+    statuses = [1.0 0.0 1.0; 0.5 1.0 0.0]
+    model = IOM.DeviceModel(
+        MockThermalGen,
+        TestFormulation;
+        time_series_names = Dict{Type{<:IOM.ParameterType}, String}(
+            TestTimeSeriesParameter => PARAM_RANGE_TS_NAME,
+        ),
+    )
+
+    @testset "variable value parameter" begin
+        container = _make_parameterized_range_container(devices, time_steps)
+        _add_value_parameter!(container, names, time_steps)
+        set_test_statuses!(container, MockThermalGen, names, statuses)
+        add_parameterized_upper_bound_range_constraints(
+            container, TestConstraintType, TestVariableType, TestValueParameter,
+            devices, model, TestPowerModel)
+        con = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "ub")
+        for (i, name) in enumerate(names), t in time_steps
+            @test JuMP.normalized_rhs(con[name, t]) ≈
+                  PARAM_RANGE_MULTIPLIER * param_range_value(name, t) * statuses[i, t]
+        end
+    end
+
+    @testset "event parameter" begin
+        container = _make_parameterized_range_container(devices, time_steps)
+        param_container = IOM.add_param_container!(
+            container, TestEventParameter, MockThermalGen, MockOutageAttribute,
+            names, time_steps)
+        param_array = IOM.get_parameter_array(param_container)
+        for name in names, t in time_steps
+            param_array[name, t] = param_range_value(name, t)
+        end
+        set_test_statuses!(container, MockThermalGen, names, statuses)
+        add_parameterized_upper_bound_range_constraints(
+            container, TestConstraintType, TestVariableType, TestEventParameter,
+            devices, model, TestPowerModel)
+        con = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "ub")
+        for (i, (device, name)) in enumerate(zip(devices, names)), t in time_steps
+            @test JuMP.normalized_rhs(con[name, t]) ≈
+                  IOM.get_max_active_power(device) * param_range_value(name, t) *
+                  statuses[i, t]
+        end
+    end
+
+    @testset "time series parameter" begin
+        mock_clear_time_series!()
+        for device in devices
+            mock_add_time_series!(device, PARAM_RANGE_TS_NAME)
+        end
+        container = _make_parameterized_range_container(devices, time_steps)
+        param_container = IOM.add_param_container!(
+            container, TestTimeSeriesParameter, MockThermalGen, MockDeterministic,
+            PARAM_RANGE_TS_NAME, ["row-A", "row-B"], names, (), time_steps)
+        attributes = IOM.get_attributes(param_container)
+        param_array = IOM.get_parameter_array(param_container)
+        mult_array = IOM.get_multiplier_array(param_container)
+        for name in names
+            IOM.add_component_name!(attributes, name, "row-$name")
+            for t in time_steps
+                param_array["row-$name", t] = param_range_value(name, t)
+                mult_array[name, t] = PARAM_RANGE_MULTIPLIER
+            end
+        end
+        set_test_statuses!(container, MockThermalGen, names, statuses)
+        add_parameterized_upper_bound_range_constraints(
+            container, TestConstraintType, TestVariableType, TestTimeSeriesParameter,
+            devices, model, TestPowerModel)
+        con = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "ub")
+        for (i, name) in enumerate(names), t in time_steps
+            @test JuMP.normalized_rhs(con[name, t]) ≈
+                  PARAM_RANGE_MULTIPLIER * param_range_value(name, t) * statuses[i, t]
+        end
+        mock_clear_time_series!()
+    end
+
+    @testset "a variable that stays free while inactive keeps its bound" begin
+        container = _make_parameterized_range_container(devices, time_steps)
+        jump_model = IOM.get_jump_model(container)
+        level = IOM.add_variable_container!(
+            container, TestVariableType2, MockThermalGen, names, time_steps)
+        for name in names, t in time_steps
+            level[name, t] = JuMP.@variable(jump_model)
+        end
+        _add_value_parameter!(container, names, time_steps)
+        set_test_statuses!(container, MockThermalGen, names, statuses)
+        add_parameterized_upper_bound_range_constraints(
+            container, TestConstraintType, TestVariableType2, TestValueParameter,
+            devices, model, TestPowerModel)
+        con = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "ub")
+        for name in names, t in time_steps
+            @test JuMP.normalized_rhs(con[name, t]) ≈
+                  PARAM_RANGE_MULTIPLIER * param_range_value(name, t)
+        end
+    end
+
+    @testset "recurrent parameters keep one coefficient per row" begin
+        container = _make_parameterized_range_container(devices, time_steps)
+        container.built_for_recurrent_solves = true
+        param_container = IOM.add_param_container!(
+            container, TestValueParameter, MockThermalGen,
+            IOM.VariableKey(TestVariableType, MockThermalGen), names, time_steps)
+        param_array = IOM.get_parameter_array(param_container)
+        mult_array = IOM.get_multiplier_array(param_container)
+        jump_model = IOM.get_jump_model(container)
+        for name in names, t in time_steps
+            param_array[name, t] = IOM.add_jump_parameter(jump_model, 1.0)
+            mult_array[name, t] = PARAM_RANGE_MULTIPLIER
+        end
+        set_test_statuses!(container, MockThermalGen, names, statuses)
+        add_parameterized_upper_bound_range_constraints(
+            container, TestConstraintType, TestVariableType, TestValueParameter,
+            devices, model, TestPowerModel)
+        con = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "ub")
+        for (i, name) in enumerate(names), t in time_steps
+            @test JuMP.normalized_coefficient(con[name, t], param_array[name, t]) ≈
+                  -PARAM_RANGE_MULTIPLIER * statuses[i, t]
+        end
+    end
+end

@@ -134,9 +134,9 @@ function write_model_parameter_outputs!(
     end
 
     parameters = get_parameters(container)
-    for (key, param_container) in parameters
+    for key in keys(parameters)
         !should_write_resulting_value(key) && continue
-        data = calculate_parameter_values(param_container)
+        data = calculate_parameter_values(container, key)
         write_output!(store, model_name, key, index, update_timestamp, data)
 
         if !isnothing(export_params) &&

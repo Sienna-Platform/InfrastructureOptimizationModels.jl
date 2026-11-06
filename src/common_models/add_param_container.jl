@@ -6,19 +6,13 @@ among multiple overloads of a single `add_param_container!` function.
 Legacy `add_param_container!` shims live in `add_param_container_shims.jl`.
 """
 
-_time_series_param_eltype(container::OptimizationContainer, ::Type{<:TimeSeriesParameter}) =
-    get_param_eltype(container)
-_time_series_param_eltype(
-    ::OptimizationContainer,
-    ::Type{<:LeftHandSideTimeSeriesParameter},
-) =
-    Float64
-
 """
 Allocate a time-series parameter container (`TimeSeriesAttributes`). Parameter and multiplier
 arrays may have different first axes, so this is the only builder using the split-axes allocator.
 
-A [`LeftHandSideTimeSeriesParameter`](@ref) container always holds `Float64`: its values are constraint
+The element type is [`get_param_eltype`](@ref)`(container, T)`: a
+[`LeftHandSideTimeSeriesParameter`](@ref) container, like that of any parameter that
+[`requires_rebuild`](@ref), always holds `Float64`, because its values are constraint
 coefficients, never JuMP parameters.
 """
 function add_time_series_parameter_container!(
@@ -47,7 +41,7 @@ function add_time_series_parameter_container!(
         container,
         param_key,
         attributes,
-        _time_series_param_eltype(container, T),
+        get_param_eltype(container, T),
         param_axs,
         multiplier_axs,
         additional_axs,
@@ -60,7 +54,7 @@ end
 Allocate a cost-function parameter container (`CostFunctionAttributes`).
 
 Note that `data_type` sets both the attributes' type parameter and the parameter array's element
-type, bypassing `get_param_eltype(container)`.
+type, bypassing `get_param_eltype(container, T)`.
 """
 function add_cost_function_parameter_container!(
     container::OptimizationContainer,
@@ -107,7 +101,7 @@ function add_variable_value_parameter_container!(
     param_key = ParameterKey(T, U, meta)
     attributes = VariableValueAttributes(source_key)
     return add_param_container_shared_axes!(
-        container, param_key, attributes, get_param_eltype(container), axs...;
+        container, param_key, attributes, get_param_eltype(container, T), axs...;
         sparse = sparse)
 end
 
@@ -131,6 +125,6 @@ function add_event_parameter_container!(
     param_key = ParameterKey(T, U, meta)
     attributes = EventParametersAttributes(V, T)
     return add_param_container_shared_axes!(
-        container, param_key, attributes, get_param_eltype(container), axs...;
+        container, param_key, attributes, get_param_eltype(container, T), axs...;
         sparse = sparse)
 end
