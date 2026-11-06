@@ -32,6 +32,8 @@ function get_rebuild_model(model::AbstractOptimizationModel)
     return get_rebuild_model(get_optimization_container(model).settings)
 end
 
+get_release_model(model::AbstractOptimizationModel) = get_release_model(get_settings(model))
+
 function get_optimization_container(model::AbstractOptimizationModel)
     return get_optimization_container(get_internal(model))
 end

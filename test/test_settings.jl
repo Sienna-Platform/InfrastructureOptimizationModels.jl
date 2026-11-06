@@ -45,6 +45,7 @@ IOM.get_time_series_counts_by_type(::MockSystem) = [Dict("type" => "Deterministi
         @test IOM.get_export_pwl_vars(settings) == false
         @test IOM.get_allow_fails(settings) == false
         @test IOM.get_rebuild_model(settings) == false
+        @test IOM.get_release_model(settings) == false
         @test IOM.get_export_optimization_model(settings) ==
               IOM.OptimizationModelExportFormat.NONE
         @test IOM.get_store_variable_names(settings) == false
@@ -63,6 +64,7 @@ IOM.get_time_series_counts_by_type(::MockSystem) = [Dict("type" => "Deterministi
             allow_fails = true,
             check_numerical_bounds = false,
             system_to_file = false,
+            release_model = true,
             ext = Dict{String, Any}("custom" => 123),
         )
 
@@ -73,6 +75,7 @@ IOM.get_time_series_counts_by_type(::MockSystem) = [Dict("type" => "Deterministi
         @test IOM.get_allow_fails(settings) == true
         @test IOM.get_check_numerical_bounds(settings) == false
         @test IOM.get_system_to_file(settings) == false
+        @test IOM.get_release_model(settings) == true
         @test IOM.get_ext(settings)["custom"] == 123
     end
 
@@ -195,5 +198,23 @@ IOM.get_time_series_counts_by_type(::MockSystem) = [Dict("type" => "Deterministi
             system_to_file = false,
         )
         @test IOM.get_system_to_file(IOM.get_settings(emulation_model)) == false
+    end
+
+    @testset "release_model through model constructors" begin
+        sys = MockSystem(100.0, false)
+        template = SettingsTestTemplate()
+
+        @test IOM.get_release_model(
+            IOM.DecisionModel{SettingsTestProblem}(template, sys),
+        ) == false
+        @test IOM.get_release_model(
+            IOM.DecisionModel{SettingsTestProblem}(template, sys; release_model = true),
+        ) == true
+        @test IOM.get_release_model(
+            IOM.EmulationModel{SettingsTestProblem}(template, sys),
+        ) == false
+        @test IOM.get_release_model(
+            IOM.EmulationModel{SettingsTestProblem}(template, sys; release_model = true),
+        ) == true
     end
 end
