@@ -22,18 +22,28 @@ complete.
 The function drops zero coefficients to keep dense PTDF rows sparse. Radial branches and island
 bridges must have a coefficient of exactly 1 or -1. The matrix inversion can return a value
 that differs from 1 or -1 by a rounding error, so the function rounds it.
+
+The tolerance is absolute and assumes per-unit coefficients of order 1. A NaN coefficient stays
+in `expr`, so JuMP rejects it when it builds a constraint.
 """
-function round_to_zero_or_one!(expr::JuMP.GenericAffExpr{C}) where {C}
+function round_to_zero_or_one!(
+    expr::JuMP.GenericAffExpr{C, V},
+) where {C <: AbstractFloat, V}
     atol = C(EXPRESSION_ROUNDING_TOL)
     terms = expr.terms
+    drop = V[]
     for (x, c) in terms
         if abs(c - one(C)) <= atol
             terms[x] = one(C)
         elseif abs(c + one(C)) <= atol
             terms[x] = -one(C)
+        elseif abs(c) <= atol
+            push!(drop, x)
         end
     end
-    filter!(p -> abs(p.second) > atol, terms)
+    for x in drop
+        delete!(terms, x)
+    end
     return expr
 end
 
