@@ -183,6 +183,78 @@ _include_constant_min_gen_power_in_constraint(
     ::Type,
 ) = false
 
+"""
+What the block offer's minimum-power offset multiplies: the device's `OnVariable`, its
+`OnStatusParameter`, or `1.0` for a constant offset. `nothing` when the row has no offset.
+Shared by the build and `update_pwl_offset!` so the two cannot disagree.
+"""
+function _pwl_offset_anchor(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    ::Type{D},
+    name::String,
+    period::Int,
+) where {T <: IS.InfrastructureSystemsComponent, U <: VariableType, D}
+    if _include_constant_min_gen_power_in_constraint(T, U, D)
+        # An OnStatusParameter (e.g. from a SemiContinuousFeedforward) can switch the unit
+        # off. Devices outside its axis are always on.
+        has_container_key(container, OnStatusParameter, T) || return 1.0
+        on_status = get_parameter_array(container, OnStatusParameter, T)
+        if name in axes(on_status, 1)
+            return on_status[name, period]
+        end
+        return 1.0
+    elseif _include_min_gen_power_in_constraint(T, U, D)
+        # The OnVariable container holds the non-must-run devices only, so a name absent
+        # from its axis is must-run and always committed.
+        on_vars = get_variable(container, OnVariable, T)
+        if name in axes(on_vars, 1)
+            return on_vars[name, period]
+        end
+        return 1.0
+    end
+    return nothing
+end
+
+_pwl_offset(::Nothing, ::Float64) = 0.0
+_pwl_offset(anchor::JuMPOrFloat, first_breakpoint::Float64) = first_breakpoint * anchor
+
+"""
+    update_pwl_offset!(container, row, T, U, D, name, period, first_breakpoint)
+
+Move a block-offer `row` built by `add_pwl_constraint_delta!` to a new first
+breakpoint in place, for models updated between solves without a rebuild.
+"""
+function update_pwl_offset!(
+    container::OptimizationContainer,
+    row::JuMP.ConstraintRef,
+    ::Type{T},
+    ::Type{U},
+    ::Type{D},
+    name::String,
+    period::Int,
+    first_breakpoint::Float64,
+) where {T <: IS.InfrastructureSystemsComponent, U <: VariableType, D}
+    _set_pwl_offset!(
+        row,
+        _pwl_offset_anchor(container, T, U, D, name, period),
+        first_breakpoint,
+    )
+    return
+end
+
+# The row reads `power - Σδ - first_breakpoint * anchor == 0`, or `power - Σδ == offset`.
+_set_pwl_offset!(::JuMP.ConstraintRef, ::Nothing, ::Float64) = nothing
+_set_pwl_offset!(
+    row::JuMP.ConstraintRef,
+    anchor::JuMP.VariableRef,
+    first_breakpoint::Float64,
+) =
+    JuMP.set_normalized_coefficient(row, anchor, -first_breakpoint)
+_set_pwl_offset!(row::JuMP.ConstraintRef, anchor::Float64, first_breakpoint::Float64) =
+    JuMP.set_normalized_rhs(row, first_breakpoint * anchor)
+
 ##################################################
 # PWL Block Offer Constraint Wrapper
 # The ReserveDemandCurve-specific overload is in POM.
@@ -231,24 +303,8 @@ function add_pwl_constraint_delta!(
     )
     name = get_name(component)
 
-    min_power_offset = if _include_constant_min_gen_power_in_constraint(T, U, D)
-        jump_fixed_value(first(break_points))::Float64
-    elseif _include_min_gen_power_in_constraint(T, U, D)
-        p1::Float64 = jump_fixed_value(first(break_points))
-        on_vars = get_variable(container, OnVariable, T)
-        # Membership decides the branch, not a device trait: the OnVariable container is
-        # built from the non-must-run devices only, so a name absent from its axis is
-        # must-run and always committed (On === 1), making the offset the constant p1.
-        # Reading the axis keeps this correct for every component type, including those
-        # with no `must_run` field at all.
-        if name in axes(on_vars, 1)
-            p1 * on_vars[name, period]
-        else
-            p1
-        end
-    else
-        0.0
-    end
+    anchor = _pwl_offset_anchor(container, T, U, D, name, period)
+    min_power_offset = _pwl_offset(anchor, jump_fixed_value(first(break_points))::Float64)
 
     add_pwl_block_offer_constraints!(
         get_jump_model(container),
