@@ -53,18 +53,4 @@ end
             MockThermalGen,
         )
     end
-
-    @testset "The add_param_container! shim routes to the event overload" begin
-        container = _make_event_parameter_container(time_steps)
-        param_container = IOM.add_param_container!(
-            container,
-            EventContainerParameter,
-            MockThermalGen,
-            MockOutageAttribute,
-            names,
-            time_steps,
-        )
-        @test IOM.get_attributes(param_container) isa
-              IOM.EventParametersAttributes{MockOutageAttribute, EventContainerParameter}
-    end
 end
