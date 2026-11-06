@@ -489,12 +489,12 @@ end
         @test con_rhs(container) == 10.0
 
         # An OnStatusParameter (e.g. a SemiContinuousFeedforward) scales the offset.
-        for on_status in (0.0, 1.0)
+        function build_with_on_status(names, on_status; eltype = Float64)
             c = make_test_container(time_steps; base_power = 100.0)
             add_test_variable!(c, TestVariableType, MockThermalGen, "gen1", 1)
             add_test_parameter!(
-                c, IOM.OnStatusParameter, MockThermalGen, ["gen1"], time_steps,
-                fill(on_status, 1, 1),
+                c, IOM.OnStatusParameter, MockThermalGen, names, time_steps,
+                fill(on_status, length(names), 1); eltype = eltype,
             )
             vars = IOM.add_pwl_variables_delta!(
                 c, IOM.PiecewiseLinearBlockIncrementalOffer, MockThermalGen, "gen1", 1,
@@ -505,8 +505,27 @@ end
                 c, device, TestVariableType, TestConstantMinGenFormulation, breakpoints,
                 vars, 1, IOM.PiecewiseLinearBlockIncrementalOfferConstraint,
             )
-            @test con_rhs(c) == 10.0 * on_status
+            return c
         end
+        for on_status in (0.0, 1.0)
+            @test con_rhs(build_with_on_status(["gen1"], on_status)) == 10.0 * on_status
+        end
+
+        # Recurrent builds hold the status as a JuMP parameter: the offset is 10 * status.
+        c = build_with_on_status(["gen1"], 1.0; eltype = JuMP.VariableRef)
+        on_param =
+            IOM.get_parameter_array(c, IOM.OnStatusParameter, MockThermalGen)["gen1", 1]
+        con = IOM.get_constraint(
+            c, IOM.PiecewiseLinearBlockIncrementalOfferConstraint, MockThermalGen,
+        )[
+            "gen1",
+            1,
+        ]
+        @test JuMP.normalized_coefficient(con, on_param) == -10.0
+        @test con_rhs(c) == 0.0
+
+        # A device outside the parameter's axis (e.g. must-run) keeps the full offset.
+        @test con_rhs(build_with_on_status(["gen2"], 0.0)) == 10.0
     end
 
     @testset "add_pwl_constraint_delta! with OnVariable min-gen offset" begin
