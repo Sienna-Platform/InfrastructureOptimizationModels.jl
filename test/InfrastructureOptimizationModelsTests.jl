@@ -96,6 +96,7 @@ function run_tests()
                     # TODO dataset.jl
                     # definitions.jl: no need for tests
                     include(joinpath(TEST_DIR, "test_device_model.jl"))
+                    include(joinpath(TEST_DIR, "test_add_constraint_dual.jl"))
                     # TODO: initial_conditions.jl
                     include(joinpath(TEST_DIR, "test_model_internal.jl"))
                     # model_store_params.jl: low-complexity

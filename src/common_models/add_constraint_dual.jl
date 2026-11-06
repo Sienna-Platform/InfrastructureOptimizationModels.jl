@@ -1,3 +1,13 @@
+"""
+    dual_assigned_later(::Type{<:ConstraintType}) -> Bool
+
+Return `true` for a constraint type whose rows a build pass after the device or network
+`ModelConstructStage` creates. `add_constraint_dual!` skips such a type, and the later
+pass calls `assign_dual_variable!` after it adds the rows. The default is `false`, so a
+requested dual with no constraint container still fails in `_validate_keys`.
+"""
+dual_assigned_later(::Type{<:ConstraintType}) = false
+
 # Device model
 function add_constraint_dual!(
     container::OptimizationContainer,
@@ -7,6 +17,9 @@ function add_constraint_dual!(
     if !isempty(get_duals(model))
         devices = get_available_components(model, sys)
         for constraint_type in get_duals(model)
+            if dual_assigned_later(constraint_type)
+                continue
+            end
             assign_dual_variable!(container, constraint_type, devices, D)
         end
     end
@@ -23,6 +36,9 @@ function add_constraint_dual!(
         # component is ACBus, but we don't have PSY as a dependency.
         devices = get_available_components(model, component_for_network_dual(nothing), sys)
         for constraint_type in get_duals(model)
+            if dual_assigned_later(constraint_type)
+                continue
+            end
             assign_dual_variable!(container, constraint_type, devices, model)
         end
     end
