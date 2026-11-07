@@ -566,6 +566,8 @@ export get_resolution
 
 export get_contributing_devices
 export get_contributing_devices_map
+export add_contributing_device!
+export contributing_device_types
 export get_parameter_column_values
 export update_container_parameter_values!
 export export_outputs

@@ -38,6 +38,13 @@ function IOM.get_available_components(
     return get_components(T, sys)
 end
 
+function IOM.get_available_components(
+    ::DeviceModel{T},
+    sys::MockSystem,
+) where {T <: IS.InfrastructureSystemsComponent}
+    return T[c for c in get_components(T, sys) if get_available(c)]
+end
+
 function get_components(::Type{T}, sys::MockSystem) where {T}
     return get(sys.components, T, T[])
 end

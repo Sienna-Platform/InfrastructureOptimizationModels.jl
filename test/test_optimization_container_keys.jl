@@ -212,3 +212,25 @@ end
         IOM.CostFunctionAttributes{Float64}((), IOM.SOSStatusVariable.NO_VARIABLE, false)
     @test IOM.get_variable_types_string(empty_attributes) == ""
 end
+
+@testset "add_contributing_device! keeps one concrete vector per device type" begin
+    bus = MockBus("bus", 1, :PV)
+    thermal1 = MockThermalGen("g1", true, bus, (min = 0.0, max = 1.0))
+    thermal2 = MockThermalGen("g2", true, bus, (min = 0.0, max = 1.0))
+    renewable = MockRenewableGen("r1", true, bus, 1.0)
+    model = ServiceModel(MockReserve{MockUp}, MockReserveFormulation)
+
+    IOM.add_contributing_device!(model, "spin", thermal1)
+    IOM.add_contributing_device!(model, "spin", thermal2)
+    IOM.add_contributing_device!(model, "spin", renewable)
+
+    devices_map = IOM.get_contributing_devices_map(model, "spin")
+    @test length(devices_map) == 2
+    @test Set(IOM.contributing_device_types(model, "spin")) ==
+          Set([MockThermalGen, MockRenewableGen])
+    @test typeof(devices_map[MockThermalGen]) == Vector{MockThermalGen}
+    @test length(devices_map[MockThermalGen]) == 2
+    @test typeof(devices_map[MockRenewableGen]) == Vector{MockRenewableGen}
+    @test length(devices_map[MockRenewableGen]) == 1
+    @test isempty(IOM.contributing_device_types(model, "other"))
+end
