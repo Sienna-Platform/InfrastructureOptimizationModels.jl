@@ -300,6 +300,9 @@ export get_objective_expression
 export get_formulation
 export get_settings
 export get_rebuild_model
+export get_release_model
+export is_released
+export set_released!
 
 # Expression infrastructure (needed by add_to_expression.jl implementations)
 export get_parameter
