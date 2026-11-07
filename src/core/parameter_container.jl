@@ -6,11 +6,32 @@ abstract type ParameterAttributes end
 
 struct NoAttributes <: ParameterAttributes end
 
-struct TimeSeriesAttributes{T <: IS.TimeSeriesData} <: ParameterAttributes
+abstract type AbstractRowAggregation end
+
+"""
+The default for a time-series parameter container: each component contributes its own
+parameter reference.
+"""
+struct NoRowAggregation <: AbstractRowAggregation end
+
+"""
+Sums the component time series of a parameter container into one value per row key and
+time step. The sum of row `k` at step `t` is `Σ multiplier[c, t] * parameter[ts(c), t]` over
+the components `c` mapped to `k`. The member values stay `Float64`.
+"""
+struct RowAggregation{K, V <: DenseAxisArray{<:Any, 2}} <: AbstractRowAggregation
+    row_of::Dict{String, K}
+    members::Vector{Vector{Tuple{Int, Float64}}}
+    values::V
+end
+
+struct TimeSeriesAttributes{T <: IS.TimeSeriesData, A <: AbstractRowAggregation} <:
+       ParameterAttributes
     name::String
     multiplier_id::Base.RefValue{Int}
     component_name_to_ts_uuid::Dict{String, String}
     subsystem::Base.RefValue{String}
+    aggregation::A
 end
 
 function TimeSeriesAttributes(
@@ -18,14 +39,18 @@ function TimeSeriesAttributes(
     name::String,
     multiplier_id::Int = 1,
     component_name_to_ts_uuid = Dict{String, String}(),
+    aggregation::AbstractRowAggregation = NoRowAggregation(),
 ) where {T <: IS.TimeSeriesData}
-    return TimeSeriesAttributes{T}(
+    return TimeSeriesAttributes{T, typeof(aggregation)}(
         name,
         Base.RefValue{Int}(multiplier_id),
         component_name_to_ts_uuid,
         Base.RefValue{String}(""),
+        aggregation,
     )
 end
+
+get_row_aggregation(attr::TimeSeriesAttributes) = attr.aggregation
 
 get_time_series_type(::TimeSeriesAttributes{T}) where {T <: IS.TimeSeriesData} = T
 get_time_series_name(attr::TimeSeriesAttributes) = attr.name
@@ -192,6 +217,7 @@ function calculate_parameter_values(
 end
 
 function get_parameter_column_refs(container::ParameterContainer, column::AbstractString)
+    _check_per_component_refs(get_attributes(container), column)
     return get_parameter_column_refs(
         container.attributes,
         container.parameter_array,
@@ -201,6 +227,21 @@ end
 
 function get_parameter_column_refs(::ParameterAttributes, param_array, column)
     return param_array
+end
+
+_check_per_component_refs(::ParameterAttributes, ::AbstractString) = nothing
+
+# The member values of an aggregated container are `Float64` even in a recurrent build, so a
+# per-component reference would put a constant that never updates into the model.
+function _check_per_component_refs(
+    attr::TimeSeriesAttributes{<:IS.TimeSeriesData, <:RowAggregation},
+    column::AbstractString,
+)
+    error(
+        "Time series $(get_time_series_name(attr)) of component $column is aggregated " *
+        "per row. Use get_row_aggregate_refs; get_parameter_column_values gives the " *
+        "per-component values.",
+    )
 end
 
 function get_parameter_column_refs(
@@ -213,7 +254,13 @@ function get_parameter_column_refs(
 end
 
 function get_parameter_column_values(container::ParameterContainer, column::AbstractString)
-    return jump_value.(get_parameter_column_refs(container, column))
+    return jump_value.(
+        get_parameter_column_refs(
+            get_attributes(container),
+            get_parameter_array(container),
+            column,
+        ),
+    )
 end
 
 function get_parameter_values(container::ParameterContainer)
@@ -499,4 +546,48 @@ end
         JuMP.fix(parent_param[i, k, t], value[k]; force = true)
     end
     return
+end
+
+#################################################################################
+# Row aggregation of time-series parameters
+#################################################################################
+
+"""
+Return a view of the per-time-step aggregated parameters for `row_key`: fixed JuMP variables
+in a recurrent-solve build, `Float64` values otherwise.
+"""
+function get_row_aggregate_refs(container::ParameterContainer, row_key)
+    values = get_row_aggregation(get_attributes(container)).values
+    return @view values.data[values.lookup[1][row_key], :]
+end
+
+"""
+Recompute the aggregated values from the member values in `parent_param` and fix the
+aggregated parameters to them. No-op for a container without row aggregation.
+"""
+refresh_row_aggregates!(::TimeSeriesAttributes, ::AbstractArray) = nothing
+
+function refresh_row_aggregates!(
+    attributes::TimeSeriesAttributes{<:IS.TimeSeriesData, <:RowAggregation},
+    parent_param::Matrix{Float64},
+)
+    aggregation = get_row_aggregation(attributes)
+    parent_values = aggregation.values.data
+    for t in axes(parent_values, 2), r in axes(parent_values, 1)
+        value = _row_sum(aggregation.members[r], parent_param, t)
+        _set_param_value_at!(parent_values, value, r, t)
+    end
+    return
+end
+
+function _row_sum(
+    members::Vector{Tuple{Int, Float64}},
+    parent_param::Matrix{Float64},
+    t::Int,
+)
+    total = 0.0
+    for (i, multiplier) in members
+        total += multiplier * parent_param[i, t]
+    end
+    return total
 end

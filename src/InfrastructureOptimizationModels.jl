@@ -204,6 +204,7 @@ export ParameterContainer
 export ParameterAttributes
 export NoAttributes
 export TimeSeriesAttributes
+export AbstractRowAggregation, NoRowAggregation, RowAggregation
 export VariableValueAttributes
 export CostFunctionAttributes
 export EventParametersAttributes
@@ -342,6 +343,11 @@ export LeftHandSideTimeSeriesParameter
 export get_lhs_parameter_values, has_lhs_parameter_component, get_value_length
 export set_rebuild_model!
 export add_time_series_parameter_container!,
+    add_aggregated_time_series_parameter_container!,
+    build_row_aggregates!,
+    refresh_row_aggregates!,
+    get_row_aggregate_refs,
+    get_row_aggregation,
     add_cost_function_parameter_container!,
     add_variable_value_parameter_container!,
     add_event_parameter_container!,
