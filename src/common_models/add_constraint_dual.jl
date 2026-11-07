@@ -2,9 +2,11 @@
     dual_assigned_later(::Type{<:ConstraintType}) -> Bool
 
 Return `true` for a constraint type whose rows a build pass after the device or network
-`ModelConstructStage` creates. `add_constraint_dual!` skips such a type, and the later
-pass calls `assign_dual_variable!` after it adds the rows. The default is `false`, so a
-requested dual with no constraint container still fails in `_validate_keys`.
+`ModelConstructStage` creates. `add_constraint_dual!` records such a type in
+`get_deferred_duals(container)` and skips it. The later pass calls `assign_dual_variable!`
+after it adds the rows. `check_optimization_container` errors for a recorded type that no
+pass assigned. The default is `false`, so a requested dual with no constraint container
+still fails in `_validate_keys`.
 """
 dual_assigned_later(::Type{<:ConstraintType}) = false
 
@@ -18,6 +20,7 @@ function add_constraint_dual!(
         devices = get_available_components(model, sys)
         for constraint_type in get_duals(model)
             if dual_assigned_later(constraint_type)
+                push!(get_deferred_duals(container), (constraint_type, T))
                 continue
             end
             assign_dual_variable!(container, constraint_type, devices, D)
@@ -34,9 +37,11 @@ function add_constraint_dual!(
 ) where {T <: AbstractNetworkModel}
     if !isempty(get_duals(model))
         # component is ACBus, but we don't have PSY as a dependency.
-        devices = get_available_components(model, component_for_network_dual(nothing), sys)
+        component_type = component_for_network_dual(nothing)
+        devices = get_available_components(model, component_type, sys)
         for constraint_type in get_duals(model)
             if dual_assigned_later(constraint_type)
+                push!(get_deferred_duals(container), (constraint_type, component_type))
                 continue
             end
             assign_dual_variable!(container, constraint_type, devices, model)

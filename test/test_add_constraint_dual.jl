@@ -47,6 +47,10 @@ end
         duals = IOM.get_duals(container)
         @test haskey(duals, IOM.ConstraintKey(TestConstraintType, MockThermalGen))
         @test !haskey(duals, IOM.ConstraintKey(LaterDualConstraint, MockThermalGen))
+        @test (LaterDualConstraint, MockThermalGen) in IOM.get_deferred_duals(container)
+
+        # The build check errors while no pass assigned the deferred dual.
+        @test_throws ErrorException IOM.check_optimization_container(container)
 
         # The later pass assigns the dual once the rows exist.
         _fill_constraints!(container, LaterDualConstraint, names, time_steps)
@@ -57,6 +61,8 @@ end
             TestDeviceFormulation,
         )
         @test haskey(duals, IOM.ConstraintKey(LaterDualConstraint, MockThermalGen))
+        IOM.check_optimization_container(container)
+        @test true
     end
 
     @testset "The default trait still fails on a missing container" begin
