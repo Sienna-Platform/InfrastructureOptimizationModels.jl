@@ -43,7 +43,7 @@ Establishes the model for a particular device specified by type. Uses the keywor
   - `::Type{B} where B<:AbstractDeviceFormulation`: Abstract Device Formulation
   - `feedforwards::Vector{<:AbstractAffectFeedforward} = Vector{AbstractAffectFeedforward}()` : use to pass parameters between models
   - `use_slacks::Bool = false` : Add slacks to the device model. Implementation is model dependent and not all models feature slacks
-  - `slack_penalty::Float64 = CONSTRAINT_VIOLATION_SLACK_COST` : Objective cost of one unit of slack per hour, applied when `use_slacks` is `true`
+  - `slack_penalty::Real = CONSTRAINT_VIOLATION_SLACK_COST` : Objective cost of one unit of slack per hour, applied when `use_slacks` is `true`. Must be finite and nonnegative. Only formulations that read `get_slack_penalty` use it
   - `duals::Vector{DataType} = Vector{DataType}()`: use to pass constraint type to calculate the duals. The DataType needs to be a valid ConstraintType
   - `time_series_names::Dict{Type{<:TimeSeriesParameter}, String} = get_default_time_series_names(D, B)` : use to specify time series names associated to the device`
   - `attributes::Dict{String, Any} = get_default_attributes(D, B)` : use to specify attributes to the device
@@ -86,7 +86,7 @@ mutable struct DeviceModel{
         ::Type{B};
         feedforwards = Vector{AbstractAffectFeedforward}(),
         use_slacks = false,
-        slack_penalty::Float64 = CONSTRAINT_VIOLATION_SLACK_COST,
+        slack_penalty::Real = CONSTRAINT_VIOLATION_SLACK_COST,
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
         attributes = Dict{String, Any}(),
@@ -99,6 +99,7 @@ mutable struct DeviceModel{
 
         _check_device_formulation(D)
         _check_device_formulation(B)
+        _check_slack_penalty(slack_penalty)
         new{D, B}(
             convert(Vector{AbstractAffectFeedforward}, feedforwards),
             use_slacks,

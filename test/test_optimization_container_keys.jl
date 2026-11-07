@@ -195,6 +195,16 @@ end
         slack_penalty = 5.0e4,
     )
     @test IOM.get_slack_penalty(custom_model) == 5.0e4
+    int_model =
+        ServiceModel(MockReserve{MockUp}, MockReserveFormulation; slack_penalty = 5000)
+    @test IOM.get_slack_penalty(int_model) === 5000.0
+    for bad in (-1.0, Inf, NaN)
+        @test_throws ArgumentError ServiceModel(
+            MockReserve{MockUp},
+            MockReserveFormulation;
+            slack_penalty = bad,
+        )
+    end
 end
 
 @testset "Parameter attributes store their recorder strings" begin

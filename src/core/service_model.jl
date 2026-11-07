@@ -25,7 +25,7 @@ enable passing values between operation models at simulation time.
 # Accepted Key Words
 
   - `feedforwards::Vector{<:AbstractAffectFeedforward}` : use to pass parameters between models
-  - `slack_penalty::Float64 = SERVICES_SLACK_COST` : Objective cost of one unit of slack per hour, applied when `use_slacks` is `true`
+  - `slack_penalty::Real = SERVICES_SLACK_COST` : Objective cost of one unit of slack per hour, applied when `use_slacks` is `true`. Must be finite and nonnegative. Only formulations that read `get_slack_penalty` use it
 
 # Example
 
@@ -51,7 +51,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
         ::Type{D},
         ::Type{B};
         use_slacks = false,
-        slack_penalty::Float64 = SERVICES_SLACK_COST,
+        slack_penalty::Real = SERVICES_SLACK_COST,
         feedforwards = Vector{AbstractAffectFeedforward}(),
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
@@ -68,6 +68,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
 
         _check_service_formulation(D)
         _check_service_formulation(B)
+        _check_slack_penalty(slack_penalty)
         new{D, B}(
             convert(Vector{AbstractAffectFeedforward}, feedforwards),
             use_slacks,

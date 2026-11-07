@@ -37,6 +37,19 @@ using InfrastructureOptimizationModels
         @test IOM.get_attribute(model, "nonexistent") === nothing
     end
 
+    @testset "Slack penalty" begin
+        model =
+            IOM.DeviceModel(MockThermalGen, TestDeviceFormulation; slack_penalty = 5000)
+        @test IOM.get_slack_penalty(model) === 5000.0
+        for bad in (-1.0, Inf, NaN)
+            @test_throws ArgumentError IOM.DeviceModel(
+                MockThermalGen,
+                TestDeviceFormulation;
+                slack_penalty = bad,
+            )
+        end
+    end
+
     @testset "Attributes merging" begin
         # Custom attributes should merge with defaults from get_default_attributes
         model = IOM.DeviceModel(
