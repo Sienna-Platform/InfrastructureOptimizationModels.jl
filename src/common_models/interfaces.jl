@@ -366,8 +366,8 @@ Update parameter values in the optimization container from the given input data.
 This is an extension point — concrete implementations should be defined in
 PowerOperationsModels (or PowerSimulations for simulation-specific variants).
 
-Only called in `emulation_model.jl`: that file's contents and this function should
-likely be moved to POM or PSI.
+The simulation calls it for each parameter key of a model at every step, after
+[`update_model_parameters!`](@ref).
 """
 function update_container_parameter_values! end
 

@@ -344,6 +344,10 @@ export OnStatusParameter
 export LeftHandSideTimeSeriesParameter
 export get_lhs_parameter_values, has_lhs_parameter_component, get_value_length
 export set_rebuild_model!
+
+# Rebuilds and per-step parameter refresh
+export requires_rebuild, should_add_parameter, on_parameter_reused!
+export reset_optimization_model!, rebuild_model!, update_model_parameters!
 export add_time_series_parameter_container!,
     add_cost_function_parameter_container!,
     add_variable_value_parameter_container!,

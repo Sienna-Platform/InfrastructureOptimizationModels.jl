@@ -24,9 +24,14 @@ function _make_lhs_container(time_steps; rebuild_model = false)
 end
 
 # One component "c1" whose profile lives in parameter row "hash1", plus a scalar multiplier.
-function _lhs_fixture(values::Vector{Float64}; multiplier = 0.5, recurrent = false)
+function _lhs_fixture(
+    values::Vector{Float64};
+    multiplier = 0.5,
+    recurrent = false,
+    rebuild_model = false,
+)
     time_steps = 1:length(values)
-    container = _make_lhs_container(time_steps)
+    container = _make_lhs_container(time_steps; rebuild_model = rebuild_model)
     container.built_for_recurrent_solves = recurrent
     param_container = IOM.add_time_series_parameter_container!(
         container,
@@ -54,11 +59,14 @@ end
         @test supertype(IOM.VariableValueParameter) === IOM.ParameterType
     end
 
-    @testset "LHS containers hold Float64 even for recurrent solves" begin
-        container, param_container, _ = _lhs_fixture([0.2, 0.4]; recurrent = true)
-        @test IOM.get_param_eltype(container) == JuMP.VariableRef
+    @testset "LHS containers hold Float64 and require rebuilds for recurrent solves" begin
+        container, param_container, _ =
+            _lhs_fixture([0.2, 0.4]; recurrent = true, rebuild_model = true)
+        @test IOM.get_param_eltype(container, MockLHSParameter) == Float64
         @test eltype(IOM.get_parameter_array(param_container)) == Float64
         @test IOM.get_attributes(param_container) isa IOM.TimeSeriesAttributes
+        @test_throws r"MockLHSParameter.*rebuild_model = true" _lhs_fixture(
+            [0.2, 0.4]; recurrent = true)
     end
 
     @testset "RHS time series containers still follow get_param_eltype" begin
