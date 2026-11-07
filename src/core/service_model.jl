@@ -25,6 +25,7 @@ enable passing values between operation models at simulation time.
 # Accepted Key Words
 
   - `feedforwards::Vector{<:AbstractAffectFeedforward}` : use to pass parameters between models
+  - `slack_penalty::Real = SERVICES_SLACK_COST` : Objective cost of one unit of slack per hour, applied when `use_slacks` is `true`. Must be finite and nonnegative. Only formulations that read `get_slack_penalty` use it
 
 # Example
 
@@ -34,6 +35,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
     # Heterogeneous by design: concrete Vector of the abstract type, not a UnionAll field.
     feedforwards::Vector{AbstractAffectFeedforward}
     use_slacks::Bool
+    slack_penalty::Float64
     duals::Vector{DataType}
     time_series_names::Dict{Type{<:TimeSeriesParameter}, String}
     attributes::Dict{String, Any}
@@ -49,6 +51,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
         ::Type{D},
         ::Type{B};
         use_slacks = false,
+        slack_penalty::Real = SERVICES_SLACK_COST,
         feedforwards = Vector{AbstractAffectFeedforward}(),
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
@@ -65,9 +68,11 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
 
         _check_service_formulation(D)
         _check_service_formulation(B)
+        _check_slack_penalty(slack_penalty)
         new{D, B}(
             convert(Vector{AbstractAffectFeedforward}, feedforwards),
             use_slacks,
+            slack_penalty,
             duals,
             time_series_names,
             attributes_for_model,
@@ -86,6 +91,7 @@ get_formulation(
 ) where {D <: IS.InfrastructureSystemsComponent, B} = B
 get_feedforwards(m::ServiceModel) = m.feedforwards
 get_use_slacks(m::ServiceModel) = m.use_slacks
+get_slack_penalty(m::ServiceModel) = m.slack_penalty
 get_duals(m::ServiceModel) = m.duals
 get_time_series_names(m::ServiceModel) = m.time_series_names
 get_attributes(m::ServiceModel) = m.attributes

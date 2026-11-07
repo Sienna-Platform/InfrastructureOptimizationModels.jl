@@ -440,7 +440,7 @@ export has_initial_condition_value, set_ic_quantity!, get_last_recorded_value
 export set_initial_conditions_model_container!, get_initial_conditions_model_container
 export get_component_type, get_component_name, add_jump_parameter
 # Template/model access
-export get_use_slacks, get_template, get_model
+export get_use_slacks, get_slack_penalty, get_template, get_model
 export get_attributes, get_parameter_column_values
 export get_services, get_contributing_devices, get_contributing_devices_map
 export set_resolution!, finalize_template!
