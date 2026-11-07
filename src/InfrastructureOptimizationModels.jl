@@ -163,6 +163,7 @@ using DocStringExtensions
 # Base Models
 export DecisionModel
 export EmulationModel
+export InvestmentModel, InvestmentModelStore
 export AbstractProblemTemplate
 export AbstractSolveContext
 export make_solve_context
@@ -482,6 +483,11 @@ export NetActivePower
 export DCCurrentBalance
 export HVDCPowerBalance
 
+export InvestmentExpressionType
+export OperationsExpressionType
+export FeasibilityExpressionType
+export CumulativeInvestmentExpressionType
+
 # Standard Variable Types (used in IOM infrastructure code, consumed by POM)
 export ActivePowerVariable, ActivePowerInVariable, ActivePowerOutVariable
 export PowerAboveMinimumVariable
@@ -490,6 +496,11 @@ export ReservationVariable
 export PiecewiseLinearCostVariable
 export RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown
 export DCVoltage
+
+# Standard Variable Types (used in IOM infrastructure code, consumed by PSIN)
+export InvestmentVariableType, OperationsVariableType, FeasibilityVariableType
+export BuildInvestmentVariableType
+
 # Abstract types needed by POM for type hierarchy
 export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariableType
 
@@ -531,6 +542,11 @@ export SimulationBuildStatus
 # Problem Types
 export AbstractOptimizationProblem
 
+# Technology and Requirement Formulations
+export InvestmentTechnologyFormulation,
+    OperationsTechnologyFormulation, FeasibilityTechnologyFormulation
+export RequirementFormulation
+
 # Settings and Data Types
 export Settings
 export get_warm_start
@@ -547,6 +563,13 @@ export use_time_series_cache
 export set_horizon!, set_initial_time!, set_warm_start!
 export log_values
 export InitialConditionsData
+
+# Time Mapping
+export AbstractTimeMapping, NestedTimeMapping
+export get_period_count, get_block_ranges, get_block_period_index
+export get_periods, get_blocks, get_period_time_steps
+export get_period_index, get_last_time_step, get_block_weights, validate_time_mapping
+export get_time_mapping, set_time_mapping!
 
 # Constants
 export COST_EPSILON
@@ -610,6 +633,7 @@ include("core/outputs_by_time.jl")
 
 # Order Required
 include("operation/problem_template.jl")
+include("core/time_mapping.jl")
 include("core/optimization_container.jl")
 include("core/lhs_parameters.jl")
 include("core/dual_processing.jl")
@@ -688,6 +712,9 @@ include("operation/problem_outputs.jl")
 include("operation/time_series_interface.jl")
 include("operation/optimization_debugging.jl")
 include("operation/model_numerical_analysis_utils.jl")
+
+include("investments/investment_model_store.jl")
+include("investments/investment_model.jl")
 
 include("initial_conditions/calculate_initial_condition.jl")
 

@@ -14,4 +14,26 @@
         @test result == array
         @test axes(result) == axes(array)
     end
+
+    @testset "optimizer stats are read and written the same way for every store" begin
+        stats = IOM.OptimizerStats()
+        for (store, index) in (
+            (IOM.DecisionModelStore(), Dates.DateTime(2024, 1, 1)),
+            (IOM.EmulationModelStore(), 1),
+            (IOM.InvestmentModelStore(), Dates.Date(2030, 1, 1)),
+        )
+            IOM.write_optimizer_stats!(store, stats, index)
+            df = IOM.read_optimizer_stats(store)
+            @test size(df, 1) == 1
+            # Only timestamp-indexed stores get a :DateTime column.
+            @test (:DateTime in propertynames(df)) == !(store isa IOM.EmulationModelStore)
+            # Rewriting an index warns and replaces the entry.
+            @test_logs (:warn, r"Overwriting optimizer stats") IOM.write_optimizer_stats!(
+                store,
+                stats,
+                index,
+            )
+            @test size(IOM.read_optimizer_stats(store), 1) == 1
+        end
+    end
 end
