@@ -97,6 +97,9 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     default_time_series_type::Type
     evaluation_data::EvaluationDataContainer
     serialization_task::Union{Nothing, Task}
+    # Duals that `add_constraint_dual!` skipped because `dual_assigned_later` is true.
+    # `check_optimization_container` errors for any entry that no later pass assigned.
+    deferred_duals::Set{Tuple{DataType, DataType}}
 end
 
 function OptimizationContainer(
@@ -147,6 +150,7 @@ function OptimizationContainer(
         T,
         EvaluationDataContainer(),
         nothing,
+        Set{Tuple{DataType, DataType}}(),
     )
 end
 
@@ -225,6 +229,7 @@ Return the [`EvaluationDataContainer`](@ref) of the container, or the runtime da
 evaluator type `T`.
 """
 get_evaluation_data(container::OptimizationContainer) = container.evaluation_data
+get_deferred_duals(container::OptimizationContainer) = container.deferred_duals
 get_evaluation_data(container::OptimizationContainer, T::DataType) =
     container.evaluation_data[T]
 
@@ -484,6 +489,28 @@ function check_optimization_container(container::OptimizationContainer)
         end
     end
     _check_evaluator_aux_var_bindings(container)
+    _check_deferred_duals(container)
+    return
+end
+
+function _check_deferred_duals(container::OptimizationContainer)
+    dual_keys = keys(get_duals(container))
+    for (constraint_type, component_type) in get_deferred_duals(container)
+        assigned = any(
+            key ->
+                get_entry_type(key) === constraint_type &&
+                    get_component_type(key) === component_type,
+            dual_keys,
+        )
+        if !assigned
+            error(
+                "The dual of $constraint_type for $component_type was requested, but no " *
+                "build pass assigned it. dual_assigned_later is true for this type, so " *
+                "the pass that adds its rows must call assign_dual_variable!. That pass " *
+                "did not run.",
+            )
+        end
+    end
     return
 end
 
