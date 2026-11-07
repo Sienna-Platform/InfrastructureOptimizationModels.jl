@@ -146,6 +146,9 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     # Duals that `add_constraint_dual!` skipped because `dual_assigned_later` is true.
     # `check_optimization_container` errors for any entry that no later pass assigned.
     deferred_duals::Set{Tuple{DataType, DataType}}
+    # The `ComponentStatusArray` of each status parameter, built once per container (see
+    # `get_component_status_array`); entries are `ComponentStatusArray`s.
+    component_status_cache::Dict{ParameterKey, Any}
 end
 
 function OptimizationContainer(
@@ -198,6 +201,7 @@ function OptimizationContainer(
         EvaluationDataContainer(),
         nothing,
         Set{Tuple{DataType, DataType}}(),
+        Dict{ParameterKey, Any}(),
     )
 end
 
@@ -569,6 +573,7 @@ function reset_optimization_model!(container::OptimizationContainer)
     container.initial_conditions_data = InitialConditionsData()
     container.objective_function = ObjectiveFunction()
     container.primal_values_cache = PrimalValuesCache()
+    empty!(container.component_status_cache)
     empty!(container.deferred_duals)
     JuMP.empty!(get_jump_model(container))
     return
@@ -1381,7 +1386,7 @@ function read_parameters(container::OptimizationContainer)
         # place and be consistent in behavior.
         #params_dict[k] = to_dataframe(calculate_parameter_values(v))
         param_array = get_parameter_values(v)
-        multiplier_array = get_multiplier_array(v)
+        multiplier_array = _status_scaled_multiplier(container, k, get_multiplier_array(v))
         params_dict[k] = _calculate_parameter_values(k, param_array, multiplier_array)
     end
     return params_dict
@@ -1932,7 +1937,7 @@ lookup_value(container::OptimizationContainer, key::AuxVarKey) =
     get_aux_variable(container, key)
 
 lookup_value(container::OptimizationContainer, key::ParameterKey) =
-    calculate_parameter_values(get_parameter(container, key))
+    calculate_parameter_values(container, key)
 
 lookup_value(
     container::OptimizationContainer,

@@ -185,7 +185,8 @@ _include_constant_min_gen_power_in_constraint(
 
 """
 What the block offer's minimum-power offset multiplies: the device's `OnVariable`, its
-`OnStatusParameter`, `1.0` for a constant offset, or `0.0` when the row has no offset.
+`OnStatusParameter`, its component status (`1.0` while in service) for a constant offset or
+a device without an `OnVariable`, or `0.0` when the row has no offset.
 Shared by the build and `update_pwl_offset!` so the two cannot disagree.
 """
 function _pwl_offset_anchor(
@@ -204,22 +205,26 @@ function _pwl_offset_anchor(
     D,
 }
     if _include_constant_min_gen_power_in_constraint(T, U, D)
-        # An OnStatusParameter (e.g. from a SemiContinuousFeedforward) can switch the unit
-        # off. Devices outside its axis are always on.
-        has_container_key(container, OnStatusParameter, T) || return 1.0
+        # A component that is out at `period` has no offset. While it is in service, an
+        # OnStatusParameter (e.g. from a SemiContinuousFeedforward) can switch it off;
+        # components outside that parameter's axis are on.
+        status = get_component_status(container, T, name, period)
+        iszero(status) && return 0.0
+        has_container_key(container, OnStatusParameter, T) || return status
         on_status = get_parameter_array(container, OnStatusParameter, T)
         if name in axes(on_status, 1)
             return on_status[name, period]
         end
-        return 1.0
+        return status
     elseif _include_min_gen_power_in_constraint(T, U, D)
-        # The OnVariable container holds the non-must-run devices only, so a name absent
-        # from its axis is must-run and always committed.
+        # The OnVariable container holds the components that are not always committed, and
+        # an OnVariable is fixed to zero while its component is out. A name absent from the
+        # axis is committed whenever it is in service.
         on_vars = get_variable(container, OnVariable, T)
         if name in axes(on_vars, 1)
             return on_vars[name, period]
         end
-        return 1.0
+        return get_component_status(container, T, name, period)
     end
     return 0.0
 end
@@ -280,12 +285,13 @@ _set_pwl_offset!(row::JuMP.ConstraintRef, anchor::Float64, offset::Float64) =
 Implement the constraints for PWL Block Offer variables. That is:
 
 ```math
-\\sum_{k\\in\\mathcal{K}} \\delta_{k,t} = p_t \\\\
-\\sum_{k\\in\\mathcal{K}} \\delta_{k,t} \\leq P_{k+1,t}^{max} - P_{k,t}^{max}
+\\sum_{k\\in\\mathcal{K}} \\delta_{k,t} + P_{1,t} \\, o_t = p_t \\\\
+\\delta_{k,t} \\leq P_{k+1,t}^{max} - P_{k,t}^{max}
 ```
 
 The row also carries the offset `(P_0 - base)·anchor` from `_pwl_offset_anchor`
 and `_pwl_offset_base`, so the blocks start at the offer's first breakpoint `P_0`.
+The anchor is zero while the component is out (see [`get_component_statuses`](@ref)).
 """
 function add_pwl_constraint_delta!(
     container::OptimizationContainer,

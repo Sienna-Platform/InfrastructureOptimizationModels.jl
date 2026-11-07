@@ -554,3 +554,58 @@ IOM.objective_function_multiplier(
         end
     end
 end
+
+@testset "Skipped proportional cost is booked at active steps only" begin
+    time_steps = 1:3
+    cost_value = 15.0
+    statuses = [1.0 0.0 0.5]
+    device = MockSkipGen("gen1", MockOperationCost(cost_value, false))
+    devices = IS.FlattenIteratorWrapper(MockSkipGen, Vector[[device]])
+    for adder! in (
+        IOM.add_proportional_cost!,
+        IOM.add_proportional_cost_maybe_time_variant!,
+    )
+        container = setup_skip_gen_container(time_steps)
+        set_test_statuses!(container, MockSkipGen, ["gen1"], statuses)
+        adder!(container, TestProportionalVariable, devices, TestProportionalFormulation)
+        @test count_objective_terms(container; variant = false) == 0
+        expr = IOM.get_expression(container, IOM.ProductionCostExpression, MockSkipGen)
+        for t in time_steps
+            @test JuMP.constant(expr["gen1", t]) ≈ cost_value * statuses[1, t]
+        end
+    end
+end
+
+@testset "Skipped time-variant proportional cost follows status flips in place" begin
+    time_steps = 1:3
+    cost_value = 15.0
+    device = MockSkipGen("gen1", MockOperationCost(cost_value, true))
+    devices = IS.FlattenIteratorWrapper(MockSkipGen, Vector[[device]])
+    add_cost!(container) = IOM.add_proportional_cost_maybe_time_variant!(
+        container, TestProportionalVariable, devices, TestProportionalFormulation)
+    function build(statuses)
+        container = setup_skip_gen_container(time_steps)
+        set_test_statuses!(container, MockSkipGen, ["gen1"], statuses)
+        add_cost!(container)
+        return container
+    end
+    ledger(container) = IOM.get_objective_expression(container).variant_expression_terms
+    costs(container) =
+        IOM.get_expression(container, IOM.ProductionCostExpression, MockSkipGen)
+
+    container = build([1.0 0.0 1.0])
+    @test length(ledger(container)) == 2
+    @test JuMP.constant(costs(container)["gen1", 2]) == 0.0
+
+    flipped = [0.0 1.0 1.0]
+    IOM.reset_variant_terms(IOM.get_objective_expression(container))
+    set_test_statuses!(container, MockSkipGen, ["gen1"], flipped)
+    add_cost!(container)
+    fresh = build(flipped)
+    @test length(ledger(container)) == length(ledger(fresh)) == 2
+    for t in time_steps
+        entry, expected = costs(container)["gen1", t], costs(fresh)["gen1", t]
+        @test JuMP.constant(entry) == JuMP.constant(expected) == cost_value * flipped[1, t]
+        @test isempty(entry.terms) && isempty(expected.terms)
+    end
+end

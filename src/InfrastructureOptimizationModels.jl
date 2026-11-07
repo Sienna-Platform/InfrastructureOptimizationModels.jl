@@ -345,6 +345,13 @@ export LeftHandSideTimeSeriesParameter
 export get_lhs_parameter_values, has_lhs_parameter_component, get_value_length
 export set_rebuild_model!
 
+# Per-step component statuses
+export AbstractComponentStatuses, AllComponentsActive, ComponentStatusArray
+export get_component_statuses, get_component_status, get_on_status
+export get_component_status_array, scaled_by_component_status
+export component_axis, component_axis_type, each_component_entry
+export fixed_when_inactive, fix_inactive_variables!
+
 # Rebuilds and per-step parameter refresh
 export requires_rebuild, should_add_parameter, on_parameter_reused!
 export reset_optimization_model!, rebuild_model!, update_model_parameters!
@@ -627,6 +634,7 @@ include("core/outputs_by_time.jl")
 include("operation/problem_template.jl")
 include("core/time_mapping.jl")
 include("core/optimization_container.jl")
+include("core/component_status.jl")
 include("core/lhs_parameters.jl")
 include("core/dual_processing.jl")
 
