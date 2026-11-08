@@ -17,6 +17,7 @@ using InfrastructureOptimizationModels
         @test IOM.get_formulation(model) == TestDeviceFormulation
         @test isempty(IOM.get_feedforwards(model))
         @test IOM.get_use_slacks(model) == false
+        @test IOM.get_slack_penalty(model) == IOM.CONSTRAINT_VIOLATION_SLACK_COST
         @test isempty(IOM.get_duals(model))
         @test isempty(IOM.get_services(model))
         @test IOM.get_subsystem(model) === nothing
@@ -34,6 +35,19 @@ using InfrastructureOptimizationModels
         @test IOM.get_use_slacks(model) == true
         @test IOM.get_attribute(model, "custom_attr") == 42
         @test IOM.get_attribute(model, "nonexistent") === nothing
+    end
+
+    @testset "Slack penalty" begin
+        model =
+            IOM.DeviceModel(MockThermalGen, TestDeviceFormulation; slack_penalty = 5000)
+        @test IOM.get_slack_penalty(model) === 5000.0
+        for bad in (-1.0, Inf, NaN)
+            @test_throws ArgumentError IOM.DeviceModel(
+                MockThermalGen,
+                TestDeviceFormulation;
+                slack_penalty = bad,
+            )
+        end
     end
 
     @testset "Attributes merging" begin
