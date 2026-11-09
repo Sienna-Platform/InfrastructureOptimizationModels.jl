@@ -14,4 +14,26 @@
         @test result == array
         @test axes(result) == axes(array)
     end
+
+    @testset "get_value does not infer Any on either store" begin
+        decision_store = IOM.DecisionModelStore()
+        key = IOM.VariableKey(TestVariableType, MockComponentType)
+        decision_store.variables[key] = valtype(decision_store.variables)()
+        @test (@inferred IOM.get_value(
+            decision_store,
+            TestVariableType,
+            MockComponentType,
+        )) ===
+              decision_store.variables[key]
+
+        emulation_store = IOM.EmulationModelStore()
+        data = DenseAxisArray(zeros(2, 3), ["d1", "d2"], 1:3)
+        IOM.set_dataset!(emulation_store.data_container, key, IOM.InMemoryDataset(data))
+        @test (@inferred IOM.InMemoryDataset IOM.get_value(
+            emulation_store,
+            TestVariableType,
+            MockComponentType,
+        )).values ==
+              data
+    end
 end
