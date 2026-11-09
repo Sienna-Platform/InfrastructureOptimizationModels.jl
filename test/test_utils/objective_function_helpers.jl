@@ -70,6 +70,7 @@ end
 """
 Add a parameter container with specified values.
 `values` should be a Matrix{Float64} of size (length(names), length(time_steps)).
+Pass `eltype = JuMP.VariableRef` to store JuMP parameters, as recurrent builds do.
 """
 function add_test_parameter!(
     container::IOM.OptimizationContainer,
@@ -77,13 +78,14 @@ function add_test_parameter!(
     ::Type{C},
     names,
     time_steps,
-    values::Matrix{Float64},
+    values::Matrix{Float64};
+    eltype::Type = Float64,
 ) where {P <: IOM.ParameterType, C}
     param_key = IOM.ParameterKey(P, C)
     attributes = IOM.CostFunctionAttributes{Float64}(
         (), IOM.SOSStatusVariable.NO_VARIABLE, false)
     param_container = IOM.add_param_container_shared_axes!(
-        container, param_key, attributes, Float64, names, time_steps)
+        container, param_key, attributes, eltype, names, time_steps)
     jump_model = IOM.get_jump_model(container)
     for (i, name) in enumerate(names)
         for t in time_steps
