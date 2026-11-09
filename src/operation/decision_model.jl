@@ -108,6 +108,7 @@ function DecisionModel{M}(
     store_variable_names = false,
     system_to_file = true,
     rebuild_model = false,
+    release_model = false,
     export_optimization_model = OptimizationModelExportFormat.NONE,
     check_numerical_bounds = true,
     initial_time = UNSET_INI_TIME,
@@ -136,6 +137,7 @@ function DecisionModel{M}(
         store_variable_names = store_variable_names,
         system_to_file = system_to_file,
         rebuild_model = rebuild_model,
+        release_model = release_model,
         export_optimization_model = export_optimization_model,
     )
     return DecisionModel{M}(template, sys, settings, jump_model; name = name)

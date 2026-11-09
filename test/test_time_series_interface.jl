@@ -6,7 +6,6 @@ IOM.get_network_model(::TSInterfaceTemplate) = nothing
 
 struct TSInterfaceProblem <: IOM.AbstractOptimizationProblem end
 IOM.validate_time_series!(::IOM.DecisionModel{TSInterfaceProblem}) = nothing
-IOM.get_time_series_counts_by_type(::MockSystem) = [Dict("type" => "Deterministic")]
 
 @testset "DecisionModel forecast read passes the model resolution" begin
     # The same forecast name exists at two resolutions.

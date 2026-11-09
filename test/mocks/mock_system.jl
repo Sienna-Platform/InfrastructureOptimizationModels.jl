@@ -27,6 +27,8 @@ MockSystem(base_power::Float64, stores_in_memory::Bool) =
 
 # Required interface methods - extend InfrastructureOptimizationModels functions for duck-typing
 InfrastructureOptimizationModels.get_base_power(sys::MockSystem) = sys.base_power
+InfrastructureOptimizationModels.get_time_series_counts_by_type(::MockSystem) =
+    [Dict("type" => "Deterministic")]
 InfrastructureOptimizationModels.stores_time_series_in_memory(sys::MockSystem) =
     sys.stores_in_memory
 
