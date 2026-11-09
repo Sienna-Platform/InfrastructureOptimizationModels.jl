@@ -1,11 +1,12 @@
 struct MockAggregatedParameter <: IOM.TimeSeriesParameter end
 
-# Three components on two rows: "a" and "b" share series "h1"; "c" uses "h2".
+# Four components on three rows: "a", "b" and "d" share series "h1"; "c" uses "h2".
+# Rows 10 and 30 use only "h1", so they share its parameter.
 function _row_aggregation_fixture(; recurrent = true)
     time_steps = 1:2
     container = _make_lhs_container(time_steps)
     container.built_for_recurrent_solves = recurrent
-    row_of = Dict("a" => 10, "b" => 20, "c" => 20)
+    row_of = Dict("a" => 10, "b" => 20, "c" => 20, "d" => 30)
     pc = IOM.add_aggregated_time_series_parameter_container!(
         container,
         MockAggregatedParameter,
@@ -13,7 +14,7 @@ function _row_aggregation_fixture(; recurrent = true)
         MockDeterministic,
         "load",
         ["h1", "h2"],
-        ["a", "b", "c"],
+        ["a", "b", "c", "d"],
         row_of,
         time_steps,
     )
@@ -24,7 +25,7 @@ function _row_aggregation_fixture(; recurrent = true)
         IOM._set_parameter_at!(parent_param, jump_model, series[t], i, t)
     end
     for (i, (name, hash, mult)) in
-        enumerate((("a", "h1", 1.0), ("b", "h1", 2.0), ("c", "h2", -1.0)))
+        enumerate((("a", "h1", 1.0), ("b", "h1", 2.0), ("c", "h2", -1.0), ("d", "h1", 3.0)))
         IOM._set_multiplier_at!(parent_mult, mult, i)
         IOM.add_component_name!(IOM.get_attributes(pc), name, hash)
     end
@@ -33,15 +34,20 @@ function _row_aggregation_fixture(; recurrent = true)
 end
 
 @testset "Row aggregation of time-series parameters" begin
-    @testset "recurrent build: one fixed parameter per row and step" begin
-        _, pc = _row_aggregation_fixture()
+    @testset "recurrent build: one series parameter or one sum per row" begin
+        container, pc = _row_aggregation_fixture()
         @test eltype(IOM.get_parameter_array(pc)) == Float64
-        refs10 = IOM.get_row_aggregate_refs(pc, 10)
-        refs20 = IOM.get_row_aggregate_refs(pc, 20)
+        refs10, coefficient10 = IOM.get_row_aggregate_refs(pc, 10)
+        refs20, coefficient20 = IOM.get_row_aggregate_refs(pc, 20)
+        refs30, coefficient30 = IOM.get_row_aggregate_refs(pc, 30)
         @test eltype(refs20) == JuMP.VariableRef
         @test JuMP.fix_value.(collect(refs10)) == [1.0, 2.0]
+        @test refs30 == refs10
+        @test (coefficient10, coefficient30) == (1.0, 3.0)
         # 2 * h1 - h2
         @test JuMP.fix_value.(collect(refs20)) == [-1.0, 0.0]
+        @test coefficient20 == 1.0
+        @test JuMP.num_variables(IOM.get_jump_model(container)) == 4
     end
 
     @testset "refresh recomputes and fixes the sums" begin
@@ -50,13 +56,16 @@ end
         parent_param[1, 2] = 5.0
         parent_param[2, 1] = 0.5
         IOM.refresh_row_aggregates!(IOM.get_attributes(pc), parent_param)
-        @test JuMP.fix_value.(collect(IOM.get_row_aggregate_refs(pc, 10))) == [1.0, 5.0]
-        @test JuMP.fix_value.(collect(IOM.get_row_aggregate_refs(pc, 20))) == [1.5, 6.0]
+        refs10, _ = IOM.get_row_aggregate_refs(pc, 10)
+        refs20, _ = IOM.get_row_aggregate_refs(pc, 20)
+        @test JuMP.fix_value.(collect(refs10)) == [1.0, 5.0]
+        @test JuMP.fix_value.(collect(refs20)) == [1.5, 6.0]
     end
 
     @testset "single-solve build stores Float64 sums" begin
         _, pc = _row_aggregation_fixture(; recurrent = false)
-        @test collect(IOM.get_row_aggregate_refs(pc, 20)) == [-1.0, 0.0]
+        @test collect(first(IOM.get_row_aggregate_refs(pc, 20))) == [-1.0, 0.0]
+        @test collect(first(IOM.get_row_aggregate_refs(pc, 30))) == [1.0, 2.0]
     end
 
     @testset "per-component values stay available; refs error" begin

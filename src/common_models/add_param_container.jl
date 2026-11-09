@@ -58,8 +58,8 @@ end
 """
 Allocate a time-series parameter container whose components are summed per row key.
 `row_of` maps each component name to its row key, for example the bus of a load. The member
-array holds `Float64`; one parameter per row and time step is the sum (see
-[`RowAggregation`](@ref)). Call [`build_row_aggregates!`](@ref) after the members are set.
+array holds `Float64`; the row terms hold the parameters (see [`RowAggregation`](@ref)).
+Call [`build_row_aggregates!`](@ref) after the members are set.
 """
 function add_aggregated_time_series_parameter_container!(
     container::OptimizationContainer,
@@ -82,11 +82,11 @@ function add_aggregated_time_series_parameter_container!(
     if isabstracttype(V)
         error("$V can't be abstract: $param_key")
     end
-    row_keys = unique!(sort!(collect(values(row_of))))
     aggregation = RowAggregation(
         row_of,
-        [Tuple{Int, Float64}[] for _ in row_keys],
-        DenseAxisArray{get_param_eltype(container)}(undef, row_keys, time_steps),
+        Dict{K, Tuple{Int, Float64}}(),
+        Vector{Tuple{Int, Float64}}[],
+        Matrix{get_param_eltype(container)}(undef, 0, length(time_steps)),
     )
     attributes = TimeSeriesAttributes(V, name, 1, Dict{String, String}(), aggregation)
     return add_param_container_split_axes!(
@@ -102,7 +102,7 @@ function add_aggregated_time_series_parameter_container!(
 end
 
 """
-Fill the members of the row aggregation and create one parameter per row and time step.
+Fill the row terms of the row aggregation and create their parameters per time step.
 Call it once, after the member values, the multipliers, and the component names are set.
 No-op for a container without row aggregation.
 """
@@ -116,14 +116,14 @@ _build_row_aggregates!(::OptimizationContainer, _, ::TimeSeriesAttributes) = not
 function _build_row_aggregates!(
     container::OptimizationContainer,
     param_container,
-    attributes::TimeSeriesAttributes{<:IS.TimeSeriesData, <:RowAggregation},
-)
+    attributes::TimeSeriesAttributes{<:IS.TimeSeriesData, RowAggregation{K, E}},
+) where {K, E}
     aggregation = get_row_aggregation(attributes)
     param_index = get_parameter_array(param_container).lookup[1]
     multiplier_array = get_multiplier_array(param_container)
     parent_mult = multiplier_array.data
     mult_index = multiplier_array.lookup[1]
-    row_index = aggregation.values.lookup[1]
+    rows = Dict{K, Vector{Tuple{Int, Float64}}}()
     for (name, ts_uuid) in attributes.component_name_to_ts_uuid
         if !haskey(aggregation.row_of, name)
             error("Component $name of $(get_time_series_name(attributes)) has no row key.")
@@ -136,16 +136,31 @@ function _build_row_aggregates!(
                 "time-varying multiplier. Row aggregation needs a constant multiplier.",
             )
         end
-        push!(
-            aggregation.members[row_index[aggregation.row_of[name]]],
-            (param_index[ts_uuid], multiplier),
-        )
+        row_members = get!(() -> Tuple{Int, Float64}[], rows, aggregation.row_of[name])
+        push!(row_members, (param_index[ts_uuid], multiplier))
+    end
+    series_slot = Dict{Int, Int}()
+    for row in sort!(collect(keys(rows)))
+        members = rows[row]
+        i = first(first(members))
+        if all(m -> first(m) == i, members)
+            slot = get!(series_slot, i) do
+                push!(aggregation.members, [(i, 1.0)])
+                return length(aggregation.members)
+            end
+            aggregation.row_terms[row] = (slot, sum(last, members))
+        else
+            push!(aggregation.members, members)
+            aggregation.row_terms[row] = (length(aggregation.members), 1.0)
+        end
     end
     jump_model = get_jump_model(container)
-    parent_values = aggregation.values.data
+    n_slots, n_steps = length(aggregation.members), size(aggregation.values, 2)
+    parent_values = Matrix{E}(undef, n_slots, n_steps)
     for t in axes(parent_values, 2), r in axes(parent_values, 1)
         _set_parameter_at!(parent_values, jump_model, 0.0, r, t)
     end
+    aggregation.values = parent_values
     refresh_row_aggregates!(attributes, get_parameter_array_data(param_container))
     return
 end

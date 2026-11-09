@@ -15,14 +15,18 @@ parameter reference.
 struct NoRowAggregation <: AbstractRowAggregation end
 
 """
-Sums the component time series of a parameter container into one value per row key and
-time step. The sum of row `k` at step `t` is `Σ multiplier[c, t] * parameter[ts(c), t]` over
-the components `c` mapped to `k`. The member values stay `Float64`.
+Sums the component time series of a parameter container per row key and time step. Row
+`k` adds `coefficient * values[slot, t]`, with `(slot, coefficient) = row_terms[k]`. A row
+whose components all use one series takes that series as its slot, scaled by the summed
+multipliers, so rows with the same series share one parameter. Any other row gets its own
+slot holding `Σ multiplier[c, t] * parameter[ts(c), t]` over its components `c`. The member
+values stay `Float64`.
 """
-struct RowAggregation{K, V <: DenseAxisArray{<:Any, 2}} <: AbstractRowAggregation
+mutable struct RowAggregation{K, E} <: AbstractRowAggregation
     row_of::Dict{String, K}
+    row_terms::Dict{K, Tuple{Int, Float64}}
     members::Vector{Vector{Tuple{Int, Float64}}}
-    values::V
+    values::Matrix{E}
 end
 
 struct TimeSeriesAttributes{T <: IS.TimeSeriesData, A <: AbstractRowAggregation} <:
@@ -553,12 +557,13 @@ end
 #################################################################################
 
 """
-Return a view of the per-time-step aggregated parameters for `row_key`: fixed JuMP variables
-in a recurrent-solve build, `Float64` values otherwise.
+Return `(refs, coefficient)` for `row_key`; the row adds `coefficient * refs[t]` at step
+`t`. `refs` are fixed JuMP variables in a recurrent-solve build, `Float64` values otherwise.
 """
 function get_row_aggregate_refs(container::ParameterContainer, row_key)
-    values = get_row_aggregation(get_attributes(container)).values
-    return @view values.data[values.lookup[1][row_key], :]
+    aggregation = get_row_aggregation(get_attributes(container))
+    slot, coefficient = aggregation.row_terms[row_key]
+    return (@view(aggregation.values[slot, :]), coefficient)
 end
 
 """
@@ -572,7 +577,7 @@ function refresh_row_aggregates!(
     parent_param::Matrix{Float64},
 )
     aggregation = get_row_aggregation(attributes)
-    parent_values = aggregation.values.data
+    parent_values = aggregation.values
     for t in axes(parent_values, 2), r in axes(parent_values, 1)
         value = _row_sum(aggregation.members[r], parent_param, t)
         _set_param_value_at!(parent_values, value, r, t)
