@@ -185,7 +185,7 @@ _include_constant_min_gen_power_in_constraint(
 
 """
 What the block offer's minimum-power offset multiplies: the device's `OnVariable`, its
-`OnStatusParameter`, or `1.0` for a constant offset. `nothing` when the row has no offset.
+`OnStatusParameter`, `1.0` for a constant offset, or `0.0` when the row has no offset.
 Shared by the build and `update_pwl_offset!` so the two cannot disagree.
 """
 function _pwl_offset_anchor(
@@ -195,7 +195,14 @@ function _pwl_offset_anchor(
     ::Type{D},
     name::String,
     period::Int,
-) where {T <: IS.InfrastructureSystemsComponent, U <: VariableType, D}
+)::Union{
+    Float64,
+    JuMP.VariableRef,
+} where {
+    T <: IS.InfrastructureSystemsComponent,
+    U <: VariableType,
+    D,
+}
     if _include_constant_min_gen_power_in_constraint(T, U, D)
         # An OnStatusParameter (e.g. from a SemiContinuousFeedforward) can switch the unit
         # off. Devices outside its axis are always on.
@@ -214,11 +221,8 @@ function _pwl_offset_anchor(
         end
         return 1.0
     end
-    return nothing
+    return 0.0
 end
-
-_pwl_offset(::Nothing, ::Float64) = 0.0
-_pwl_offset(anchor::JuMPOrFloat, first_breakpoint::Float64) = first_breakpoint * anchor
 
 """
     update_pwl_offset!(container, row, T, U, D, name, period, first_breakpoint)
@@ -245,7 +249,6 @@ function update_pwl_offset!(
 end
 
 # The row reads `power - Σδ - first_breakpoint * anchor == 0`, or `power - Σδ == offset`.
-_set_pwl_offset!(::JuMP.ConstraintRef, ::Nothing, ::Float64) = nothing
 _set_pwl_offset!(
     row::JuMP.ConstraintRef,
     anchor::JuMP.VariableRef,
@@ -304,7 +307,7 @@ function add_pwl_constraint_delta!(
     name = get_name(component)
 
     anchor = _pwl_offset_anchor(container, T, U, D, name, period)
-    min_power_offset = _pwl_offset(anchor, jump_fixed_value(first(break_points))::Float64)
+    min_power_offset = jump_fixed_value(first(break_points))::Float64 * anchor
 
     add_pwl_block_offer_constraints!(
         get_jump_model(container),
