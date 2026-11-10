@@ -262,17 +262,6 @@ function validate_network_model(
     return
 end
 
-function _get_filters(branch_models::BranchModelContainer)
-    filters = Dict{DataType, Function}()
-    for v in values(branch_models)
-        filter_func = get_attribute(v, "filter_function")
-        if filter_func !== nothing
-            filters[get_component_type(v)] = filter_func
-        end
-    end
-    return filters
-end
-
 # NOTE: instantiate_network_model! implementations have been moved to
 # PowerOperationsModels/src/network_models/instantiate_network_model.jl
 # IOM retains only the generic dispatch entry point in operation_model_interface.jl

@@ -18,46 +18,24 @@ function get_available_components(
     model::DeviceModel{T, <:AbstractDeviceFormulation},
     sys::IS.InfrastructureSystemsContainer,
 ) where {T <: IS.InfrastructureSystemsComponent}
-    subsystem = get_subsystem(model)
-    filter_function = get_attribute(model, "filter_function")
-    if filter_function === nothing
-        return IS.get_components(
-            IS.get_available,
-            T,
-            sys;
-            subsystem_name = subsystem,
-        )
-    else
-        return IS.get_components(
-            x -> IS.get_available(x) && filter_function(x),
-            T,
-            sys;
-            subsystem_name = subsystem,
-        )
-    end
+    return IS.get_components(
+        IS.get_available,
+        T,
+        sys;
+        subsystem_name = get_subsystem(model),
+    )
 end
 
 function get_available_components(
     model::ServiceModel{T, <:AbstractServiceFormulation},
     sys::IS.InfrastructureSystemsContainer,
 ) where {T <: IS.InfrastructureSystemsComponent}
-    subsystem = get_subsystem(model)
-    filter_function = get_attribute(model, "filter_function")
-    if filter_function === nothing
-        return IS.get_components(
-            IS.get_available,
-            T,
-            sys;
-            subsystem_name = subsystem,
-        )
-    else
-        return IS.get_components(
-            x -> IS.get_available(x) && filter_function(x),
-            T,
-            sys;
-            subsystem_name = subsystem,
-        )
-    end
+    return IS.get_components(
+        IS.get_available,
+        T,
+        sys;
+        subsystem_name = get_subsystem(model),
+    )
 end
 
 function get_available_components(
