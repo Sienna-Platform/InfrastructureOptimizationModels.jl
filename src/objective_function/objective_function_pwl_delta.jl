@@ -225,7 +225,24 @@ function _pwl_offset_anchor(
 end
 
 """
-    update_pwl_offset!(container, row, T, U, D, name, period, first_breakpoint)
+Power the block offer's first breakpoint is measured from: zero, or the per-step minimum
+for `PowerAboveMinimumVariable`, which holds only the output above it.
+"""
+_pwl_offset_base(
+    ::OptimizationContainer,
+    ::IS.InfrastructureSystemsComponent,
+    ::Type{<:VariableType},
+    ::Int,
+) = 0.0
+_pwl_offset_base(
+    container::OptimizationContainer,
+    component::IS.InfrastructureSystemsComponent,
+    ::Type{PowerAboveMinimumVariable},
+    period::Int,
+) = get_min_active_power_values(container, component)[period]
+
+"""
+    update_pwl_offset!(container, row, component, U, D, period, first_breakpoint)
 
 Move a block-offer `row` built by `add_pwl_constraint_delta!` to a new first
 breakpoint in place, for models updated between solves without a rebuild.
@@ -233,30 +250,26 @@ breakpoint in place, for models updated between solves without a rebuild.
 function update_pwl_offset!(
     container::OptimizationContainer,
     row::JuMP.ConstraintRef,
-    ::Type{T},
+    component::T,
     ::Type{U},
     ::Type{D},
-    name::String,
     period::Int,
     first_breakpoint::Float64,
 ) where {T <: IS.InfrastructureSystemsComponent, U <: VariableType, D}
     _set_pwl_offset!(
         row,
-        _pwl_offset_anchor(container, T, U, D, name, period),
-        first_breakpoint,
+        _pwl_offset_anchor(container, T, U, D, get_name(component), period),
+        first_breakpoint - _pwl_offset_base(container, component, U, period),
     )
     return
 end
 
-# The row reads `power - Σδ - first_breakpoint * anchor == 0`, or `power - Σδ == offset`.
-_set_pwl_offset!(
-    row::JuMP.ConstraintRef,
-    anchor::JuMP.VariableRef,
-    first_breakpoint::Float64,
-) =
-    JuMP.set_normalized_coefficient(row, anchor, -first_breakpoint)
-_set_pwl_offset!(row::JuMP.ConstraintRef, anchor::Float64, first_breakpoint::Float64) =
-    JuMP.set_normalized_rhs(row, first_breakpoint * anchor)
+# The row reads `power - Σδ - offset * anchor == 0`, or `power - Σδ == offset * anchor`,
+# with `offset` the first breakpoint above the base.
+_set_pwl_offset!(row::JuMP.ConstraintRef, anchor::JuMP.VariableRef, offset::Float64) =
+    JuMP.set_normalized_coefficient(row, anchor, -offset)
+_set_pwl_offset!(row::JuMP.ConstraintRef, anchor::Float64, offset::Float64) =
+    JuMP.set_normalized_rhs(row, offset * anchor)
 
 ##################################################
 # PWL Block Offer Constraint Wrapper
@@ -270,6 +283,9 @@ Implement the constraints for PWL Block Offer variables. That is:
 \\sum_{k\\in\\mathcal{K}} \\delta_{k,t} = p_t \\\\
 \\sum_{k\\in\\mathcal{K}} \\delta_{k,t} \\leq P_{k+1,t}^{max} - P_{k,t}^{max}
 ```
+
+The row also carries the offset `(P_0 - base)·anchor` from `_pwl_offset_anchor`
+and `_pwl_offset_base`, so the blocks start at the offer's first breakpoint `P_0`.
 """
 function add_pwl_constraint_delta!(
     container::OptimizationContainer,
@@ -307,7 +323,10 @@ function add_pwl_constraint_delta!(
     name = get_name(component)
 
     anchor = _pwl_offset_anchor(container, T, U, D, name, period)
-    min_power_offset = jump_fixed_value(first(break_points))::Float64 * anchor
+    offset =
+        jump_fixed_value(first(break_points))::Float64 -
+        _pwl_offset_base(container, component, U, period)
+    min_power_offset = offset * anchor
 
     add_pwl_block_offer_constraints!(
         get_jump_model(container),

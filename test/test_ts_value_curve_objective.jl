@@ -548,8 +548,7 @@ end
                 1,
             ]
             IOM.update_pwl_offset!(
-                c, row, MockThermalGen, TestVariableType, TestConstantMinGenFormulation,
-                "gen1", 1, 30.0,
+                c, row, device, TestVariableType, TestConstantMinGenFormulation, 1, 30.0,
             )
             return row
         end
@@ -630,10 +629,52 @@ end
         @test JuMP.normalized_coefficient(row, on_var) == -10.0
 
         IOM.update_pwl_offset!(
-            container, row, MockThermalGen, TestVariableType, TestCommitmentFormulation,
-            "gen1", 1, 30.0,
+            container, row, device, TestVariableType, TestCommitmentFormulation, 1, 30.0,
         )
         @test JuMP.normalized_coefficient(row, on_var) == -30.0
         @test JuMP.normalized_rhs(row) == 0.0
+    end
+
+    @testset "add_pwl_constraint_delta! measures PowerAboveMinimumVariable from P_min" begin
+        # Compact form: p̂ = p - P_min·on, so the row is p̂ - Σδ - (P_0 - P_min)·on == 0.
+        IOM._include_min_gen_power_in_constraint(
+            ::Type{MockThermalGen},
+            ::Type{IOM.PowerAboveMinimumVariable},
+            ::Type{TestCommitmentFormulation},
+        ) = true
+        container = make_test_container(1:1; base_power = 100.0)
+        device = make_mock_thermal("gen1"; limits = (min = 20.0, max = 100.0))
+        add_test_variable!(
+            container, IOM.PowerAboveMinimumVariable, MockThermalGen, "gen1", 1)
+        on_vars = IOM.add_variable_container!(
+            container, IOM.OnVariable, MockThermalGen, ["gen1"], 1:1)
+        on_var =
+            on_vars["gen1", 1] = JuMP.@variable(
+                IOM.get_jump_model(container), base_name = "On_gen1_1", binary = true)
+        pwl_vars = IOM.add_pwl_variables_delta!(
+            container, IOM.PiecewiseLinearBlockIncrementalOffer, MockThermalGen, "gen1",
+            1, 2;
+            upper_bound = Inf,
+        )
+        IOM.add_pwl_constraint_delta!(
+            container, device, IOM.PowerAboveMinimumVariable, TestCommitmentFormulation,
+            [10.0, 50.0, 100.0], pwl_vars, 1,
+            IOM.PiecewiseLinearBlockIncrementalOfferConstraint,
+        )
+        row = IOM.get_constraint(
+            container, IOM.PiecewiseLinearBlockIncrementalOfferConstraint,
+            MockThermalGen,
+        )[
+            "gen1",
+            1,
+        ]
+        @test JuMP.normalized_coefficient(row, on_var) == 10.0
+        @test JuMP.normalized_rhs(row) == 0.0
+
+        IOM.update_pwl_offset!(
+            container, row, device, IOM.PowerAboveMinimumVariable,
+            TestCommitmentFormulation, 1, 30.0,
+        )
+        @test JuMP.normalized_coefficient(row, on_var) == -10.0
     end
 end
