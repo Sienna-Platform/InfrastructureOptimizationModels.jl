@@ -19,13 +19,22 @@ end
 mutable struct ObjectiveFunction
     invariant_terms::JuMPScalarExpr
     variant_terms::GAE
+    # Variant costs added to cost expressions, as (expression entry, cost) pairs.
+    # `reset_variant_terms` subtracts them, so the build's variant writers can run again.
+    variant_expression_terms::Vector{Tuple{JuMP.AbstractJuMPScalar, JuMPOrFloat}}
     synchronized::Bool
     sense::MOI.OptimizationSense
     function ObjectiveFunction(invariant_terms::JuMPScalarExpr,
         variant_terms::GAE,
         synchronized::Bool,
         sense::MOI.OptimizationSense = MOI.MIN_SENSE)
-        new(invariant_terms, variant_terms, synchronized, sense)
+        new(
+            invariant_terms,
+            variant_terms,
+            Tuple{JuMP.AbstractJuMPScalar, JuMPOrFloat}[],
+            synchronized,
+            sense,
+        )
     end
 end
 
@@ -57,8 +66,16 @@ end
 get_sense(v::ObjectiveFunction) = v.sense
 is_synchronized(v::ObjectiveFunction) = v.synchronized
 set_synchronized_status!(v::ObjectiveFunction, value) = v.synchronized = value
-reset_variant_terms(v::ObjectiveFunction) = v.variant_terms = zero(JuMP.AffExpr)
-has_variant_terms(v::ObjectiveFunction) = !iszero(v.variant_terms)
+function reset_variant_terms(v::ObjectiveFunction)
+    for (entry, cost) in v.variant_expression_terms
+        JuMP.add_to_expression!(entry, -1.0, cost)
+    end
+    empty!(v.variant_expression_terms)
+    v.variant_terms = zero(JuMP.AffExpr)
+    return
+end
+has_variant_terms(v::ObjectiveFunction) =
+    !iszero(v.variant_terms) || !isempty(v.variant_expression_terms)
 set_sense!(v::ObjectiveFunction, sense::MOI.OptimizationSense) = v.sense = sense
 
 function ObjectiveFunction()

@@ -480,6 +480,12 @@ IOM.objective_function_multiplier(
             @test JuMP.constant(expr["gen1", t]) ≈ cost_value
         end
 
+        # A time-variant cost is variant in the expressions too, so a reset removes it.
+        IOM.reset_variant_terms(IOM.get_objective_expression(container))
+        for t in time_steps
+            @test JuMP.constant(expr["gen1", t]) ≈ 0.0
+        end
+
         # Reset to default
         IOM.skip_proportional_cost(::MockThermalGen) = false
     end

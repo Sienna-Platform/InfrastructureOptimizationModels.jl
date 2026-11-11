@@ -77,15 +77,15 @@ function add_proportional_cost_maybe_time_variant!(
             rate = cost_term * multiplier * dt
 
             if skip
-                # Only add to expression, not objective
-                add_cost_to_expression!(
-                    container,
-                    FixedCostExpression,
-                    rate,
-                    T,
-                    name,
-                    t,
-                )
+                # Only add to expression, not objective. A time-variant rate is logged, so
+                # the reset before an in-place update removes it.
+                if add_as_time_variant
+                    add_variant_cost_to_expression!(
+                        container, FixedCostExpression, rate, T, name, t)
+                else
+                    add_cost_to_expression!(
+                        container, FixedCostExpression, rate, T, name, t)
+                end
             else
                 variable = get_variable(container, U, T)[name, t]
                 if add_as_time_variant

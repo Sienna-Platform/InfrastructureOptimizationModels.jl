@@ -374,7 +374,7 @@ export add_shut_down_cost!, add_start_up_cost!
 export add_pwl_term_delta!, add_pwl_constraint_delta!
 export add_pwl_term_lambda!, _get_sos_value, _onvar_cost
 export uses_commitment_variables
-export add_cost_to_expression!
+export add_cost_to_expression!, add_variant_cost_to_expression!
 # Duration constraint helpers
 export device_duration_compact_retrospective!
 export device_duration_parameters!, device_duration_retrospective!

@@ -11,6 +11,26 @@
 ###### Constituent Propagation ########
 #######################################
 
+# Add `cost` to the `E` entry of `name` at `t`, if that expression exists. A variant cost
+# is also logged, so `reset_variant_terms` can remove it before the next update.
+function _add_to_cost_entry!(
+    container::OptimizationContainer,
+    ::Type{E},
+    ::Type{C},
+    name::String,
+    t::Int,
+    cost,
+    variant::Bool,
+) where {E <: ExpressionType, C <: IS.InfrastructureSystemsComponent}
+    has_container_key(container, E, C) || return
+    entry = get_expression(container, E, C)[name, t]
+    JuMP.add_to_expression!(entry, cost)
+    if variant
+        push!(get_objective_expression(container).variant_expression_terms, (entry, cost))
+    end
+    return
+end
+
 # Default no-op: any expression type that is not a ConstituentCostExpression
 # does not propagate into the aggregate ProductionCostExpression.
 _propagate_to_production_cost!(
@@ -20,21 +40,39 @@ _propagate_to_production_cost!(
     ::String,
     ::Int,
     ::Any,
+    ::Bool = false,
 ) = nothing
 
 # ConstituentCostExpression overload: also write the same cost into
 # ProductionCostExpression so the aggregate stays consistent with its parts.
-function _propagate_to_production_cost!(
+_propagate_to_production_cost!(
     container::OptimizationContainer,
     ::Type{<:ConstituentCostExpression},
     ::Type{C},
     name::String,
     t::Int,
     cost,
-) where {C <: IS.InfrastructureSystemsComponent}
-    has_container_key(container, ProductionCostExpression, C) || return
-    prod_expr = get_expression(container, ProductionCostExpression, C)
-    JuMP.add_to_expression!(prod_expr[name, t], cost)
+    variant::Bool = false,
+) where {C <: IS.InfrastructureSystemsComponent} =
+    _add_to_cost_entry!(container, ProductionCostExpression, C, name, t, cost, variant)
+
+"""
+Add a time-variant cost to expression `S` of `component_name` at `time_period`, and to
+`ProductionCostExpression` when `S` is a constituent. Unlike `add_cost_to_expression!`, the
+term is logged, so the reset before an in-place update removes it.
+"""
+function add_variant_cost_to_expression!(
+    container::OptimizationContainer,
+    ::Type{S},
+    cost_expression::JuMPOrFloat,
+    ::Type{T},
+    component_name::String,
+    time_period::Int,
+) where {S <: CostExpressions, T <: IS.InfrastructureSystemsComponent}
+    _add_to_cost_entry!(
+        container, S, T, component_name, time_period, cost_expression, true)
+    _propagate_to_production_cost!(
+        container, S, T, component_name, time_period, cost_expression, true)
     return
 end
 
@@ -71,10 +109,7 @@ function add_cost_term_to_expression!(
     t::Int,
 ) where {E <: ExpressionType, C <: IS.InfrastructureSystemsComponent}
     cost = quantity * rate
-    if has_container_key(container, E, C)
-        expr = get_expression(container, E, C)
-        JuMP.add_to_expression!(expr[name, t], cost)
-    end
+    _add_to_cost_entry!(container, E, C, name, t, cost, false)
     _propagate_to_production_cost!(container, E, C, name, t, cost)
     return cost
 end
@@ -137,11 +172,8 @@ function add_cost_term_variant!(
     mult = get_parameter_multiplier_array(container, P, C)
     rate = param[name, t] * mult[name, t]
     cost = quantity * rate
-    if has_container_key(container, E, C)
-        expr = get_expression(container, E, C)
-        JuMP.add_to_expression!(expr[name, t], cost)
-    end
-    _propagate_to_production_cost!(container, E, C, name, t, cost)
+    _add_to_cost_entry!(container, E, C, name, t, cost, true)
+    _propagate_to_production_cost!(container, E, C, name, t, cost, true)
     add_to_objective_variant_expression!(container, cost)
     return cost
 end
@@ -175,11 +207,8 @@ function add_cost_term_variant!(
     t::Int,
 ) where {E <: ExpressionType, C <: IS.InfrastructureSystemsComponent}
     cost = quantity * rate
-    if has_container_key(container, E, C)
-        expr = get_expression(container, E, C)
-        JuMP.add_to_expression!(expr[name, t], cost)
-    end
-    _propagate_to_production_cost!(container, E, C, name, t, cost)
+    _add_to_cost_entry!(container, E, C, name, t, cost, true)
+    _propagate_to_production_cost!(container, E, C, name, t, cost, true)
     add_to_objective_variant_expression!(container, cost)
     return cost
 end

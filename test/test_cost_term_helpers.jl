@@ -777,4 +777,58 @@ Test types defined in test_utils/test_types.jl.
             @test _inv_coef(container, vars["gen1", 1]) ≈ r
         end
     end
+
+    @testset "Variant expression ledger" begin
+        time_steps = 1:1
+
+        @testset "reset removes variant expression terms and keeps invariant ones" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            for E in (IOM.FuelCostExpression, IOM.ProductionCostExpression)
+                add_test_expression!(container, E, MockThermalGen, ["gen1"], time_steps)
+            end
+            v = vars["gen1", 1]
+            IOM.add_cost_term_invariant!(
+                container, v, 2.0, IOM.FuelCostExpression, MockThermalGen, "gen1", 1)
+            IOM.add_cost_term_variant!(
+                container, v, 3.0, IOM.FuelCostExpression, MockThermalGen, "gen1", 1)
+            IOM.add_variant_cost_to_expression!(
+                container, IOM.ProductionCostExpression, 5.0 * v, MockThermalGen, "gen1", 1,
+            )
+            @test _expr_coef(container, IOM.FuelCostExpression, v, "gen1", 1) ≈ 5.0
+            @test _expr_coef(container, IOM.ProductionCostExpression, v, "gen1", 1) ≈ 10.0
+
+            IOM.reset_variant_terms(IOM.get_objective_expression(container))
+            @test _expr_coef(container, IOM.FuelCostExpression, v, "gen1", 1) ≈ 2.0
+            @test _expr_coef(container, IOM.ProductionCostExpression, v, "gen1", 1) ≈ 2.0
+            @test _var_coef(container, v) ≈ 0.0
+            @test _inv_coef(container, v) ≈ 2.0
+
+            # A writer re-run after the reset counts once.
+            IOM.add_cost_term_variant!(
+                container, v, 4.0, IOM.FuelCostExpression, MockThermalGen, "gen1", 1)
+            @test _expr_coef(container, IOM.FuelCostExpression, v, "gen1", 1) ≈ 6.0
+            @test _expr_coef(container, IOM.ProductionCostExpression, v, "gen1", 1) ≈ 6.0
+            @test _var_coef(container, v) ≈ 4.0
+        end
+
+        @testset "a constant-only variant cost counts as a variant term" begin
+            container, _ = _setup_prop_test_container(time_steps)
+            for E in (IOM.FixedCostExpression, IOM.ProductionCostExpression)
+                add_test_expression!(container, E, MockThermalGen, ["gen1"], time_steps)
+            end
+            obj = IOM.get_objective_expression(container)
+            IOM.add_variant_cost_to_expression!(
+                container, IOM.FixedCostExpression, 7.0, MockThermalGen, "gen1", 1)
+            fixed = IOM.get_expression(container, IOM.FixedCostExpression, MockThermalGen)
+            prod = IOM.get_expression(
+                container, IOM.ProductionCostExpression, MockThermalGen)
+            @test JuMP.constant(prod["gen1", 1]) ≈ 7.0
+            @test IOM.has_variant_terms(obj)
+
+            IOM.reset_variant_terms(obj)
+            @test JuMP.constant(fixed["gen1", 1]) ≈ 0.0
+            @test JuMP.constant(prod["gen1", 1]) ≈ 0.0
+            @test !IOM.has_variant_terms(obj)
+        end
+    end
 end
