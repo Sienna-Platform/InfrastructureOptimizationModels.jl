@@ -23,7 +23,7 @@ function _check_not_released(model::AbstractOptimizationModel)
     if is_released(model)
         throw(
             ArgumentError(
-                "$(get_name(model)) was released after it solved (release_model = true), " *
+                "$(get_name(model)) was released (release_model = true), " *
                 "so its JuMP model is gone; read its results from the simulation store.",
             ),
         )
