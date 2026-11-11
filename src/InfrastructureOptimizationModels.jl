@@ -626,7 +626,6 @@ include("common_models/add_variable.jl")
 include("common_models/add_auxiliary_variable.jl")
 include("common_models/add_constraint_dual.jl")
 include("common_models/add_jump_expressions.jl")
-include("common_models/set_expression.jl")
 include("common_models/get_time_series.jl")
 # PWL interpolation methods moved to quadratic_approximations/
 include("common_models/constraint_helpers.jl")
