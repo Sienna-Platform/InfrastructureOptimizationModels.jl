@@ -12,7 +12,7 @@
 #######################################
 
 # Add `cost` to the `E` entry of `name` at `t`, if that expression exists. A variant cost
-# is also logged, so `reset_variant_terms` can remove it before the next update.
+# is also logged, so `reset_variant_terms` can restore the entry before the next update.
 function _add_to_cost_entry!(
     container::OptimizationContainer,
     ::Type{E},

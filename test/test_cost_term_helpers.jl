@@ -809,6 +809,32 @@ Test types defined in test_utils/test_types.jl.
             @test _expr_coef(container, IOM.FuelCostExpression, v, "gen1", 1) ≈ 6.0
             @test _expr_coef(container, IOM.ProductionCostExpression, v, "gen1", 1) ≈ 6.0
             @test _var_coef(container, v) ≈ 4.0
+
+            # Later resets restore the saved invariant part, not a subtraction.
+            for c in (7.0, 0.0, 1.5)
+                IOM.reset_variant_terms(IOM.get_objective_expression(container))
+                IOM.add_cost_term_variant!(
+                    container, v, c, IOM.FuelCostExpression, MockThermalGen, "gen1", 1)
+                @test _expr_coef(container, IOM.FuelCostExpression, v, "gen1", 1) ≈
+                      2.0 + c
+                @test _expr_coef(
+                    container, IOM.ProductionCostExpression, v, "gen1", 1) ≈ 2.0 + c
+            end
+        end
+
+        @testset "an entry first given a variant cost after a reset is restored" begin
+            container, vars = _setup_prop_test_container(time_steps)
+            add_test_expression!(
+                container, IOM.FuelCostExpression, MockThermalGen, ["gen1"], time_steps)
+            v = vars["gen1", 1]
+            IOM.add_cost_term_invariant!(
+                container, v, 2.0, IOM.FuelCostExpression, MockThermalGen, "gen1", 1)
+            obj = IOM.get_objective_expression(container)
+            IOM.reset_variant_terms(obj)
+            IOM.add_cost_term_variant!(
+                container, v, 3.0, IOM.FuelCostExpression, MockThermalGen, "gen1", 1)
+            IOM.reset_variant_terms(obj)
+            @test _expr_coef(container, IOM.FuelCostExpression, v, "gen1", 1) ≈ 2.0
         end
 
         @testset "a constant-only variant cost counts as a variant term" begin
