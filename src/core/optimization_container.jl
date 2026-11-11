@@ -19,13 +19,25 @@ end
 mutable struct ObjectiveFunction
     invariant_terms::JuMPScalarExpr
     variant_terms::GAE
+    # Variant costs added to cost expressions since the last reset, as (entry, cost) pairs.
+    variant_expression_terms::Vector{Tuple{JuMP.AbstractJuMPScalar, JuMPOrFloat}}
+    # Invariant part of each cost expression entry that holds variant costs.
+    # `reset_variant_terms` restores the entries to it, so the variant writers can run again.
+    variant_expression_baselines::IdDict{JuMP.AbstractJuMPScalar, JuMP.AbstractJuMPScalar}
     synchronized::Bool
     sense::MOI.OptimizationSense
     function ObjectiveFunction(invariant_terms::JuMPScalarExpr,
         variant_terms::GAE,
         synchronized::Bool,
         sense::MOI.OptimizationSense = MOI.MIN_SENSE)
-        new(invariant_terms, variant_terms, synchronized, sense)
+        new(
+            invariant_terms,
+            variant_terms,
+            Tuple{JuMP.AbstractJuMPScalar, JuMPOrFloat}[],
+            IdDict{JuMP.AbstractJuMPScalar, JuMP.AbstractJuMPScalar}(),
+            synchronized,
+            sense,
+        )
     end
 end
 
@@ -57,8 +69,41 @@ end
 get_sense(v::ObjectiveFunction) = v.sense
 is_synchronized(v::ObjectiveFunction) = v.synchronized
 set_synchronized_status!(v::ObjectiveFunction, value) = v.synchronized = value
-reset_variant_terms(v::ObjectiveFunction) = v.variant_terms = zero(JuMP.AffExpr)
-has_variant_terms(v::ObjectiveFunction) = !iszero(v.variant_terms)
+# Overwrite `entry` in place with `value`, so references to `entry` stay valid.
+function _restore_expression!(entry::JuMP.GenericAffExpr, value)
+    empty!(entry.terms)
+    entry.constant = zero(entry.constant)
+    JuMP.add_to_expression!(entry, value)
+    return
+end
+function _restore_expression!(entry::JuMP.GenericQuadExpr, value)
+    empty!(entry.terms)
+    _restore_expression!(entry.aff, zero(entry.aff))
+    JuMP.add_to_expression!(entry, value)
+    return
+end
+function reset_variant_terms(v::ObjectiveFunction)
+    baselines = v.variant_expression_baselines
+    # An entry's first reset saves its baseline: the entry minus its variant costs.
+    new_baselines = IdDict{JuMP.AbstractJuMPScalar, JuMP.AbstractJuMPScalar}()
+    for (entry, cost) in v.variant_expression_terms
+        haskey(baselines, entry) && continue
+        baseline = get!(() -> copy(entry), new_baselines, entry)
+        JuMP.add_to_expression!(baseline, -1.0, cost)
+    end
+    for (entry, baseline) in new_baselines
+        JuMP.drop_zeros!(baseline)
+        baselines[entry] = baseline
+    end
+    for (entry, baseline) in baselines
+        _restore_expression!(entry, baseline)
+    end
+    empty!(v.variant_expression_terms)
+    v.variant_terms = zero(JuMP.AffExpr)
+    return
+end
+has_variant_terms(v::ObjectiveFunction) =
+    !iszero(v.variant_terms) || !isempty(v.variant_expression_terms)
 set_sense!(v::ObjectiveFunction, sense::MOI.OptimizationSense) = v.sense = sense
 
 function ObjectiveFunction()
