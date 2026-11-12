@@ -83,6 +83,20 @@ end
         @test axes(result) == axes(array)
     end
 
+    @testset "DecisionModelStore stores a Vector{Int} second axis by position" begin
+        store = IOM.DecisionModelStore()
+        key = IOM.ExpressionKey(TestExpressionType, MockComponentType)
+        index = Dates.DateTime(2024, 1, 1)
+        store.expressions[key] = valtype(store.expressions)()
+
+        array = DenseAxisArray([1.0 2.0 3.0; 4.0 5.0 6.0], ["a", "b"], [2, 5, 7])
+        IOM.write_output!(store, :test, key, index, index, array)
+
+        result = IOM.read_outputs(store, key; index = index)
+        @test axes(result) == (["a", "b"], 1:3)
+        @test result.data == array.data
+    end
+
     @testset "optimizer stats are read and written the same way for every store" begin
         stats = IOM.OptimizerStats()
         for (store, index) in (

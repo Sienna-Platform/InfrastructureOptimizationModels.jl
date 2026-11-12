@@ -92,6 +92,19 @@ function write_output!(
     key::OptimizationContainerKey,
     index::DecisionModelIndexType,
     update_timestamp::Dates.DateTime,
+    array::DenseAxisArray{T, 2, <:Tuple{Vector{String}, Vector{Int}}},
+) where {T}
+    container = getfield(store, get_store_container_type(key))
+    container[key][index] = DenseAxisArray(array.data, axes(array, 1), 1:size(array, 2))
+    return
+end
+
+function write_output!(
+    store::DecisionModelStore,
+    name::Symbol,
+    key::OptimizationContainerKey,
+    index::DecisionModelIndexType,
+    update_timestamp::Dates.DateTime,
     array::DenseAxisArray{T, 1, <:Tuple{U}},
 ) where {T, U <: Union{Vector{String}, UnitRange}}
     container = getfield(store, get_store_container_type(key))
