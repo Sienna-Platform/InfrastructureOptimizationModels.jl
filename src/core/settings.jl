@@ -164,6 +164,7 @@ function set_rebuild_model!(settings::Settings, rebuild_model::Bool)
 end
 get_export_optimization_model(settings::Settings) = settings.export_optimization_model
 get_system_to_file(settings::Settings) = settings.system_to_file
+get_portfolio_to_file(settings::Settings) = get_system_to_file(settings)
 use_time_series_cache(settings::Settings) = settings.time_series_cache_size > 0
 
 function set_horizon!(settings::Settings, horizon::Dates.TimePeriod)

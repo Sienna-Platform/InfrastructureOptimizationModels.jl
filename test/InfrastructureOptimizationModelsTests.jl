@@ -124,7 +124,6 @@ function run_tests()
                     # --- investments/ subfolder + core/time_mapping.jl ---
                     include(joinpath(TEST_DIR, "test_time_mapping.jl"))
                     include(joinpath(TEST_DIR, "test_investment_models.jl"))
-                    include(joinpath(TEST_DIR, "test_investment_model_store.jl"))
                     include(joinpath(TEST_DIR, "test_investment_model.jl"))
 
                     # --- objective_function/ subfolder ---

@@ -158,7 +158,6 @@ using DocStringExtensions
 # Base Models
 export DecisionModel
 export EmulationModel
-export InvestmentModel, InvestmentModelStore
 export AbstractProblemTemplate
 export ServicesModelContainer, DevicesModelContainer, BranchModelContainer
 export InitialCondition
@@ -474,11 +473,6 @@ export NetActivePower
 export DCCurrentBalance
 export HVDCPowerBalance
 
-export InvestmentExpressionType
-export OperationsExpressionType
-export FeasibilityExpressionType
-export CumulativeInvestmentExpressionType
-
 # Standard Variable Types (used in IOM infrastructure code, consumed by POM)
 export ActivePowerVariable, ActivePowerInVariable, ActivePowerOutVariable
 export PowerAboveMinimumVariable
@@ -487,10 +481,6 @@ export ReservationVariable
 export PiecewiseLinearCostVariable
 export RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown
 export DCVoltage
-
-# Standard Variable Types (used in IOM infrastructure code, consumed by PSIN)
-export InvestmentVariableType, OperationsVariableType, FeasibilityVariableType
-export BuildInvestmentVariableType
 
 # Abstract types needed by POM for type hierarchy
 export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariableType
@@ -527,11 +517,6 @@ export SimulationBuildStatus
 
 # Problem Types
 export AbstractOptimizationProblem
-
-# Technology and Requirement Formulations
-export InvestmentTechnologyFormulation,
-    OperationsTechnologyFormulation, FeasibilityTechnologyFormulation
-export RequirementFormulation
 
 # Settings and Data Types
 export Settings
@@ -696,9 +681,6 @@ include("operation/problem_outputs.jl")
 include("operation/time_series_interface.jl")
 include("operation/optimization_debugging.jl")
 include("operation/model_numerical_analysis_utils.jl")
-
-include("investments/investment_model_store.jl")
-include("investments/investment_model.jl")
 
 include("initial_conditions/calculate_initial_condition.jl")
 

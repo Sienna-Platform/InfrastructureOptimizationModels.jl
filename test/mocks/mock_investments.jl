@@ -1,18 +1,7 @@
 """
-Investment-model mocks: formulation and entry types, a problem type, and a minimal
-investment template whose construction-time hooks record that they ran.
+Investment-model mocks: a problem type, a time mapping, and a minimal investment template
+whose construction-time hooks record that they ran.
 """
-
-# Investment formulations (concrete leaves of the abstract hierarchy).
-struct MockInvestTechForm <: IOM.InvestmentTechnologyFormulation end
-struct MockOpsTechForm <: IOM.OperationsTechnologyFormulation end
-struct MockFeasTechForm <: IOM.FeasibilityTechnologyFormulation end
-
-# Operation/investment entry types for store classification and sizing.
-struct MockStoreInvestVar <: IOM.InvestmentVariableType end
-struct MockStoreOpsVar <: IOM.OperationsVariableType end
-struct MockStoreInvestExpr <: IOM.InvestmentExpressionType end
-struct MockStoreOpsExpr <: IOM.OperationsExpressionType end
 
 struct MockInvestProblem <: IOM.AbstractOptimizationProblem end
 
@@ -67,6 +56,8 @@ end
 
 build_mock_invest_template() = MockInvestTemplate(false)
 
+IOM.get_network_model(::MockInvestTemplate) = nothing
+
 # Construction-time extension points; they record that they ran so the tests can check
 # the constructor calls them, and on which template.
 function IOM.finalize_template!(template::MockInvestTemplate, ::MockSystem)
@@ -74,7 +65,15 @@ function IOM.finalize_template!(template::MockInvestTemplate, ::MockSystem)
     return
 end
 
-function IOM.validate_time_series!(model::IOM.InvestmentModel{MockInvestProblem})
+function IOM.prepare_time_series!(
+    ::Type{MockInvestProblem},
+    ::MockSystem,
+    ::IOM.Settings,
+)
+    return IS.SingleTimeSeries
+end
+
+function IOM.validate_time_series!(model::IOM.DecisionModel{MockInvestProblem})
     model.ext["time_series_validated"] = true
     return
 end

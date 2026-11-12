@@ -213,6 +213,26 @@ function advance_execution_count!(model::AbstractOptimizationModel)
     return
 end
 
+"""
+    initialize_storage!(model::AbstractOptimizationModel)
+
+Extension point that allocates the model's output store before a solve. Downstream solve
+loops call it with the model so that a problem type whose outputs need a different store
+layout can add a method for its model type, e.g.
+`initialize_storage!(::DecisionModel{<:MyProblem})`.
+
+The default allocates through the store's own
+`initialize_storage!(store, container, params)` method.
+"""
+function initialize_storage!(model::AbstractOptimizationModel)
+    initialize_storage!(
+        get_store(model),
+        get_optimization_container(model),
+        get_store_params(model),
+    )
+    return
+end
+
 function _check_numerical_bounds(model::AbstractOptimizationModel)
     variable_bounds = get_variable_numerical_bounds(model)
     if variable_bounds.bounds.max - variable_bounds.bounds.min > 1e9

@@ -8,12 +8,20 @@ Subtypes implement:
   - `get_block_ranges(tm)`: the time steps of each block, ordered and contiguous
   - `get_block_period_index(tm)`: the period each block belongs to
   - `get_timestamps(tm)`: the time stamp of each time step
+
+Optional accessors, implemented by mappings whose consumers need them (e.g. investment
+time mappings):
+
+  - `get_base_date(tm)`: the date the model's outputs are indexed by
+  - `get_total_operation_period_count(tm)`: the number of operational time steps
 """
 abstract type AbstractTimeMapping end
 
 function get_period_count end
 function get_block_ranges end
 function get_block_period_index end
+function get_base_date end
+function get_total_operation_period_count end
 
 get_time_steps(tm::AbstractTimeMapping) = 1:length(get_timestamps(tm))
 get_periods(tm::AbstractTimeMapping) = 1:get_period_count(tm)
