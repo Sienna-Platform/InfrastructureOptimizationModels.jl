@@ -14,6 +14,14 @@ remain in the test files that need them.
 
 struct TestVariableType <: IOM.VariableType end
 struct TestVariableType2 <: IOM.VariableType end
+
+ISOPT.output_unit_system(::Type{TestVariableType}) = IS.SU
+ISOPT.quantity_kind(::Type{TestVariableType}) = "ActivePower"
+ISOPT.output_unit_system(::Type{TestVariableType2}) = IS.SU
+ISOPT.quantity_kind(::Type{TestVariableType2}) = "ActivePower"
+struct ParamVar{D} <: IOM.VariableType end
+ISOPT.output_unit_system(::Type{<:ParamVar}) = IS.SU
+ISOPT.quantity_kind(::Type{<:ParamVar}) = "ActivePower"
 struct TestCostVariable <: IOM.VariableType end
 struct MockVariable <: IOM.VariableType end
 struct MockVariable2 <: IOM.VariableType end

@@ -392,6 +392,7 @@ export add_service_variables!, requires_initialization
 
 # more extension points
 export write_outputs!
+export write_model_outputs!, resolve_component_axis
 export built_for_recurrent_solves
 export get_incompatible_devices
 
@@ -687,6 +688,10 @@ include("operation/initial_conditions_update_in_memory_store.jl")
 include("operation/decision_model.jl")
 include("operation/emulation_model.jl")
 include("operation/problem_outputs.jl")
+include("outputs/descriptors.jl")
+include("outputs/key_traits.jl")
+include("outputs/component_axes.jl")
+include("outputs/store_writer.jl")
 include("operation/time_series_interface.jl")
 include("operation/optimization_debugging.jl")
 include("operation/model_numerical_analysis_utils.jl")
