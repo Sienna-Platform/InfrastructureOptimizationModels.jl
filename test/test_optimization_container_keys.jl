@@ -185,6 +185,28 @@ end
     @test length(unique(refs)) == 4 * length(time_steps)
 end
 
+@testset "ServiceModel slack penalty" begin
+    default_model = ServiceModel(MockReserve{MockUp}, MockReserveFormulation)
+    @test IOM.get_slack_penalty(default_model) == IOM.SERVICES_SLACK_COST
+    custom_model = ServiceModel(
+        MockReserve{MockUp},
+        MockReserveFormulation;
+        use_slacks = true,
+        slack_penalty = 5.0e4,
+    )
+    @test IOM.get_slack_penalty(custom_model) == 5.0e4
+    int_model =
+        ServiceModel(MockReserve{MockUp}, MockReserveFormulation; slack_penalty = 5000)
+    @test IOM.get_slack_penalty(int_model) === 5000.0
+    for bad in (-1.0, Inf, NaN)
+        @test_throws ArgumentError ServiceModel(
+            MockReserve{MockUp},
+            MockReserveFormulation;
+            slack_penalty = bad,
+        )
+    end
+end
+
 @testset "Parameter attributes store their recorder strings" begin
     key = VariableKey(MockVariable, MockThermalGen)
     attributes = IOM.VariableValueAttributes(key)
@@ -199,4 +221,26 @@ end
     empty_attributes =
         IOM.CostFunctionAttributes{Float64}((), IOM.SOSStatusVariable.NO_VARIABLE, false)
     @test IOM.get_variable_types_string(empty_attributes) == ""
+end
+
+@testset "add_contributing_device! keeps one concrete vector per device type" begin
+    bus = MockBus("bus", 1, :PV)
+    thermal1 = MockThermalGen("g1", true, bus, (min = 0.0, max = 1.0))
+    thermal2 = MockThermalGen("g2", true, bus, (min = 0.0, max = 1.0))
+    renewable = MockRenewableGen("r1", true, bus, 1.0)
+    model = ServiceModel(MockReserve{MockUp}, MockReserveFormulation)
+
+    IOM.add_contributing_device!(model, "spin", thermal1)
+    IOM.add_contributing_device!(model, "spin", thermal2)
+    IOM.add_contributing_device!(model, "spin", renewable)
+
+    devices_map = IOM.get_contributing_devices_map(model, "spin")
+    @test length(devices_map) == 2
+    @test Set(IOM.contributing_device_types(model, "spin")) ==
+          Set([MockThermalGen, MockRenewableGen])
+    @test typeof(devices_map[MockThermalGen]) == Vector{MockThermalGen}
+    @test length(devices_map[MockThermalGen]) == 2
+    @test typeof(devices_map[MockRenewableGen]) == Vector{MockRenewableGen}
+    @test length(devices_map[MockRenewableGen]) == 1
+    @test isempty(IOM.contributing_device_types(model, "other"))
 end

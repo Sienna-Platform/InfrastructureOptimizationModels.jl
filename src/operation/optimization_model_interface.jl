@@ -15,7 +15,24 @@ get_executions(model::AbstractOptimizationModel) = get_executions(get_internal(m
 get_initial_time(model::AbstractOptimizationModel) = get_initial_time(get_settings(model))
 get_internal(model::AbstractOptimizationModel) = model.internal
 
+is_released(model::AbstractOptimizationModel) = is_released(get_internal(model))
+set_released!(model::AbstractOptimizationModel, val::Bool) =
+    set_released!(get_internal(model), val)
+
+function _check_not_released(model::AbstractOptimizationModel)
+    if is_released(model)
+        throw(
+            ArgumentError(
+                "$(get_name(model)) was released (release_model = true), " *
+                "so its JuMP model is gone; read its results from the simulation store.",
+            ),
+        )
+    end
+    return
+end
+
 function get_jump_model(model::AbstractOptimizationModel)
+    _check_not_released(model)
     return get_jump_model(get_container(get_internal(model)))
 end
 
@@ -31,6 +48,8 @@ function get_rebuild_model(model::AbstractOptimizationModel)
     end
     return get_rebuild_model(get_optimization_container(model).settings)
 end
+
+get_release_model(model::AbstractOptimizationModel) = get_release_model(get_settings(model))
 
 function get_optimization_container(model::AbstractOptimizationModel)
     return get_optimization_container(get_internal(model))
@@ -141,6 +160,7 @@ end
 
 # Called `solve_impl!(model)` in PSI.
 function solve_model!(model::AbstractOptimizationModel)
+    _check_not_released(model)
     if !is_built(model)
         error(
             "Model $(get_name(model)) is not built (status $(get_status(model))); \
@@ -215,6 +235,26 @@ end
 function advance_execution_count!(model::AbstractOptimizationModel)
     internal = get_internal(model)
     internal.execution_count += 1
+    return
+end
+
+"""
+    initialize_storage!(model::AbstractOptimizationModel)
+
+Extension point that allocates the model's output store before a solve. Downstream solve
+loops call it with the model so that a problem type whose outputs need a different store
+layout can add a method for its model type, e.g.
+`initialize_storage!(::DecisionModel{<:MyProblem})`.
+
+The default allocates through the store's own
+`initialize_storage!(store, container, params)` method.
+"""
+function initialize_storage!(model::AbstractOptimizationModel)
+    initialize_storage!(
+        get_store(model),
+        get_optimization_container(model),
+        get_store_params(model),
+    )
     return
 end
 

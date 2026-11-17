@@ -371,7 +371,8 @@ function _add_ts_incremental_pwl_cost!(
             X,
         )
         pwl_cost = get_pwl_cost_expression_delta(pwl_vars, slopes, sign_dt)
-        add_cost_to_expression!(container, ProductionCostExpression, pwl_cost, C, name, t)
+        add_variant_cost_to_expression!(
+            container, ProductionCostExpression, pwl_cost, C, name, t)
         add_to_objective_variant_expression!(container, pwl_cost)
     end
     return

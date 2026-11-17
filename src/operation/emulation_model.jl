@@ -84,6 +84,7 @@ function EmulationModel{M}(
     store_variable_names = false,
     system_to_file = true,
     rebuild_model = false,
+    release_model = false,
     initial_time = UNSET_INI_TIME,
     time_series_cache_size::Int = IS.TIME_SERIES_CACHE_SIZE_BYTES,
 ) where {M <: AbstractOptimizationProblem}
@@ -106,6 +107,7 @@ function EmulationModel{M}(
         store_variable_names = store_variable_names,
         system_to_file = system_to_file,
         rebuild_model = rebuild_model,
+        release_model = release_model,
         horizon = resolution,
         resolution = resolution,
     )

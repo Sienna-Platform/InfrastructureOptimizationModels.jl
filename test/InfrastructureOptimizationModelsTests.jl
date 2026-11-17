@@ -35,9 +35,11 @@ include(joinpath(TEST_DIR, "mocks/mock_time_series.jl"))
 include(joinpath(TEST_DIR, "mocks/mock_services.jl"))
 include(joinpath(TEST_DIR, "mocks/mock_container.jl"))
 include(joinpath(TEST_DIR, "mocks/constructors.jl"))
+include(joinpath(TEST_DIR, "mocks/mock_investments.jl"))
 include(joinpath(TEST_DIR, "test_utils/test_types.jl"))
 include(joinpath(TEST_DIR, "test_utils/objective_function_helpers.jl"))
 include(joinpath(TEST_DIR, "test_utils/qa_bilinear_helpers.jl"))
+include(joinpath(TEST_DIR, "test_utils/model_test_helpers.jl"))
 
 # Environment flags for test selection
 const RUN_UNIT_TESTS = get(ENV, "IOM_RUN_UNIT_TESTS", "true") == "true"
@@ -96,6 +98,7 @@ function run_tests()
                     # TODO dataset.jl
                     # definitions.jl: no need for tests
                     include(joinpath(TEST_DIR, "test_device_model.jl"))
+                    include(joinpath(TEST_DIR, "test_add_constraint_dual.jl"))
                     # TODO: initial_conditions.jl
                     include(joinpath(TEST_DIR, "test_model_internal.jl"))
                     # model_store_params.jl: low-complexity
@@ -124,6 +127,10 @@ function run_tests()
                     include(joinpath(TEST_DIR, "test_problem_template.jl"))
                     # standard_variables_expressions.jl: low complexity
                     # time_series_parameter_types.jl: low complexity
+
+                    # --- investments/ subfolder + core/time_mapping.jl ---
+                    include(joinpath(TEST_DIR, "test_time_mapping.jl"))
+                    include(joinpath(TEST_DIR, "test_investment_model.jl"))
 
                     # --- objective_function/ subfolder ---
                     # import_export.jl: commented out

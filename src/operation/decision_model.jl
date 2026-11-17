@@ -18,6 +18,31 @@ function get_deterministic_time_series_type(sys::IS.InfrastructureSystemsContain
     end
 end
 
+"""
+    prepare_time_series!(
+        ::Type{M},
+        sys::IS.InfrastructureSystemsContainer,
+        settings::Settings,
+    ) where {M <: AbstractOptimizationProblem} -> Type{<:IS.TimeSeriesData}
+
+Extension point called by the `DecisionModel{M}` constructor before the
+`OptimizationContainer` is built. Prepares the time series in `sys` for a problem of
+type `M` and returns the time series type the container reads.
+
+The default transforms `SingleTimeSeries` into `DeterministicSingleTimeSeries` when the
+settings call for it (see `auto_transform_time_series!`) and returns the system's
+deterministic forecast type. Downstream packages can add their own methods that are
+specific to their problem type.
+"""
+function prepare_time_series!(
+    ::Type{<:AbstractOptimizationProblem},
+    sys::IS.InfrastructureSystemsContainer,
+    settings::Settings,
+)
+    auto_transform_time_series!(sys, settings)
+    return get_deterministic_time_series_type(sys)
+end
+
 mutable struct DecisionModel{M <: AbstractOptimizationProblem} <: AbstractOptimizationModel
     name::Symbol
     template::AbstractProblemTemplate
@@ -36,10 +61,10 @@ end
         jump_model::Union{Nothing, JuMP.Model}=nothing;
         name = nothing) where {M<:AbstractOptimizationProblem}
 
-Settings-taking constructor — builds the `OptimizationContainer`, finalizes
-the template, and validates time series. Both `finalize_template!` and
-`validate_time_series!` are extension points: downstream packages provide
-methods for their concrete `AbstractProblemTemplate` and model types.
+Settings-taking constructor — prepares time series, builds the `OptimizationContainer`,
+finalizes the template, and validates time series. `prepare_time_series!`,
+`finalize_template!`, and `validate_time_series!` are extension points: downstream
+packages provide methods for their problem, `AbstractProblemTemplate`, and model types.
 """
 function DecisionModel{M}(
     template::AbstractProblemTemplate,
@@ -53,8 +78,7 @@ function DecisionModel{M}(
     elseif name isa String
         name = Symbol(name)
     end
-    auto_transform_time_series!(sys, settings)
-    ts_type = get_deterministic_time_series_type(sys)
+    ts_type = prepare_time_series!(M, sys, settings)
     internal = ModelInternal(
         OptimizationContainer(sys, settings, jump_model, ts_type),
     )
@@ -108,6 +132,7 @@ function DecisionModel{M}(
     store_variable_names = false,
     system_to_file = true,
     rebuild_model = false,
+    release_model = false,
     export_optimization_model = OptimizationModelExportFormat.NONE,
     check_numerical_bounds = true,
     initial_time = UNSET_INI_TIME,
@@ -136,6 +161,7 @@ function DecisionModel{M}(
         store_variable_names = store_variable_names,
         system_to_file = system_to_file,
         rebuild_model = rebuild_model,
+        release_model = release_model,
         export_optimization_model = export_optimization_model,
     )
     return DecisionModel{M}(template, sys, settings, jump_model; name = name)

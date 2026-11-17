@@ -17,6 +17,7 @@ using InfrastructureOptimizationModels
         @test IOM.get_formulation(model) == TestDeviceFormulation
         @test isempty(IOM.get_feedforwards(model))
         @test IOM.get_use_slacks(model) == false
+        @test IOM.get_slack_penalty(model) == IOM.CONSTRAINT_VIOLATION_SLACK_COST
         @test isempty(IOM.get_duals(model))
         @test isempty(IOM.get_services(model))
         @test IOM.get_subsystem(model) === nothing
@@ -34,6 +35,19 @@ using InfrastructureOptimizationModels
         @test IOM.get_use_slacks(model) == true
         @test IOM.get_attribute(model, "custom_attr") == 42
         @test IOM.get_attribute(model, "nonexistent") === nothing
+    end
+
+    @testset "Slack penalty" begin
+        model =
+            IOM.DeviceModel(MockThermalGen, TestDeviceFormulation; slack_penalty = 5000)
+        @test IOM.get_slack_penalty(model) === 5000.0
+        for bad in (-1.0, Inf, NaN)
+            @test_throws ArgumentError IOM.DeviceModel(
+                MockThermalGen,
+                TestDeviceFormulation;
+                slack_penalty = bad,
+            )
+        end
     end
 
     @testset "Attributes merging" begin
@@ -99,6 +113,50 @@ using InfrastructureOptimizationModels
             MockThermalGen,
             IOM.AbstractDeviceFormulation,
         )
+    end
+
+    @testset "Outage selection defaults to all outages" begin
+        model = IOM.DeviceModel(MockBranch, MockSecurityConstrainedFormulation)
+        @test IOM.get_selected_outage_ids(model) === nothing
+        @test isempty(IOM.get_outages(model))
+    end
+
+    @testset "Outage selection stores the ids of the given outages" begin
+        model = IOM.DeviceModel(
+            MockBranch,
+            MockSecurityConstrainedFormulation;
+            selected_outages = [MockIdentifiedOutage(7), MockIdentifiedOutage(11)],
+        )
+        @test IOM.get_selected_outage_ids(model) == Set([7, 11])
+        @test isempty(IOM.get_outages(model))
+    end
+
+    @testset "An empty outage list selects no outages" begin
+        model = IOM.DeviceModel(
+            MockBranch,
+            MockSecurityConstrainedFormulation;
+            selected_outages = MockIdentifiedOutage[],
+        )
+        @test IOM.get_selected_outage_ids(model) == Set{Int}()
+    end
+
+    @testset "Outage selection rejects outages not attached to a system" begin
+        @test_throws ArgumentError IOM.DeviceModel(
+            MockBranch,
+            MockSecurityConstrainedFormulation;
+            selected_outages = [MockIdentifiedOutage(IS.UNASSIGNED_ID)],
+        )
+    end
+
+    @testset "Outage selection is dropped for formulations without outages" begin
+        @test_logs (:warn, r"does not support") match_mode = :any begin
+            model = IOM.DeviceModel(
+                MockThermalGen,
+                TestDeviceFormulation;
+                selected_outages = [MockIdentifiedOutage(7)],
+            )
+            @test IOM.get_selected_outage_ids(model) === nothing
+        end
     end
 
     @testset "set_model!" begin

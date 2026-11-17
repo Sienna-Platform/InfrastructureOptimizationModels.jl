@@ -19,13 +19,25 @@ end
 mutable struct ObjectiveFunction
     invariant_terms::JuMPScalarExpr
     variant_terms::GAE
+    # Variant costs added to cost expressions since the last reset, as (entry, cost) pairs.
+    variant_expression_terms::Vector{Tuple{JuMP.AbstractJuMPScalar, JuMPOrFloat}}
+    # Invariant part of each cost expression entry that holds variant costs.
+    # `reset_variant_terms` restores the entries to it, so the variant writers can run again.
+    variant_expression_baselines::IdDict{JuMP.AbstractJuMPScalar, JuMP.AbstractJuMPScalar}
     synchronized::Bool
     sense::MOI.OptimizationSense
     function ObjectiveFunction(invariant_terms::JuMPScalarExpr,
         variant_terms::GAE,
         synchronized::Bool,
         sense::MOI.OptimizationSense = MOI.MIN_SENSE)
-        new(invariant_terms, variant_terms, synchronized, sense)
+        new(
+            invariant_terms,
+            variant_terms,
+            Tuple{JuMP.AbstractJuMPScalar, JuMPOrFloat}[],
+            IdDict{JuMP.AbstractJuMPScalar, JuMP.AbstractJuMPScalar}(),
+            synchronized,
+            sense,
+        )
     end
 end
 
@@ -57,8 +69,41 @@ end
 get_sense(v::ObjectiveFunction) = v.sense
 is_synchronized(v::ObjectiveFunction) = v.synchronized
 set_synchronized_status!(v::ObjectiveFunction, value) = v.synchronized = value
-reset_variant_terms(v::ObjectiveFunction) = v.variant_terms = zero(JuMP.AffExpr)
-has_variant_terms(v::ObjectiveFunction) = !iszero(v.variant_terms)
+# Overwrite `entry` in place with `value`, so references to `entry` stay valid.
+function _restore_expression!(entry::JuMP.GenericAffExpr, value)
+    empty!(entry.terms)
+    entry.constant = zero(entry.constant)
+    JuMP.add_to_expression!(entry, value)
+    return
+end
+function _restore_expression!(entry::JuMP.GenericQuadExpr, value)
+    empty!(entry.terms)
+    _restore_expression!(entry.aff, zero(entry.aff))
+    JuMP.add_to_expression!(entry, value)
+    return
+end
+function reset_variant_terms(v::ObjectiveFunction)
+    baselines = v.variant_expression_baselines
+    # An entry's first reset saves its baseline: the entry minus its variant costs.
+    new_baselines = IdDict{JuMP.AbstractJuMPScalar, JuMP.AbstractJuMPScalar}()
+    for (entry, cost) in v.variant_expression_terms
+        haskey(baselines, entry) && continue
+        baseline = get!(() -> copy(entry), new_baselines, entry)
+        JuMP.add_to_expression!(baseline, -1.0, cost)
+    end
+    for (entry, baseline) in new_baselines
+        JuMP.drop_zeros!(baseline)
+        baselines[entry] = baseline
+    end
+    for (entry, baseline) in baselines
+        _restore_expression!(entry, baseline)
+    end
+    empty!(v.variant_expression_terms)
+    v.variant_terms = zero(JuMP.AffExpr)
+    return
+end
+has_variant_terms(v::ObjectiveFunction) =
+    !iszero(v.variant_terms) || !isempty(v.variant_expression_terms)
 set_sense!(v::ObjectiveFunction, sense::MOI.OptimizationSense) = v.sense = sense
 
 function ObjectiveFunction()
@@ -73,6 +118,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     JuMPmodel::JuMP.Model
     time_steps::UnitRange{Int}
     settings::Settings
+    time_mapping::AbstractTimeMapping
     variables::OrderedDict{VariableKey, JuMPArray}
     aux_variables::OrderedDict{AuxVarKey, JuMPArray}
     duals::OrderedDict{ConstraintKey, JuMPArray}
@@ -97,6 +143,9 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     default_time_series_type::Type
     evaluation_data::EvaluationDataContainer
     serialization_task::Union{Nothing, Task}
+    # Duals that `add_constraint_dual!` skipped because `dual_assigned_later` is true.
+    # `check_optimization_container` errors for any entry that no later pass assigned.
+    deferred_duals::Set{Tuple{DataType, DataType}}
 end
 
 function OptimizationContainer(
@@ -124,6 +173,7 @@ function OptimizationContainer(
         isnothing(jump_model) ? JuMP.Model() : jump_model,
         1:1,
         settings,
+        NoTimeMapping(),
         OrderedDict{VariableKey, JuMPArray}(),
         OrderedDict{AuxVarKey, JuMPArray}(),
         OrderedDict{ConstraintKey, JuMPArray}(),
@@ -147,6 +197,7 @@ function OptimizationContainer(
         T,
         EvaluationDataContainer(),
         nothing,
+        Set{Tuple{DataType, DataType}}(),
     )
 end
 
@@ -200,6 +251,33 @@ get_objective_expression(container::OptimizationContainer) = container.objective
 
 get_serialization_task(container::OptimizationContainer) = container.serialization_task
 
+"""
+Return `true` if `set_time_mapping!` attached a time mapping to the container.
+"""
+has_time_mapping(container::OptimizationContainer) =
+    _has_time_mapping(container.time_mapping)
+
+_has_time_mapping(::NoTimeMapping) = false
+_has_time_mapping(::AbstractTimeMapping) = true
+
+function get_time_mapping(container::OptimizationContainer)
+    return _get_time_mapping(container.time_mapping)
+end
+
+function _get_time_mapping(::NoTimeMapping)
+    error("The OptimizationContainer has no time mapping. Call set_time_mapping! first.")
+end
+
+_get_time_mapping(time_mapping::AbstractTimeMapping) = time_mapping
+
+function set_time_mapping!(
+    container::OptimizationContainer,
+    time_mapping::AbstractTimeMapping,
+)
+    container.time_mapping = time_mapping
+    return
+end
+
 function set_serialization_task!(container::OptimizationContainer, task::Task)
     container.serialization_task = task
     return
@@ -225,6 +303,7 @@ Return the [`EvaluationDataContainer`](@ref) of the container, or the runtime da
 evaluator type `T`.
 """
 get_evaluation_data(container::OptimizationContainer) = container.evaluation_data
+get_deferred_duals(container::OptimizationContainer) = container.deferred_duals
 get_evaluation_data(container::OptimizationContainer, T::DataType) =
     container.evaluation_data[T]
 
@@ -447,9 +526,23 @@ function init_optimization_container!(
         )
     end
 
+    _finalize_optimization_container!(container)
+    return
+end
+
+function init_optimization_container!(
+    container::OptimizationContainer,
+    template::AbstractProblemTemplate,
+    sys::IS.InfrastructureSystemsContainer,
+)
+    _finalize_optimization_container!(container)
+    return
+end
+
+function _finalize_optimization_container!(container::OptimizationContainer)
+    settings = get_settings(container)
     stats = get_optimizer_stats(container)
     stats.detailed_stats = get_detailed_optimizer_stats(settings)
-
     finalize_jump_model!(container, settings)
     return
 end
@@ -484,6 +577,28 @@ function check_optimization_container(container::OptimizationContainer)
         end
     end
     _check_evaluator_aux_var_bindings(container)
+    _check_deferred_duals(container)
+    return
+end
+
+function _check_deferred_duals(container::OptimizationContainer)
+    dual_keys = keys(get_duals(container))
+    for (constraint_type, component_type) in get_deferred_duals(container)
+        assigned = any(
+            key ->
+                get_entry_type(key) === constraint_type &&
+                    get_component_type(key) === component_type,
+            dual_keys,
+        )
+        if !assigned
+            error(
+                "The dual of $constraint_type for $component_type was requested, but no " *
+                "build pass assigned it. dual_assigned_later is true for this type, so " *
+                "the pass that adds its rows must call assign_dual_variable!. That pass " *
+                "did not run.",
+            )
+        end
+    end
     return
 end
 

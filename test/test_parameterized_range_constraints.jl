@@ -44,7 +44,7 @@ end
 
 "Add a `TestValueParameter` container with `param[name, t] = param_range_value(name, t)`."
 function _add_value_parameter!(container, names, time_steps)
-    param_container = IOM.add_param_container!(
+    param_container = IOM.add_variable_value_parameter_container!(
         container,
         TestValueParameter,
         MockThermalGen,
@@ -136,7 +136,7 @@ end
         end
         uuids = Dict(name => "uuid-$name" for name in ts_names)
         container = _make_parameterized_range_container(ts_devices, time_steps)
-        param_container = IOM.add_param_container!(
+        param_container = IOM.add_time_series_parameter_container!(
             container,
             TestTimeSeriesParameter,
             MockThermalGen,
@@ -179,7 +179,7 @@ end
 
     @testset "Event parameter scales by the device's max active power" begin
         container = _make_parameterized_range_container(devices, time_steps)
-        param_container = IOM.add_param_container!(
+        param_container = IOM.add_event_parameter_container!(
             container,
             TestEventParameter,
             MockThermalGen,

@@ -53,6 +53,9 @@ Establishes the NetworkModel for a given AC network formulation type.
 # Accepted keyword arguments
 - `use_slacks::Bool` = false
     Adds slack buses to the network modeling.
+- `slack_penalty::Real` = `BALANCE_SLACK_COST`
+    Objective cost of one unit of balance slack per hour, applied when `use_slacks` is `true`.
+    Must be finite and nonnegative.
 - `network_source::AbstractNetworkSource` = `DefaultNetworkSource()`
     Declares which network the model is built on and how it is reduced. The default
     builds it from the system with no reductions. Concrete sources (a reduction
@@ -64,6 +67,8 @@ Establishes the NetworkModel for a given AC network formulation type.
     selector to bus numbers. The default selects no component.
 - `duals::Vector{DataType}` = Vector{DataType}()
     Constraint types for which duals should be recorded.
+- `attributes::Dict{String, Any}` = Dict{String, Any}()
+    Free-form options for the network model. Read them with `get_attribute`.
 
 # Notes
 - `network_data` holds every matrix and the reduction data derived from
@@ -80,11 +85,13 @@ Establishes the NetworkModel for a given AC network formulation type.
 """
 mutable struct NetworkModel{T <: AbstractNetworkModel}
     use_slacks::Bool
+    slack_penalty::Float64
     network_source::AbstractNetworkSource
     irreducible_buses::IS.ComponentSelector
     subnetworks::Dict{Int, Set{Int}}
     bus_area_map::Dict{IS.InfrastructureSystemsComponent, Int}
     duals::Vector{DataType}
+    attributes::Dict{String, Any}
     network_data::Union{Nothing, AbstractNetworkData}
     subsystem::Union{Nothing, String}
     hvdc_network_model::Union{Nothing, AbstractHVDCNetworkModel}
@@ -94,19 +101,24 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
     function NetworkModel(
         ::Type{T};
         use_slacks = false,
+        slack_penalty::Real = BALANCE_SLACK_COST,
         network_source = DefaultNetworkSource(),
         irreducible_buses::IS.ComponentSelector = IS.make_selector(),
         duals = Vector{DataType}(),
         hvdc_network_model = nothing,
+        attributes = Dict{String, Any}(),
     ) where {T <: AbstractNetworkModel}
         _check_network_formulation(T)
+        _check_slack_penalty(slack_penalty)
         new{T}(
             use_slacks,
+            slack_penalty,
             network_source,
             irreducible_buses,
             Dict{Int, Set{Int}}(),
             Dict{IS.InfrastructureSystemsComponent, Int}(),
             duals,
+            attributes,
             # Populated by the network-matrix-aware instantiation code (POM); IOM
             # holds it behind an abstract type so it carries no PNM dependency.
             nothing,
@@ -119,10 +131,13 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
 end
 
 get_use_slacks(m::NetworkModel) = m.use_slacks
+get_slack_penalty(m::NetworkModel) = m.slack_penalty
 get_network_source(m::NetworkModel) = m.network_source
 get_irreducible_buses(m::NetworkModel) = m.irreducible_buses
 get_network_data(m::NetworkModel) = m.network_data
 get_duals(m::NetworkModel) = m.duals
+get_attributes(m::NetworkModel) = m.attributes
+get_attribute(m::NetworkModel, key::String) = get(m.attributes, key, nothing)
 
 """
 The network matrix derived during instantiation. Implemented in the matrix-aware
@@ -245,17 +260,6 @@ function validate_network_model(
     _check_branch_network_compatibility(network_model, unmodeled_branch_types)
     _validate_branch_models(T, model_has_branch_filters)
     return
-end
-
-function _get_filters(branch_models::BranchModelContainer)
-    filters = Dict{DataType, Function}()
-    for v in values(branch_models)
-        filter_func = get_attribute(v, "filter_function")
-        if filter_func !== nothing
-            filters[get_component_type(v)] = filter_func
-        end
-    end
-    return filters
 end
 
 # NOTE: instantiate_network_model! implementations have been moved to

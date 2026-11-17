@@ -100,8 +100,24 @@ const ABSOLUTE_TOLERANCE = 1.0e-3
 const BALANCE_SLACK_COST = 1e6
 const CONSTRAINT_VIOLATION_SLACK_COST = 2e5
 const SERVICES_SLACK_COST = 1e5
+
+# A negative penalty makes the slack profitable and the model unbounded.
+function _check_slack_penalty(slack_penalty::Real)
+    if !isfinite(slack_penalty) || slack_penalty < 0
+        throw(
+            ArgumentError(
+                "slack_penalty must be finite and nonnegative, got $(slack_penalty)",
+            ),
+        )
+    end
+    return
+end
+
 const COST_EPSILON = 1e-3
 const PTDF_ZERO_TOL = 1e-9
+# Absolute tolerance for `round_to_zero_or_one!`: a summed affine-expression coefficient
+# within this distance of 0, 1, or -1 is floating-point residue.
+const EXPRESSION_ROUNDING_TOL = 1e-9
 const MISSING_INITIAL_CONDITIONS_TIME_COUNT = 999.0
 const SECONDS_IN_MINUTE = 60.0
 const MINUTES_IN_HOUR = 60.0

@@ -5,6 +5,7 @@ mutable struct ModelInternal{T <: AbstractOptimizationContainer}
     container::T
     initial_conditions_model_container::Union{Nothing, T}
     status::ModelBuildStatus.Value
+    released::Bool
     base_conversion::Bool
     executions::Int
     execution_count::Int
@@ -34,6 +35,7 @@ function ModelInternal(
         container,
         nothing,
         ModelBuildStatus.EMPTY,
+        false,
         true,
         1, #Default executions is 1. The model will be run at least once
         0,
@@ -60,6 +62,7 @@ get_container(internal::ModelInternal) = internal.container
 get_recorders(internal::ModelInternal) = internal.recorders
 get_store_params(internal::ModelInternal) = internal.store_params
 get_status(internal::ModelInternal) = internal.status
+is_released(internal::ModelInternal) = internal.released
 get_constraints(internal::ModelInternal) = internal.container.constraints
 get_execution_count(internal::ModelInternal) = internal.execution_count
 get_executions(internal::ModelInternal) = internal.executions
@@ -76,6 +79,7 @@ set_file_level!(internal::ModelInternal, val) = internal.file_level = val
 
 set_executions!(internal::ModelInternal, val::Int) = internal.executions = val
 set_execution_count!(internal::ModelInternal, val::Int) = internal.execution_count = val
+set_released!(internal::ModelInternal, val::Bool) = internal.released = val
 
 function set_initial_conditions_model_container!(
     internal::ModelInternal,

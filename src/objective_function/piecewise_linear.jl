@@ -219,14 +219,13 @@ function add_variable_cost_to_objective!(
             get_fuel_cost(component)
         end
         pwl_cost_expression = pwl_fuel_consumption_expressions[t] * fuel_cost_value
-        add_cost_to_expression!(
-            container,
-            FuelCostExpression,
-            pwl_cost_expression,
-            V,
-            component_name,
-            t,
-        )
+        if is_time_variant_
+            add_variant_cost_to_expression!(
+                container, FuelCostExpression, pwl_cost_expression, V, component_name, t)
+        else
+            add_cost_to_expression!(
+                container, FuelCostExpression, pwl_cost_expression, V, component_name, t)
+        end
         add_cost_to_expression!(
             container,
             FuelConsumptionExpression,

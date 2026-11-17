@@ -329,7 +329,7 @@ end
 # Fast-path setters that skip DenseAxisArray's string-keyed axis lookup. Callers pass
 # `get_parameter_array_data(container)` once, then write into the underlying Array
 # by integer indices. The (i, t) layout matches the canonical (component, time) axis
-# order produced by `add_param_container!`.
+# order produced by the `add_*_parameter_container!` builders.
 #
 # 2D scalar path: covers Float64 and Tuple{Vararg{Float64}} eltypes (the latter is
 # used by piecewise-cost MarketBid parameters whose storage is a Matrix of tuples).

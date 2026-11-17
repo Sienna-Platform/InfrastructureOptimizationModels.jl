@@ -175,6 +175,7 @@ export NetworkModel
 export get_network_matrix, get_contingency_matrix
 export get_network_source, get_irreducible_buses, get_network_data, set_network_data!
 export get_outages
+export get_selected_outage_ids
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
 export get_evaluations, set_evaluations!, has_subnetworks, get_subsystem
 export set_subsystem!, add_dual!
@@ -299,6 +300,9 @@ export get_objective_expression
 export get_formulation
 export get_settings
 export get_rebuild_model
+export get_release_model
+export is_released
+export set_released!
 
 # Expression infrastructure (needed by add_to_expression.jl implementations)
 export get_parameter
@@ -346,8 +350,6 @@ export add_time_series_parameter_container!,
     add_event_parameter_container!,
     add_param_container_split_axes!,
     add_param_container_shared_axes!
-# Compatibility alias for the four builders above; see add_param_container_shims.jl (issue #147).
-export add_param_container!
 export remove_undef!
 
 # Bulk-added: symbols used by POM but previously not exported
@@ -372,7 +374,7 @@ export add_shut_down_cost!, add_start_up_cost!
 export add_pwl_term_delta!, add_pwl_constraint_delta!
 export add_pwl_term_lambda!, _get_sos_value, _onvar_cost
 export uses_commitment_variables
-export add_cost_to_expression!
+export add_cost_to_expression!, add_variant_cost_to_expression!
 # Duration constraint helpers
 export device_duration_compact_retrospective!
 export device_duration_parameters!, device_duration_retrospective!
@@ -440,7 +442,7 @@ export has_initial_condition_value, set_ic_quantity!, get_last_recorded_value
 export set_initial_conditions_model_container!, get_initial_conditions_model_container
 export get_component_type, get_component_name, add_jump_parameter
 # Template/model access
-export get_use_slacks, get_template, get_model
+export get_use_slacks, get_slack_penalty, get_template, get_model
 export get_attributes, get_parameter_column_values
 export get_services, get_contributing_devices, get_contributing_devices_map
 export set_resolution!, finalize_template!
@@ -492,6 +494,7 @@ export ReservationVariable
 export PiecewiseLinearCostVariable
 export RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown
 export DCVoltage
+
 # Abstract types needed by POM for type hierarchy
 export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariableType
 
@@ -550,6 +553,13 @@ export set_horizon!, set_initial_time!, set_warm_start!
 export log_values
 export InitialConditionsData
 
+# Time Mapping
+export AbstractTimeMapping, NestedTimeMapping
+export get_period_count, get_block_ranges, get_block_period_index
+export get_periods, get_blocks, get_period_time_steps
+export get_period_index, get_last_time_step, get_block_weights, validate_time_mapping
+export get_time_mapping, set_time_mapping!, has_time_mapping
+
 # Constants
 export COST_EPSILON
 export INITIALIZATION_PROBLEM_HORIZON_COUNT
@@ -566,6 +576,8 @@ export get_resolution
 
 export get_contributing_devices
 export get_contributing_devices_map
+export add_contributing_device!
+export contributing_device_types
 export get_parameter_column_values
 export update_container_parameter_values!
 export export_outputs
@@ -610,6 +622,7 @@ include("core/outputs_by_time.jl")
 
 # Order Required
 include("operation/problem_template.jl")
+include("core/time_mapping.jl")
 include("core/optimization_container.jl")
 include("core/lhs_parameters.jl")
 include("core/dual_processing.jl")
@@ -623,7 +636,6 @@ include("common_models/add_variable.jl")
 include("common_models/add_auxiliary_variable.jl")
 include("common_models/add_constraint_dual.jl")
 include("common_models/add_jump_expressions.jl")
-include("common_models/set_expression.jl")
 include("common_models/get_time_series.jl")
 # PWL interpolation methods moved to quadratic_approximations/
 include("common_models/constraint_helpers.jl")
@@ -676,7 +688,6 @@ include("bilinear_approximations/nmdt.jl")
 # parameter container builders — must come after piecewise_linear.jl
 # (which defines VariableValueParameter and FixValueParameter)
 include("common_models/add_param_container.jl")
-include("common_models/add_param_container_shims.jl")
 
 include("operation/optimization_model_interface.jl")
 include("operation/decision_model_store.jl")
