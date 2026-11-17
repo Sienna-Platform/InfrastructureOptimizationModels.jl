@@ -526,23 +526,23 @@ function init_optimization_container!(
         )
     end
 
-    stats = get_optimizer_stats(container)
-    stats.detailed_stats = get_detailed_optimizer_stats(settings)
-
-    finalize_jump_model!(container, settings)
+    _finalize_optimization_container!(container)
     return
 end
 
 function init_optimization_container!(
     container::OptimizationContainer,
     template::AbstractProblemTemplate,
-    portfolio::IS.InfrastructureSystemsContainer,
+    sys::IS.InfrastructureSystemsContainer,
 )
-    settings = get_settings(container)
+    _finalize_optimization_container!(container)
+    return
+end
 
+function _finalize_optimization_container!(container::OptimizationContainer)
+    settings = get_settings(container)
     stats = get_optimizer_stats(container)
     stats.detailed_stats = get_detailed_optimizer_stats(settings)
-
     finalize_jump_model!(container, settings)
     return
 end
