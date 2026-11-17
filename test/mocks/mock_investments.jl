@@ -6,10 +6,10 @@ whose construction-time hooks record that they ran.
 struct MockInvestProblem <: IOM.AbstractOptimizationProblem end
 
 # The first `operation_step_count` time steps are operational
-struct MockInvestTimeMapping <: IOM.AbstractTimeMapping
+struct MockInvestTimeMapping{R <: AbstractVector{Int}} <: IOM.AbstractTimeMapping
     base_date::Date
     timestamps::Vector{DateTime}
-    block_ranges::Vector{UnitRange{Int}}
+    block_ranges::Vector{R}
     block_period_index::Vector{Int}
     period_count::Int
     operation_step_count::Int

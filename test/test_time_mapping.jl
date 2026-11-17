@@ -31,6 +31,8 @@ using Dates
         tm = NestedTimeMapping(DateTime(2030, 1, 1), Hour(1), 1:8760, Day(1))
         period_index_allocs(tm, 8760)
         @test period_index_allocs(tm, 8760) == 0
+        @test IOM.get_period_index(tm, 24) == 1
+        @test IOM.get_period_index(tm, 25) == 2
         @test_throws ErrorException IOM.get_period_index(tm, 0)
         @test_throws ErrorException IOM.get_period_index(tm, 8761)
     end
@@ -42,6 +44,9 @@ using Dates
         )
         @test IOM.get_blocks(tm, 1) == [1, 3]
         @test IOM.get_period_time_steps(tm, 1) == [1, 2, 5, 6]
+        @test IOM.get_period_index(tm, 5) == 1
+        @test IOM.get_period_index(tm, 3) == 2
+        @test IOM.get_last_time_step(tm, 1) == 6
     end
 
     @testset "Empty mapping" begin
@@ -72,6 +77,15 @@ using Dates
         # block in a period that does not exist
         @test_throws r"belongs to period 3" IOM.validate_time_mapping(
             mock([1:2, 3:4], [1, 3]),
+        )
+        # non-contiguous block
+        ts5 = [DateTime(2030, 1, 1, h) for h in 0:4]
+        @test_throws r"contiguous" IOM.validate_time_mapping(
+            MockInvestTimeMapping(Date(2030, 1, 1), ts5, [1:2:5], [1], 1, 5),
+        )
+        # period without blocks
+        @test_throws r"period 2" IOM.validate_time_mapping(
+            mock([1:2, 3:4], [1, 3]; periods = 3),
         )
         # one period index per block
         @test_throws r"2 blocks but 1 block period indexes" IOM.validate_time_mapping(

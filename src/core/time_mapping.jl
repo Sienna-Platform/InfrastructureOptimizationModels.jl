@@ -47,8 +47,8 @@ get_last_time_step(tm::AbstractTimeMapping, period::Int) =
 get_block_weights(tm::AbstractTimeMapping) = ones(length(get_block_ranges(tm)))
 
 """
-Check that the blocks cover the time steps in order, without gaps or overlaps, and that each
-block belongs to a valid period.
+Check that the blocks are contiguous and cover the time steps in order, without gaps or
+overlaps, that each block belongs to a valid period, and that each period has a block.
 """
 function validate_time_mapping(tm::AbstractTimeMapping)
     ranges = get_block_ranges(tm)
@@ -67,6 +67,9 @@ function validate_time_mapping(tm::AbstractTimeMapping)
                 "time step $next_step.",
             )
         end
+        if r != first(r):last(r)
+            error("Block $b covers time steps $r; blocks must be contiguous.")
+        end
         next_step = last(r) + 1
     end
     step_count = length(get_timestamps(tm))
@@ -80,6 +83,15 @@ function validate_time_mapping(tm::AbstractTimeMapping)
     for (b, k) in enumerate(period_index)
         if !(1 <= k <= period_count)
             error("Block $b belongs to period $k, outside 1:$period_count.")
+        end
+    end
+    has_block = falses(period_count)
+    for k in period_index
+        has_block[k] = true
+    end
+    for k in 1:period_count
+        if !has_block[k]
+            error("The time mapping has no block in period $k.")
         end
     end
     weight_count = length(get_block_weights(tm))
