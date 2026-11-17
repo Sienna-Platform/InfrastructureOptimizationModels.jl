@@ -149,3 +149,10 @@ end
 function get_last_recorded_row(x::EmulationModelStore, key::OptimizationContainerKey)
     return get_last_recorded_row(x.data_container, key)
 end
+
+function _check_new_optimizer_stats_index(store::EmulationModelStore, key)
+    if haskey(store.optimizer_stats, key)
+        error("Optimizer stats already exist for index = $key")
+    end
+    return
+end

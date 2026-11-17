@@ -141,10 +141,15 @@ end
 
 function write_optimizer_stats!(store::AbstractModelStore, stats::OptimizerStats, index)
     key = convert(keytype(store.optimizer_stats), index)
+    _check_new_optimizer_stats_index(store, key)
+    store.optimizer_stats[key] = stats
+    return
+end
+
+function _check_new_optimizer_stats_index(store::AbstractModelStore, key)
     if haskey(store.optimizer_stats, key)
         @warn "Overwriting optimizer stats for index = $key"
     end
-    store.optimizer_stats[key] = stats
     return
 end
 
@@ -159,7 +164,7 @@ function _add_optimizer_stats_index!(
     df::DataFrames.DataFrame,
     optimizer_stats::AbstractDict{Dates.DateTime},
 )
-    DataFrames.insertcols!(df, 1, :DateTime => keys(optimizer_stats))
+    DataFrames.insertcols!(df, 1, :DateTime => collect(keys(optimizer_stats)))
     return
 end
 

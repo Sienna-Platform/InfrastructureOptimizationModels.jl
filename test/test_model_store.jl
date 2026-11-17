@@ -106,16 +106,28 @@ end
             IOM.write_optimizer_stats!(store, stats, index)
             df = IOM.read_optimizer_stats(store)
             @test size(df, 1) == 1
-            # Only timestamp-indexed stores get a :DateTime column.
-            @test (:DateTime in propertynames(df)) == !(store isa IOM.EmulationModelStore)
-            # Rewriting an index warns and replaces the entry.
-            @test_logs (:warn, r"Overwriting optimizer stats") IOM.write_optimizer_stats!(
-                store,
-                stats,
-                index,
-            )
-            @test size(IOM.read_optimizer_stats(store), 1) == 1
+            @test (:DateTime in propertynames(df)) == expects_datetime_column(store)
         end
+    end
+
+    @testset "optimizer stats: decision store warns and overwrites" begin
+        store = IOM.DecisionModelStore()
+        stats = IOM.OptimizerStats()
+        t1 = Dates.DateTime(2024, 1, 1)
+        t2 = Dates.DateTime(2024, 1, 2)
+        IOM.write_optimizer_stats!(store, stats, t1)
+        IOM.write_optimizer_stats!(store, stats, t2)
+        @test IOM.read_optimizer_stats(store).DateTime ==
+              collect(keys(store.optimizer_stats))
+        @test_logs (:warn, r"Overwriting") IOM.write_optimizer_stats!(store, stats, t1)
+        @test size(IOM.read_optimizer_stats(store), 1) == 2
+    end
+
+    @testset "optimizer stats: emulation store rejects a repeated index" begin
+        store = IOM.EmulationModelStore()
+        stats = IOM.OptimizerStats()
+        IOM.write_optimizer_stats!(store, stats, 1)
+        @test_throws ErrorException IOM.write_optimizer_stats!(store, stats, 1)
     end
 
     @testset "get_value does not infer Any on either store" begin
