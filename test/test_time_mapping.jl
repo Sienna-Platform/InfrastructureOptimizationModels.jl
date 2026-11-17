@@ -53,6 +53,19 @@ Unit tests for the time mapping abstraction (core/time_mapping.jl): the generic 
         @test IOM.validate_time_mapping(tm) === nothing
     end
 
+    @testset "Period without a block" begin
+        tm = MockInvestTimeMapping(
+            Date(2030, 1, 1),
+            [DateTime(2030, 1, 1), DateTime(2030, 1, 1, 1)],
+            [1:2],
+            [1],
+            2,
+            2,
+        )
+        @test IOM.get_period_time_steps(tm, 1) == [1, 2]
+        @test_throws r"[Pp]eriod 2" IOM.get_period_time_steps(tm, 2)
+    end
+
     @testset "validate_time_mapping rejects malformed mappings" begin
         ts = [DateTime(2030, 1, 1, h) for h in 0:3]
         mock(ranges, index; periods = 2) =
@@ -123,7 +136,7 @@ Unit tests for the time mapping abstraction (core/time_mapping.jl): the generic 
 
         months = IOM.NestedTimeMapping(DateTime(2030, 1, 1), Hour(1), 1:1416, Month(1))
         @test IOM.get_block_ranges(months) == [1:744, 745:1416]
-        @test_throws ErrorException IOM.NestedTimeMapping(
+        @test_throws r"allow_partial" IOM.NestedTimeMapping(
             DateTime(2030, 1, 1),
             Hour(1),
             1:1000,

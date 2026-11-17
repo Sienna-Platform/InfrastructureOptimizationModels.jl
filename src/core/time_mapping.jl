@@ -14,6 +14,8 @@ time mappings):
 
   - `get_base_date(tm)`: the date the model's outputs are indexed by
   - `get_total_operation_period_count(tm)`: the number of operational time steps
+
+`NoTimeMapping` is the placeholder for "no mapping set". It implements none of this interface.
 """
 abstract type AbstractTimeMapping end
 
@@ -34,7 +36,11 @@ get_blocks(tm::AbstractTimeMapping, period::Int) =
     findall(==(period), get_block_period_index(tm))
 
 function get_period_time_steps(tm::AbstractTimeMapping, period::Int)
-    return reduce(vcat, get_block_ranges(tm)[get_blocks(tm, period)])
+    blocks = get_blocks(tm, period)
+    if isempty(blocks)
+        error("Period $period has no block in the time mapping.")
+    end
+    return reduce(vcat, get_block_ranges(tm)[blocks])
 end
 
 function get_period_index(tm::AbstractTimeMapping, t::Int)
@@ -116,8 +122,8 @@ Time mapping with one block per period. Calendar periods such as `Dates.Month(1)
 
 groups `time_steps` of length `resolution` starting at `initial_time` into periods of length
 `period`, e.g. `Dates.Day(1)` for daily windows in an hourly model. `resolution` must be a
-fixed period and `time_steps` must start at 1. A last period shorter than the others is an
-error unless `allow_partial` is set.
+fixed period and `time_steps` must start at 1. A last period that ends before its calendar
+boundary is an error unless `allow_partial` is set.
 """
 struct NestedTimeMapping <: AbstractTimeMapping
     timestamps::Vector{Dates.DateTime}
