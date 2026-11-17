@@ -6,38 +6,13 @@ end
 
 @testset "NetworkModel Tests" begin
     @test_throws ArgumentError NetworkModel(AbstractNetworkModel)
+    @test NetworkModel(PTDFPowerModel; use_slacks = true) isa NetworkModel
+
     ec_multi = EvaluationContainer()
     add_evaluator!(ec_multi, DCPowerFlow, DCPowerFlow())
-    add_evaluator!(
-        ec_multi,
-        PSSEExportPowerFlow,
-        PSSEExportPowerFlow(:v33, "exports"),
-    )
-    @test NetworkModel(
-        PTDFPowerModel;
-        use_slacks = true,
-        evaluations = ec_multi,
-    ) isa NetworkModel
-
-    ec_ac = EvaluationContainer()
-    add_evaluator!(
-        ec_ac,
-        ACPowerFlow,
-        ACPowerFlow(;
-            exporter = PSSEExportPowerFlow(
-                :v33,
-                "exports";
-                name = "my_export_name",
-                write_comments = true,
-                overwrite = true,
-            ),
-        ),
-    )
-    @test NetworkModel(
-        PTDFPowerModel;
-        use_slacks = true,
-        evaluations = ec_ac,
-    ) isa NetworkModel
+    add_evaluator!(ec_multi, PSSEExportPowerFlow, PSSEExportPowerFlow(:v33, "exports"))
+    @test length(ec_multi) == 2
+    @test haskey(ec_multi, PSSEExportPowerFlow)
 end
 
 @testset "Feedforward Struct Tests" begin

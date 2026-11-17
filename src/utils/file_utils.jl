@@ -2,9 +2,7 @@
 Return a decoded JSON file.
 """
 function read_json(filename::AbstractString)
-    open(filename, "r") do io
-        JSON3.read(io)
-    end
+    return JSON.parsefile(filename)
 end
 
 """
@@ -18,10 +16,7 @@ function find_key_with_value(d, value)
 end
 
 function read_file_hashes(path)
-    data = open(joinpath(path, IS.HASH_FILENAME), "r") do io
-        JSON3.read(io)
-    end
-
+    data = JSON.parsefile(joinpath(path, IS.HASH_FILENAME))
     return data["files"]
 end
 

@@ -27,6 +27,8 @@ MockSystem(base_power::Float64, stores_in_memory::Bool) =
 
 # Required interface methods - extend InfrastructureOptimizationModels functions for duck-typing
 InfrastructureOptimizationModels.get_base_power(sys::MockSystem) = sys.base_power
+InfrastructureOptimizationModels.get_time_series_counts_by_type(::MockSystem) =
+    [Dict("type" => "Deterministic")]
 InfrastructureOptimizationModels.stores_time_series_in_memory(sys::MockSystem) =
     sys.stores_in_memory
 
@@ -36,6 +38,13 @@ function IOM.get_available_components(
     sys::MockSystem,
 ) where {T <: IS.InfrastructureSystemsComponent}
     return get_components(T, sys)
+end
+
+function IOM.get_available_components(
+    ::DeviceModel{T},
+    sys::MockSystem,
+) where {T <: IS.InfrastructureSystemsComponent}
+    return T[c for c in get_components(T, sys) if get_available(c)]
 end
 
 function get_components(::Type{T}, sys::MockSystem) where {T}

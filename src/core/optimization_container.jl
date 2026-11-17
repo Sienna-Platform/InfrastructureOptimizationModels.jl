@@ -10,20 +10,34 @@ function PrimalValuesCache()
     )
 end
 
-function Base.isempty(pvc::PrimalValuesCache)
-    return isempty(pvc.variables_cache) && isempty(pvc.expressions_cache)
+function Base.empty!(pvc::PrimalValuesCache)
+    empty!(pvc.variables_cache)
+    empty!(pvc.expressions_cache)
+    return pvc
 end
 
 mutable struct ObjectiveFunction
     invariant_terms::JuMPScalarExpr
     variant_terms::GAE
+    # Variant costs added to cost expressions since the last reset, as (entry, cost) pairs.
+    variant_expression_terms::Vector{Tuple{JuMP.AbstractJuMPScalar, JuMPOrFloat}}
+    # Invariant part of each cost expression entry that holds variant costs.
+    # `reset_variant_terms` restores the entries to it, so the variant writers can run again.
+    variant_expression_baselines::IdDict{JuMP.AbstractJuMPScalar, JuMP.AbstractJuMPScalar}
     synchronized::Bool
     sense::MOI.OptimizationSense
     function ObjectiveFunction(invariant_terms::JuMPScalarExpr,
         variant_terms::GAE,
         synchronized::Bool,
         sense::MOI.OptimizationSense = MOI.MIN_SENSE)
-        new(invariant_terms, variant_terms, synchronized, sense)
+        new(
+            invariant_terms,
+            variant_terms,
+            Tuple{JuMP.AbstractJuMPScalar, JuMPOrFloat}[],
+            IdDict{JuMP.AbstractJuMPScalar, JuMP.AbstractJuMPScalar}(),
+            synchronized,
+            sense,
+        )
     end
 end
 
@@ -55,8 +69,41 @@ end
 get_sense(v::ObjectiveFunction) = v.sense
 is_synchronized(v::ObjectiveFunction) = v.synchronized
 set_synchronized_status!(v::ObjectiveFunction, value) = v.synchronized = value
-reset_variant_terms(v::ObjectiveFunction) = v.variant_terms = zero(JuMP.AffExpr)
-has_variant_terms(v::ObjectiveFunction) = !iszero(v.variant_terms)
+# Overwrite `entry` in place with `value`, so references to `entry` stay valid.
+function _restore_expression!(entry::JuMP.GenericAffExpr, value)
+    empty!(entry.terms)
+    entry.constant = zero(entry.constant)
+    JuMP.add_to_expression!(entry, value)
+    return
+end
+function _restore_expression!(entry::JuMP.GenericQuadExpr, value)
+    empty!(entry.terms)
+    _restore_expression!(entry.aff, zero(entry.aff))
+    JuMP.add_to_expression!(entry, value)
+    return
+end
+function reset_variant_terms(v::ObjectiveFunction)
+    baselines = v.variant_expression_baselines
+    # An entry's first reset saves its baseline: the entry minus its variant costs.
+    new_baselines = IdDict{JuMP.AbstractJuMPScalar, JuMP.AbstractJuMPScalar}()
+    for (entry, cost) in v.variant_expression_terms
+        haskey(baselines, entry) && continue
+        baseline = get!(() -> copy(entry), new_baselines, entry)
+        JuMP.add_to_expression!(baseline, -1.0, cost)
+    end
+    for (entry, baseline) in new_baselines
+        JuMP.drop_zeros!(baseline)
+        baselines[entry] = baseline
+    end
+    for (entry, baseline) in baselines
+        _restore_expression!(entry, baseline)
+    end
+    empty!(v.variant_expression_terms)
+    v.variant_terms = zero(JuMP.AffExpr)
+    return
+end
+has_variant_terms(v::ObjectiveFunction) =
+    !iszero(v.variant_terms) || !isempty(v.variant_expression_terms)
 set_sense!(v::ObjectiveFunction, sense::MOI.OptimizationSense) = v.sense = sense
 
 function ObjectiveFunction()
@@ -94,8 +141,11 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     # `UnionAll`), the unparameterized name. The constructor rejects abstract
     # types; this covers IS time series types and duck-typed mocks alike.
     default_time_series_type::Type
-    evaluations::EvaluationContainer
+    evaluation_data::EvaluationDataContainer
     serialization_task::Union{Nothing, Task}
+    # Duals that `add_constraint_dual!` skipped because `dual_assigned_later` is true.
+    # `check_optimization_container` errors for any entry that no later pass assigned.
+    deferred_duals::Set{Tuple{DataType, DataType}}
 end
 
 function OptimizationContainer(
@@ -145,8 +195,9 @@ function OptimizationContainer(
         AuxVarKey[],
         OptimizationContainerMetadata(),
         T,
-        EvaluationContainer(),
+        EvaluationDataContainer(),
         nothing,
+        Set{Tuple{DataType, DataType}}(),
     )
 end
 
@@ -184,8 +235,12 @@ get_jump_model(container::OptimizationContainer) = container.JuMPmodel
 get_metadata(container::OptimizationContainer) = container.metadata
 get_optimizer_stats(container::OptimizationContainer) = container.optimizer_stats
 get_parameters(container::OptimizationContainer) = container.parameters
-get_evaluations(container::OptimizationContainer) = container.evaluations
 get_resolution(container::OptimizationContainer) = get_resolution(container.settings)
+"""
+Step length in hours. Costs and penalties given per hour multiply by it.
+"""
+get_resolution_in_hours(container::OptimizationContainer) =
+    Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
 get_settings(container::OptimizationContainer) = container.settings
 get_time_steps(container::OptimizationContainer) = container.time_steps
 get_variables(container::OptimizationContainer) = container.variables
@@ -223,10 +278,88 @@ is_synchronized(container::OptimizationContainer) =
 set_time_steps!(container::OptimizationContainer, time_steps::UnitRange{Int64}) =
     container.time_steps = time_steps
 
+"""
+    get_evaluation_data(container::OptimizationContainer)
+    get_evaluation_data(container::OptimizationContainer, T::DataType)
+
+Return the [`EvaluationDataContainer`](@ref) of the container, or the runtime data of the
+evaluator type `T`.
+"""
+get_evaluation_data(container::OptimizationContainer) = container.evaluation_data
+get_deferred_duals(container::OptimizationContainer) = container.deferred_duals
+get_evaluation_data(container::OptimizationContainer, T::DataType) =
+    container.evaluation_data[T]
+
+"Store `data` in the container under the evaluator type `T`."
+add_evaluation_data!(
+    container::OptimizationContainer,
+    T::DataType,
+    data::AbstractEvaluationData,
+) = add_evaluation_data!(container.evaluation_data, T, data)
+
+"""
+    bind_aux_variable!(container, T::DataType, key::AuxVarKey)
+
+Record that the evaluator registered under `T` produces the aux variable `key`.
+After each solve, `calculate_aux_variables!` calls `calculate_aux_variable_value!` for
+`key` with the runtime data of that evaluator.
+Each aux variable has exactly one evaluator: binding `key` to a second evaluator throws.
+"""
+function bind_aux_variable!(container::OptimizationContainer, T::DataType, key::AuxVarKey)
+    data = get_evaluation_data(container)
+    if !haskey(data, T)
+        throw(
+            ArgumentError(
+                "No evaluation data is registered for $T. " *
+                "Call add_evaluation_data! before bind_aux_variable!.",
+            ),
+        )
+    end
+    if !haskey(get_aux_variables(container), key)
+        throw(
+            ArgumentError(
+                "The container has no aux variable $(encode_key_as_string(key)). " *
+                "Add its container before binding it.",
+            ),
+        )
+    end
+    aux_type = get_entry_type(key)
+    if !is_from_evaluator(aux_type)
+        throw(
+            ArgumentError(
+                "$aux_type is not an evaluator aux variable. " *
+                "Define is_from_evaluator(::Type{$aux_type}) = true.",
+            ),
+        )
+    end
+    # After each solve, every evaluator bound to a key writes it, so a key bound to two
+    # evaluators would have the later one silently overwrite the earlier one. Binding the
+    # same evaluator to the same key again is a no-op.
+    for (other, other_keys) in data.aux_var_keys
+        if other != T && key in other_keys
+            throw(
+                ArgumentError(
+                    "The aux variable $(encode_key_as_string(key)) is already bound to " *
+                    "$other, so $T cannot also produce it. Each aux variable must " *
+                    "come from exactly one evaluator.",
+                ),
+            )
+        end
+    end
+    bound = get!(data.aux_var_keys, T, AuxVarKey[])
+    key in bound || push!(bound, key)
+    return
+end
+
+"Return the aux variable keys bound to the evaluator registered under `T`."
+get_bound_aux_var_keys(container::OptimizationContainer, T::DataType) =
+    get(get_evaluation_data(container).aux_var_keys, T, AuxVarKey[])
+
 function reset_evaluations!(container::OptimizationContainer)
-    for data in values(get_evaluation_data(get_evaluations(container)))
+    for data in values(get_evaluation_data(container))
         reset!(data)
     end
+    return
 end
 
 @generated function has_container_key(
@@ -403,6 +536,7 @@ function reset_optimization_model!(container::OptimizationContainer)
     end
     empty!(container.evaluator_aux_var_keys)
     empty!(container.standalone_aux_var_keys)
+    empty!(get_evaluation_data(container))
     container.initial_conditions_data = InitialConditionsData()
     container.objective_function = ObjectiveFunction()
     container.primal_values_cache = PrimalValuesCache()
@@ -423,6 +557,49 @@ function check_optimization_container(container::OptimizationContainer)
         valid = check_parameter_multiplier_values(param_container.multiplier_array)
         if !valid
             error("The model container has invalid values in $(encode_key_as_string(k))")
+        end
+    end
+    _check_evaluator_aux_var_bindings(container)
+    _check_deferred_duals(container)
+    return
+end
+
+function _check_deferred_duals(container::OptimizationContainer)
+    dual_keys = keys(get_duals(container))
+    for (constraint_type, component_type) in get_deferred_duals(container)
+        assigned = any(
+            key ->
+                get_entry_type(key) === constraint_type &&
+                    get_component_type(key) === component_type,
+            dual_keys,
+        )
+        if !assigned
+            error(
+                "The dual of $constraint_type for $component_type was requested, but no " *
+                "build pass assigned it. dual_assigned_later is true for this type, so " *
+                "the pass that adds its rows must call assign_dual_variable!. That pass " *
+                "did not run.",
+            )
+        end
+    end
+    return
+end
+
+function _check_evaluator_aux_var_bindings(container::OptimizationContainer)
+    data = get_evaluation_data(container)
+    bound = Set{AuxVarKey}()
+    for (T, keys_T) in data.aux_var_keys
+        haskey(data, T) ||
+            error("Aux variables are bound to $T, which has no evaluation data.")
+        union!(bound, keys_T)
+    end
+    for key in keys(get_aux_variables(container))
+        if is_from_evaluator(get_entry_type(key)) && key ∉ bound
+            error(
+                "The aux variable $(encode_key_as_string(key)) comes from an evaluator, " *
+                "but no evaluator binds it. The code that adds it must call " *
+                "bind_aux_variable!.",
+            )
         end
     end
     return
@@ -449,13 +626,17 @@ end
 
 """
 Execute the optimizer on the container's JuMP model, compute aux/dual variables,
-and return the run status. Called `solve_impl!(container, system)` in PSI.
+and return the run status.
+`context` is the [`AbstractSolveContext`](@ref) of this solve. The standalone aux
+variables get it.
 """
 function execute_optimizer!(
     container::OptimizationContainer,
     system::IS.InfrastructureSystemsContainer,
+    context::AbstractSolveContext,
 )
     optimizer_stats = get_optimizer_stats(container)
+    empty!(container.primal_values_cache)
 
     jump_model = get_jump_model(container)
 
@@ -489,16 +670,17 @@ function execute_optimizer!(
         end
     end
 
-    # Order is important because if a dual is needed then it could move the outputs to the
-    # temporary primal container
-    _, optimizer_stats.timed_calculate_aux_variables =
-        @timed calculate_aux_variables!(container, system)
-
-    # Needs to be called here to avoid issues when getting duals from MILPs
+    # The optimizer stats read the objective value, which the MILP dual computation makes
+    # unreadable, so they are written first. Aux variables are computed last so they can
+    # read dual values; primal values must be read through `lookup_value`.
     write_optimizer_stats!(container)
 
-    _, optimizer_stats.timed_calculate_dual_variables =
+    dual_status, optimizer_stats.timed_calculate_dual_variables =
         @timed calculate_dual_variables!(container, system, is_milp(container))
+    dual_status == RunStatus.FAILED && return RunStatus.FAILED
+
+    _, optimizer_stats.timed_calculate_aux_variables =
+        @timed calculate_aux_variables!(container, system, context)
 
     return RunStatus.SUCCESSFULLY_FINALIZED
 end
@@ -1155,7 +1337,8 @@ get_expression(
 
 function read_expressions(container::OptimizationContainer)
     return Dict(
-        k => to_dataframe(jump_value.(v), k) for (k, v) in get_expressions(container) if
+        k => to_dataframe(lookup_value(container, k), k) for
+        k in keys(get_expressions(container)) if
         !(get_entry_type(k) <: SystemBalanceExpressions)
     )
 end
@@ -1237,6 +1420,8 @@ function write_initial_conditions_data!(
                 LOG_GROUP_SERVICE_CONSTUCTORS
             if field == STORE_CONTAINER_PARAMETERS
                 ic_data_dict[key] = ic_container_dict[key]
+            elseif field == STORE_CONTAINER_VARIABLES
+                ic_data_dict[key] = lookup_value(ic_container, key)
             else
                 ic_data_dict[key] = jump_value.(field_container)
             end
@@ -1330,6 +1515,7 @@ function deserialize_key(container::OptimizationContainer, name::AbstractString)
 end
 
 function _cache_aux_variable_key_partitions!(container::OptimizationContainer)
+    _check_evaluator_aux_var_bindings(container)
     aux_var_keys = keys(get_aux_variables(container))
     evaluator_keys = filter(is_from_evaluator ∘ get_entry_type, aux_var_keys)
     container.evaluator_aux_var_keys = collect(evaluator_keys)
@@ -1340,24 +1526,20 @@ end
 function calculate_aux_variables!(
     container::OptimizationContainer,
     system::IS.InfrastructureSystemsContainer,
+    context::AbstractSolveContext,
 )
     if isempty(container.evaluator_aux_var_keys) &&
        isempty(container.standalone_aux_var_keys)
         _cache_aux_variable_key_partitions!(container)
     end
-    evaluator_aux_var_keys = container.evaluator_aux_var_keys
     standalone_aux_var_keys = container.standalone_aux_var_keys
-    evaluation_data = get_evaluation_data(get_evaluations(container))
-    # We should only have evaluator-bound aux vars if we have evaluators registered
-    @assert isempty(evaluator_aux_var_keys) || !isempty(evaluation_data)
 
     TimerOutputs.@timeit RUN_SIMULATION_TIMER "External Evaluation" begin
         reset_evaluations!(container)
-        # Evaluator-bound aux vars get calculated once per evaluator
-        for (T, data) in evaluation_data
+        for (T, data) in get_evaluation_data(container)
             @debug "Processing evaluator $(T)"
             evaluate!(data, container, system)
-            for key in evaluator_aux_var_keys
+            for key in get_bound_aux_var_keys(container, T)
                 calculate_aux_variable_value!(container, key, system, data)
             end
         end
@@ -1365,7 +1547,7 @@ function calculate_aux_variables!(
 
     # Other aux vars get calculated once at the end
     for key in standalone_aux_var_keys
-        calculate_aux_variable_value!(container, key, system)
+        calculate_aux_variable_value!(container, key, system, context)
     end
     return RunStatus.SUCCESSFULLY_FINALIZED
 end
@@ -1426,11 +1608,10 @@ function calculate_dual_variables!(
 )
     isempty(get_duals(container)) && return RunStatus.SUCCESSFULLY_FINALIZED
     if is_milp
-        status = _calculate_dual_variables_discrete_model!(container, sys)
+        return _calculate_dual_variables_discrete_model!(container, sys)
     else
-        status = _calculate_dual_variables_continous_model!(container, sys)
+        return _calculate_dual_variables_continous_model!(container, sys)
     end
-    return
 end
 
 ########################### Helper Functions to get keys ###################################
@@ -1518,24 +1699,76 @@ function get_time_series_initial_values!(
     interval::Dates.Millisecond = UNSET_INTERVAL,
     resolution::Dates.Millisecond = UNSET_RESOLUTION,
 ) where {T <: IS.TimeSeriesData}
-    initial_time = get_initial_time(container)
-    time_steps = get_time_steps(container)
+    return get_time_series_window(
+        T,
+        component,
+        time_series_name,
+        get_initial_time(container),
+        length(get_time_steps(container));
+        interval = interval,
+        resolution = resolution,
+    )
+end
+
+"""
+Read `len` time steps of the time series `time_series_name` of `component`, starting at
+`initial_time`. A series with value axes gives one flattened (column-major) vector per step.
+"""
+function get_time_series_window(
+    ::Type{T},
+    component::IS.InfrastructureSystemsComponent,
+    time_series_name::AbstractString,
+    initial_time::Dates.DateTime,
+    len::Int;
+    interval::Dates.Millisecond = UNSET_INTERVAL,
+    resolution::Dates.Millisecond = UNSET_RESOLUTION,
+) where {T <: IS.TimeSeriesData}
     forecast = IS.get_time_series(
         T,
         component,
         time_series_name;
         start_time = initial_time,
+        len = len,
         count = 1,
         interval = _to_is_interval(interval),
         resolution = _to_is_resolution(resolution),
     )
-    ts_values = IS.get_time_series_values(
-        component,
-        forecast;
-        start_time = initial_time,
-        len = length(time_steps),
-    )
-    return ts_values
+    return _initial_values(component, forecast, _value_axes(forecast), initial_time, len)
+end
+
+# Only these two series types carry value axes; any other forecast keeps the TimeArray read.
+_value_axes(::Any) = nothing
+_value_axes(series::Union{IS.Deterministic, IS.SingleTimeSeries}) =
+    IS.get_value_axes(series)
+
+_initial_values(component, forecast, ::Nothing, initial_time, len) =
+    IS.get_time_series_values(component, forecast; start_time = initial_time, len = len)
+
+# A series with value axes gives one flattened (column-major) vector per time step, so a
+# series of any rank fills a 3-D (owner, position, time) container and reuses the 3-D
+# parameter code. IS's TimeArray read holds 2 dims at most.
+function _initial_values(
+    ::IS.InfrastructureSystemsComponent,
+    forecast::IS.Deterministic,
+    ::Vector{IS.TimeSeriesAxis},
+    ::Dates.DateTime,
+    len::Int,
+)
+    window = only(values(IS.get_data(forecast)))
+    return [vec(collect(selectdim(window, 1, t))) for t in 1:len]
+end
+
+function _initial_values(
+    ::IS.InfrastructureSystemsComponent,
+    series::IS.SingleTimeSeries,
+    ::Vector{IS.TimeSeriesAxis},
+    initial_time::Dates.DateTime,
+    len::Int,
+)
+    first_row =
+        length(IS.get_initial_timestamp(series):IS.get_resolution(series):initial_time)
+    array = IS.get_array(series)
+    return [vec(collect(selectdim(array, 1, first_row + t - 1))) for t in 1:len]
 end
 
 """
@@ -1564,14 +1797,44 @@ function get_column_names(
     end
 end
 
-lookup_value(
-    container::OptimizationContainer,
-    key::OptimizationContainerKey{T, U},
-) where {T <: OptimizationKeyType, U <: InfrastructureSystemsType} =
-    _get_entry(container, key)
-# ParameterKey special case: unwrap ParameterContainer via calculate_parameter_values
-lookup_value(
-    container::OptimizationContainer,
-    key::OptimizationContainerKey{T, U},
-) where {T <: ParameterType, U <: InfrastructureSystemsType} =
+"""
+    lookup_value(container, key)
+    lookup_value(container, T, U, meta = CONTAINER_KEY_EMPTY_META)
+
+Return the solved values of the variable, expression, aux variable, or parameter stored
+under `key` as a `Float64` array with the same axes as the stored container.
+
+Post-solve code must read primal values through this function rather than calling
+`jump_value` on the JuMP objects. Computing duals for a MILP fixes the discrete variables,
+re-solves, and restores the model, after which JuMP no longer reports primal values; the
+values from the original solve remain available here.
+
+Constraint primal values are not available after that dual computation.
+"""
+function lookup_value(container::OptimizationContainer, key::VariableKey)
+    cache = container.primal_values_cache.variables_cache
+    haskey(cache, key) && return cache[key]
+    return jump_value.(get_variable(container, key))
+end
+
+function lookup_value(container::OptimizationContainer, key::ExpressionKey)
+    cache = container.primal_values_cache.expressions_cache
+    haskey(cache, key) && return cache[key]
+    return jump_value.(get_expression(container, key))
+end
+
+lookup_value(container::OptimizationContainer, key::AuxVarKey) =
+    get_aux_variable(container, key)
+
+lookup_value(container::OptimizationContainer, key::ParameterKey) =
     calculate_parameter_values(get_parameter(container, key))
+
+lookup_value(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    meta::String = CONTAINER_KEY_EMPTY_META,
+) where {
+    T <: Union{VariableType, ExpressionType, AuxVariableType, ParameterType},
+    U <: Union{IS.InfrastructureSystemsComponent, IS.InfrastructureSystemsContainer},
+} = lookup_value(container, key_for_type(T)(T, U, meta))

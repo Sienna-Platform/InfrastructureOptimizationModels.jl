@@ -355,6 +355,9 @@ for i in the set of time steps.
 
 for i in the set of time steps.
 
+If ``t \leq d_{min} - d_{init}`` and ``d_{init} > 0``, the row also holds the constant 1, as in
+`device_duration_retrospective!`.
+
 
 # Arguments
 * container::OptimizationContainer : the optimization_container model built in InfrastructureOptimizationModels
@@ -412,6 +415,9 @@ function device_duration_compact_retrospective!(
                 for i in max(first(time_steps), Int(t - duration_data[ix].up + 1)):t
                     JuMP.add_to_expression!(lhs_on, varstart[name, i])
                 end
+                if t <= max(0, duration_data[ix].up - get_value(ic)) && get_value(ic) > 0
+                    JuMP.add_to_expression!(lhs_on, 1)
+                end
             elseif t <= max(0, duration_data[ix].up - get_value(ic)) && get_value(ic) > 0
                 JuMP.add_to_expression!(lhs_on, 1)
             else
@@ -432,6 +438,9 @@ function device_duration_compact_retrospective!(
             )
                 for i in max(first(time_steps), Int(t - duration_data[ix].down + 1)):t
                     JuMP.add_to_expression!(lhs_off, varstop[name, i])
+                end
+                if t <= max(0, duration_data[ix].down - get_value(ic)) && get_value(ic) > 0
+                    JuMP.add_to_expression!(lhs_off, 1)
                 end
             elseif t <= max(0, duration_data[ix].down - get_value(ic)) && get_value(ic) > 0
                 JuMP.add_to_expression!(lhs_off, 1)

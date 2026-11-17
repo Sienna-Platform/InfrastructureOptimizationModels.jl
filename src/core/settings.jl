@@ -17,6 +17,7 @@ struct Settings
     export_pwl_vars::Bool
     allow_fails::Bool
     rebuild_model::Base.RefValue{Bool}
+    release_model::Bool
     export_optimization_model::OptimizationModelExportFormat.Value
     store_variable_names::Bool
     system_to_file::Bool
@@ -82,6 +83,7 @@ function Settings(
     allow_fails::Bool = false,
     check_numerical_bounds = true,
     rebuild_model::Bool = false,
+    release_model::Bool = false,
     export_optimization_model = OptimizationModelExportFormat.NONE,
     store_variable_names = false,
     system_to_file = true,
@@ -115,6 +117,7 @@ function Settings(
         export_pwl_vars,
         allow_fails,
         Ref(rebuild_model),
+        release_model,
         export_optimization_model_,
         store_variable_names,
         system_to_file,
@@ -157,6 +160,7 @@ get_detailed_optimizer_stats(settings::Settings) = settings.detailed_optimizer_s
 get_direct_mode_optimizer(settings::Settings) = settings.direct_mode_optimizer
 get_store_variable_names(settings::Settings) = settings.store_variable_names
 get_rebuild_model(settings::Settings) = settings.rebuild_model[]
+get_release_model(settings::Settings) = settings.release_model
 
 function set_rebuild_model!(settings::Settings, rebuild_model::Bool)
     settings.rebuild_model[] = rebuild_model

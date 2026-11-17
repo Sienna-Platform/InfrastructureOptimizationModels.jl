@@ -173,15 +173,9 @@ function write_model_variable_outputs!(
         mkpath(exports_path)
     end
 
-    if !isempty(container.primal_values_cache)
-        variables = container.primal_values_cache.variables_cache
-    else
-        variables = get_variables(container)
-    end
-
-    for (key, variable) in variables
+    for key in keys(get_variables(container))
         !should_write_resulting_value(key) && continue
-        data = jump_value.(variable)
+        data = lookup_value(container, key)
         write_output!(store, model_name, key, index, update_timestamp, data)
 
         if !isnothing(export_params) &&
@@ -257,15 +251,9 @@ function write_model_expression_outputs!(
         mkpath(exports_path)
     end
 
-    if !isempty(container.primal_values_cache)
-        expressions = container.primal_values_cache.expressions_cache
-    else
-        expressions = get_expressions(container)
-    end
-
-    for (key, expression) in expressions
+    for key in keys(get_expressions(container))
         !should_write_resulting_value(key) && continue
-        data = jump_value.(expression)
+        data = lookup_value(container, key)
         write_output!(store, model_name, key, index, update_timestamp, data)
 
         if !isnothing(export_params) &&

@@ -151,6 +151,25 @@ For thermals, equivalent to `get_must_run`, but that implementation belongs in P
 """
 skip_proportional_cost(d::IS.InfrastructureSystemsComponent) = false
 
+"""
+Extension point: downstream packages override this method to skip the proportional cost of one variable type. The default calls the one-argument form.
+"""
+skip_proportional_cost(d::IS.InfrastructureSystemsComponent, ::Type{<:VariableType}) =
+    skip_proportional_cost(d)
+
+"""
+Extension point: whether a variable's proportional cost is a per-hour rate, multiplied by
+the step length in hours. Return `false` for variables whose value already grows with the
+step length, so their cost applies once per step.
+"""
+cost_scales_with_resolution(::Type{<:VariableType}) = true
+
+# A ramp slack is the change over one step beyond the ramp limit (rate times step length),
+# so it already grows with the step and its penalty applies once per step.
+cost_scales_with_resolution(
+    ::Type{<:Union{RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown}},
+) = false
+
 ###############################
 #### System query stubs #######
 ###############################
@@ -210,10 +229,18 @@ function start_up_cost(
 end
 
 """
+    calculate_aux_variable_value!(container, key, system, context::AbstractSolveContext)
+    calculate_aux_variable_value!(container, key, system, data::AbstractEvaluationData)
+
 Extension point: Calculate auxiliary variable values.
 Concrete implementations in PowerOperationsModels for specific aux variable types.
-Evaluator-bound aux variables get the `AbstractEvaluationData` that produced them
-as a fourth argument, so the implementation does not have to look it up.
+
+A standalone aux variable gets the [`AbstractSolveContext`](@ref) of the solve
+as the fourth argument.
+An evaluator-bound aux variable gets the [`AbstractEvaluationData`](@ref) that
+produced it as the fourth argument.
+Both forms have the same name and the same number of arguments.
+Thus each method must give a type to its fourth argument.
 """
 function calculate_aux_variable_value! end
 
@@ -221,8 +248,30 @@ function calculate_aux_variable_value! end
 Extension point: Check if an auxiliary variable type is produced by an external
 evaluator (see `AbstractEvaluator`). Default: false. Override in POM for
 evaluator-bound aux variable subtypes.
+
+Each aux variable of such a type must also be bound to the one evaluator that produces it
+with [`bind_aux_variable!`](@ref). `check_optimization_container` errors if it is not.
 """
 is_from_evaluator(::Type{<:AuxVariableType}) = false
+
+"""
+    add_evaluator_aux_variables!(container, T::DataType, data::AbstractEvaluationData, system)
+
+Extension point: add the aux variables that the evaluator registered under `T` produces,
+and bind each one with [`bind_aux_variable!`](@ref).
+The domain package calls it after it stores `data` with `add_evaluation_data!`.
+Each evaluation data type must implement it.
+"""
+function add_evaluator_aux_variables!(
+    ::OptimizationContainer,
+    T::DataType,
+    data::AbstractEvaluationData,
+    ::Any,
+)
+    error(
+        "`add_evaluator_aux_variables!` not implemented for evaluator $T with data $(typeof(data)).",
+    )
+end
 
 """
 Extension point: Get minimum and maximum limits for a given component, constraint type, and device formulation.
@@ -236,6 +285,40 @@ function get_min_max_limits(
         "`get_min_max_limits` not implemented for component $(typeof(component)), \
         constraint $T, formulation $F. Implement it in the downstream package (e.g. POM).",
     )
+end
+
+"""
+Per-step minimum active power of `device`, as a vector over the time steps. The default
+repeats `get_active_power_limits(device).min`. The ramp and PWL cost code read it. A device
+type whose minimum changes by step implements this method.
+"""
+function get_min_active_power_values(
+    container::OptimizationContainer,
+    device::V,
+) where {V <: IS.InfrastructureSystemsComponent}
+    n = length(get_time_steps(container))
+    return fill(Float64(get_active_power_limits(device).min), n)
+end
+
+"""
+Per-step minimum and maximum limits of `device` for the constraint `T`, as two vectors over
+the time steps. The default repeats [`get_min_max_limits`](@ref) at every step. A formulation
+whose limits change by step implements this method. `fill_slacked_range_constraints!` still
+reads the static [`get_min_max_limits`](@ref) (branch ratings only), so it has no per-step limits.
+"""
+function get_min_max_limit_values(
+    container::OptimizationContainer,
+    ::Type{T},
+    device::V,
+    ::DeviceModel{V, W},
+) where {
+    T <: ConstraintType,
+    V <: IS.InfrastructureSystemsComponent,
+    W <: AbstractDeviceFormulation,
+}
+    limits = get_min_max_limits(device, T, W)
+    n = length(get_time_steps(container))
+    return (min = fill(Float64(limits.min), n), max = fill(Float64(limits.max), n))
 end
 
 """

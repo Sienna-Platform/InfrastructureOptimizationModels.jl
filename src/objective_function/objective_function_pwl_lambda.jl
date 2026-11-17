@@ -48,26 +48,28 @@ Normalization constraint for PWL cost: sum of delta variables equals on-status.
 """
 struct PiecewiseLinearCostNormalizationConstraint <: ConstraintType end
 
-_sos_status(
-    ::Type{<:IS.InfrastructureSystemsComponent},
-    ::Type{<:AbstractDeviceFormulation},
-) =
-    SOSStatusVariable.NO_VARIABLE
+"""
+Trait function: does device formulation `V` commit the unit (on/off variables)?
+Defaults to `false`; thermal unit commitment formulations return `true`.
+Downstream packages extend it as `IOM.uses_commitment_formulation`.
+"""
+uses_commitment_formulation(::Type{<:AbstractDeviceFormulation}) = false
+uses_commitment_formulation(::Type{<:AbstractThermalUnitCommitment}) = true
 
 """
 Trait function: does device type `T` use commitment (on/off) variables?
-Defaults to `false`; POM specializes for thermal device types.
+Defaults to `false`; POM specializes for thermal and hydro device types.
 """
 uses_commitment_variables(::Type{<:IS.InfrastructureSystemsComponent}) = false
 
 function _sos_status(
-    ::Type{T}, ::Type{<:AbstractThermalUnitCommitment},
-) where {T <: IS.InfrastructureSystemsComponent}
-    return if uses_commitment_variables(T)
-        SOSStatusVariable.VARIABLE
-    else
-        SOSStatusVariable.NO_VARIABLE
+    ::Type{T},
+    ::Type{V},
+) where {T <: IS.InfrastructureSystemsComponent, V <: AbstractDeviceFormulation}
+    if uses_commitment_variables(T) && uses_commitment_formulation(V)
+        return SOSStatusVariable.VARIABLE
     end
+    return SOSStatusVariable.NO_VARIABLE
 end
 
 function _get_sos_value(
@@ -407,5 +409,52 @@ function add_pwl_sos2_constraint!(
     jump_model = get_jump_model(container)
     n_points = length(pwl_vars)
     JuMP.@constraint(jump_model, pwl_vars in MOI.SOS2(collect(1:n_points)))
+    return
+end
+
+"""
+Add the PWL linking and normalization rows at every time step. The variable type selects the
+form: `PowerAboveMinimumVariable` holds the output above `P_min`, so its rows add `P_min_t·on_t`
+with the per-step minimum from [`get_min_active_power_values`](@ref).
+"""
+function _add_pwl_linking!(
+    container::OptimizationContainer,
+    component::IS.InfrastructureSystemsComponent,
+    ::Type{<:VariableType},
+    break_points::Vector{Float64},
+    sos_status::SOSStatusVariable.Value,
+    power_variables,
+)
+    name = get_name(component)
+    for t in get_time_steps(container)
+        _add_pwl_constraint_standard!(
+            container, component, break_points, sos_status, t, power_variables[name, t],
+        )
+    end
+    return
+end
+
+function _add_pwl_linking!(
+    container::OptimizationContainer,
+    component::IS.InfrastructureSystemsComponent,
+    ::Type{PowerAboveMinimumVariable},
+    break_points::Vector{Float64},
+    sos_status::SOSStatusVariable.Value,
+    power_variables,
+)
+    p_min = get_min_active_power_values(container, component)
+    name = get_name(component)
+    for t in get_time_steps(container)
+        _add_pwl_constraint_compact!(
+            container,
+            component,
+            name,
+            break_points,
+            sos_status,
+            t,
+            power_variables[name, t],
+            p_min[t],
+        )
+    end
     return
 end

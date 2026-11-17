@@ -1,71 +1,84 @@
 """
-Abstract type for evaluator configurations attached to a `NetworkModel`.
+Abstract type for the configuration of an evaluator.
 
-An `AbstractEvaluator` is stateless configuration that, when used to build an
-`OptimizationContainer`, produces an `AbstractEvaluationData` (its runtime
-counterpart) via [`initialize_evaluation_data`](@ref).
+An evaluator is a calculation that runs after each solve, outside the optimization model.
+The configuration is part of the problem template. The configuration holds no runtime data.
 
-Concrete subtypes (e.g. `PowerFlowEvaluationModel`) are defined in downstream
-packages such as PowerOperationsModels and its PowerFlows extension.
+At build time, [`initialize_evaluation_data`](@ref) makes the runtime data from the
+configuration. Downstream packages define the concrete subtypes.
 """
 abstract type AbstractEvaluator end
 
 """
-Abstract type for runtime evaluator state stored inside the
-`OptimizationContainer`'s [`EvaluationContainer`](@ref).
+Abstract type for the runtime data of an evaluator.
 
-Concrete subtypes wrap whatever domain-specific data (power-flow solver state,
-exporter handles, etc.) the evaluator needs across iterations of
-`calculate_aux_variables!`.
+[`initialize_evaluation_data`](@ref) makes the runtime data at build time. The
+`OptimizationContainer` keeps it in an [`EvaluationDataContainer`](@ref) for one build.
+`calculate_aux_variables!` uses it after each solve.
 """
 abstract type AbstractEvaluationData end
 
 """
-Holds the evaluators registered on a `NetworkModel` and their associated
-runtime data, keyed by concrete evaluator type.
-
-`evaluators` is populated by the user when constructing a `NetworkModel`;
-`evaluation_data` is populated during `OptimizationContainer` construction by
-calling [`initialize_evaluation_data`](@ref) for each registered evaluator.
-
-The split between the two dictionaries may evolve; for now we keep them as
-parallel keyed dictionaries so that `evaluation_data[T]` is the runtime state
-produced from `evaluators[T]`.
+Holds the evaluator configurations of a problem template, keyed by the concrete evaluator
+type. It holds configuration only. The runtime data is in an
+[`EvaluationDataContainer`](@ref). Evaluators run in the order they were added.
 """
 mutable struct EvaluationContainer
-    evaluators::Dict{DataType, AbstractEvaluator}
-    evaluation_data::Dict{DataType, AbstractEvaluationData}
+    evaluators::OrderedDict{DataType, AbstractEvaluator}
 end
 
-function EvaluationContainer()
-    return EvaluationContainer(
-        Dict{DataType, AbstractEvaluator}(),
-        Dict{DataType, AbstractEvaluationData}(),
-    )
-end
+EvaluationContainer() = EvaluationContainer(OrderedDict{DataType, AbstractEvaluator}())
 
 get_evaluators(ec::EvaluationContainer) = ec.evaluators
-get_evaluation_data(ec::EvaluationContainer) = ec.evaluation_data
-
 get_evaluator(ec::EvaluationContainer, T::DataType) = ec.evaluators[T]
-get_evaluation_data(ec::EvaluationContainer, T::DataType) = ec.evaluation_data[T]
 
 function add_evaluator!(ec::EvaluationContainer, T::DataType, ev::AbstractEvaluator)
     ec.evaluators[T] = ev
-    return
-end
-function add_evaluation_data!(
-    ec::EvaluationContainer,
-    T::DataType,
-    d::AbstractEvaluationData,
-)
-    ec.evaluation_data[T] = d
     return
 end
 
 Base.isempty(ec::EvaluationContainer) = isempty(ec.evaluators)
 Base.length(ec::EvaluationContainer) = length(ec.evaluators)
 Base.haskey(ec::EvaluationContainer, T::DataType) = haskey(ec.evaluators, T)
+
+"""
+Holds the runtime data of the evaluators of one build, keyed by the concrete evaluator
+type, and the aux variable keys bound to each evaluator type.
+Iteration follows the order in which the data was added.
+The `OptimizationContainer` owns it, and a rebuild empties it.
+"""
+struct EvaluationDataContainer
+    evaluation_data::OrderedDict{DataType, AbstractEvaluationData}
+    aux_var_keys::OrderedDict{DataType, Vector{AuxVarKey}}
+end
+
+EvaluationDataContainer() = EvaluationDataContainer(
+    OrderedDict{DataType, AbstractEvaluationData}(),
+    OrderedDict{DataType, Vector{AuxVarKey}}(),
+)
+
+function add_evaluation_data!(
+    edc::EvaluationDataContainer,
+    T::DataType,
+    data::AbstractEvaluationData,
+)
+    edc.evaluation_data[T] = data
+    return
+end
+
+Base.getindex(edc::EvaluationDataContainer, T::DataType) = edc.evaluation_data[T]
+Base.haskey(edc::EvaluationDataContainer, T::DataType) = haskey(edc.evaluation_data, T)
+Base.isempty(edc::EvaluationDataContainer) = isempty(edc.evaluation_data)
+Base.length(edc::EvaluationDataContainer) = length(edc.evaluation_data)
+Base.keys(edc::EvaluationDataContainer) = keys(edc.evaluation_data)
+Base.values(edc::EvaluationDataContainer) = values(edc.evaluation_data)
+Base.iterate(edc::EvaluationDataContainer, state...) =
+    iterate(edc.evaluation_data, state...)
+function Base.empty!(edc::EvaluationDataContainer)
+    empty!(edc.evaluation_data)
+    empty!(edc.aux_var_keys)
+    return edc
+end
 
 #=
 =========================================================================
@@ -74,9 +87,12 @@ AbstractEvaluator interface (config-side)
 =#
 
 """
-Build the runtime state for `ev` and return an `AbstractEvaluationData`.
-Called once during `OptimizationContainer` construction. Concrete methods are
-registered in downstream packages.
+Make the runtime data for the evaluator configuration `ev` and return an
+`AbstractEvaluationData`.
+
+The domain package calls this function once for each evaluator at build time. It stores
+the result in the `OptimizationContainer` with [`add_evaluation_data!`](@ref).
+Downstream packages define the concrete methods.
 """
 function initialize_evaluation_data(
     ev::AbstractEvaluator,
@@ -133,9 +149,8 @@ function is_solved(data::AbstractEvaluationData)
 end
 
 """
-Return the underlying domain-specific data wrapped by `data` (e.g., a
-`PowerFlowData` for a power-flow evaluator). Used by aux-variable calculators
-that need direct read access to the evaluator's output.
+Return the domain data that `data` wraps. Aux variable calculations use it to read the
+output of the evaluator.
 """
 function get_inner_data(data::AbstractEvaluationData)
     error(

@@ -22,14 +22,14 @@ function add_proportional_cost!(
     multiplier = objective_function_multiplier(U, V)
     # Scale by the timestep to match variable/VOM cost dt-scaling (else sub-hourly
     # resolutions over-weight proportional costs).
-    dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
+    dt = cost_scales_with_resolution(U) ? get_resolution_in_hours(container) : 1.0
     for d in devices
         op_cost_data = get_operation_cost(d)
         cost_term = proportional_cost(op_cost_data, U, d, V)
         iszero(cost_term) && continue
         name = get_name(d)
         rate = cost_term * multiplier * dt
-        skip = skip_proportional_cost(d)
+        skip = skip_proportional_cost(d, U)
         for t in get_time_steps(container)
             if skip
                 # must-run etc.: bookkeep in FixedCostExpression but not in objective
@@ -64,28 +64,28 @@ function add_proportional_cost_maybe_time_variant!(
 }
     multiplier = objective_function_multiplier(U, V)
     # Same dt scaling as the time-invariant proportional path above.
-    dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
+    dt = cost_scales_with_resolution(U) ? get_resolution_in_hours(container) : 1.0
     for d in devices
         op_cost_data = get_operation_cost(d)
         name = get_name(d)
         # is_time_variant_proportional depends only on op_cost_data; hoist out of the time loop.
         add_as_time_variant = is_time_variant_proportional(op_cost_data)
-        skip = skip_proportional_cost(d)
+        skip = skip_proportional_cost(d, U)
         for t in get_time_steps(container)
             cost_term = proportional_cost(container, op_cost_data, U, d, V, t)
             iszero(cost_term) && continue
             rate = cost_term * multiplier * dt
 
             if skip
-                # Only add to expression, not objective
-                add_cost_to_expression!(
-                    container,
-                    FixedCostExpression,
-                    rate,
-                    T,
-                    name,
-                    t,
-                )
+                # Only add to expression, not objective. A time-variant rate is logged, so
+                # the reset before an in-place update removes it.
+                if add_as_time_variant
+                    add_variant_cost_to_expression!(
+                        container, FixedCostExpression, rate, T, name, t)
+                else
+                    add_cost_to_expression!(
+                        container, FixedCostExpression, rate, T, name, t)
+                end
             else
                 variable = get_variable(container, U, T)[name, t]
                 if add_as_time_variant

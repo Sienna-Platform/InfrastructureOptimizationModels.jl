@@ -89,12 +89,13 @@ method dispatching on `PSY.OfferCurveCost`.
 function add_pwl_term_delta! end
 
 """
-    _add_vom_cost_to_objective!(container, ::Type{VariableType}, component, op_cost, ::Type{Formulation})
+    add_vom_cost_to_objective!(container, ::Type{VariableType}, component, op_cost, ::Type{Formulation})
 
-Add the variable operations & maintenance (VOM) cost term. POM provides the
-method dispatching on `PSY.OfferCurveCost`.
+Extension point. A downstream package implements this method to price the VOM
+cost of a device formulation. Not exported. Extend it as
+`IOM.add_vom_cost_to_objective!`.
 """
-function _add_vom_cost_to_objective! end
+function add_vom_cost_to_objective! end
 
 "Default: most formulations use incremental offers. POM overrides for loads."
 function _vom_offer_direction end
@@ -331,7 +332,7 @@ function _add_ts_incremental_pwl_cost!(
     W = _block_offer_var(dir)
     X = _block_offer_constraint(dir)
     name = get_name(component)
-    dt = Dates.value(get_resolution(container)) / MILLISECONDS_IN_HOUR
+    dt = get_resolution_in_hours(container)
     sign_dt = _objective_sign(dir) * dt
     model_base_power = get_model_base_power(container)
 
@@ -370,7 +371,8 @@ function _add_ts_incremental_pwl_cost!(
             X,
         )
         pwl_cost = get_pwl_cost_expression_delta(pwl_vars, slopes, sign_dt)
-        add_cost_to_expression!(container, ProductionCostExpression, pwl_cost, C, name, t)
+        add_variant_cost_to_expression!(
+            container, ProductionCostExpression, pwl_cost, C, name, t)
         add_to_objective_variant_expression!(container, pwl_cost)
     end
     return
@@ -431,7 +433,7 @@ make_tranche_axis(n_tranches) = "tranche_" .* string.(1:n_tranches)
 Given a parameter array, return any additional axes, i.e. those that aren't the
 first (component) or the last (time).
 """
-lookup_additional_axes(parameter_array) = axes(parameter_array)[2:(end - 1)]
+lookup_additional_axes(parameter_array) = Base.front(Base.tail(axes(parameter_array)))
 
 # Maximum number of tranches (segments) across a piecewise time series.
 get_max_tranches(data::Vector{IS.PiecewiseStepData}) = maximum(length, data)

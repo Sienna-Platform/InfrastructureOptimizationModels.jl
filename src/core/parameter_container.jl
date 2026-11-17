@@ -61,23 +61,44 @@ end
 
 struct VariableValueAttributes{T <: OptimizationContainerKey} <: ParameterAttributes
     attribute_key::T
+    attribute_key_string::String
     affected_keys::Set{OptimizationContainerKey}
 end
 
 function VariableValueAttributes(key::T) where {T <: OptimizationContainerKey}
-    return VariableValueAttributes{T}(key, Set{OptimizationContainerKey}())
+    return VariableValueAttributes{T}(
+        key,
+        encode_key_as_string(key),
+        Set{OptimizationContainerKey}(),
+    )
 end
 
 get_attribute_key(attr::VariableValueAttributes) = attr.attribute_key
+get_attribute_key_string(attr::VariableValueAttributes) = attr.attribute_key_string
 
 struct CostFunctionAttributes{T} <: ParameterAttributes
     variable_types::Tuple{Vararg{Type}}
+    variable_types_string::String
     sos_status::SOSStatusVariable.Value
     uses_compact_power::Bool
 end
 
+function CostFunctionAttributes{T}(
+    variable_types::Tuple{Vararg{Type}},
+    sos_status::SOSStatusVariable.Value,
+    uses_compact_power::Bool,
+) where {T}
+    return CostFunctionAttributes{T}(
+        variable_types,
+        join(strip_module_name.(variable_types), ","),
+        sos_status,
+        uses_compact_power,
+    )
+end
+
 get_sos_status(attr::CostFunctionAttributes) = attr.sos_status
 get_variable_types(attr::CostFunctionAttributes) = attr.variable_types
+get_variable_types_string(attr::CostFunctionAttributes) = attr.variable_types_string
 get_uses_compact_power(attr::CostFunctionAttributes) = attr.uses_compact_power
 
 struct EventParametersAttributes{
@@ -308,7 +329,7 @@ end
 # Fast-path setters that skip DenseAxisArray's string-keyed axis lookup. Callers pass
 # `get_parameter_array_data(container)` once, then write into the underlying Array
 # by integer indices. The (i, t) layout matches the canonical (component, time) axis
-# order produced by `add_param_container!`.
+# order produced by the `add_*_parameter_container!` builders.
 #
 # 2D scalar path: covers Float64 and Tuple{Vararg{Float64}} eltypes (the latter is
 # used by piecewise-cost MarketBid parameters whose storage is a Matrix of tuples).

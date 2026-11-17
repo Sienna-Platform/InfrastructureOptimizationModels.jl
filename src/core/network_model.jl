@@ -53,19 +53,22 @@ Establishes the NetworkModel for a given AC network formulation type.
 # Accepted keyword arguments
 - `use_slacks::Bool` = false
     Adds slack buses to the network modeling.
+- `slack_penalty::Real` = `BALANCE_SLACK_COST`
+    Objective cost of one unit of balance slack per hour, applied when `use_slacks` is `true`.
+    Must be finite and nonnegative.
 - `network_source::AbstractNetworkSource` = `DefaultNetworkSource()`
     Declares which network the model is built on and how it is reduced. The default
     builds it from the system with no reductions. Concrete sources (a reduction
     specification, a prebuilt matrix, a prebuilt factorization core) live in the
     matrix-aware downstream package.
-- `reduction_exceptions::Vector{Int}` = `Int[]`
-    Bus numbers the reduction must not eliminate, on top of those the template
-    itself pins.
+- `irreducible_buses::IS.ComponentSelector` = `IS.make_selector()`
+    Selects the components whose buses the network reduction must keep, in addition to
+    the buses that the template keeps. The matrix-aware downstream package resolves the
+    selector to bus numbers. The default selects no component.
 - `duals::Vector{DataType}` = Vector{DataType}()
     Constraint types for which duals should be recorded.
-- `evaluations::EvaluationContainer`
-    External evaluators (e.g. power-flow) keyed by concrete evaluator type.
-    Default is an empty container — no evaluator runs.
+- `attributes::Dict{String, Any}` = Dict{String, Any}()
+    Free-form options for the network model. Read them with `get_attribute`.
 
 # Notes
 - `network_data` holds every matrix and the reduction data derived from
@@ -75,23 +78,21 @@ Establishes the NetworkModel for a given AC network formulation type.
 - `subsystem` can be set after construction via `set_subsystem!(model, id)`.
 
 # Examples (concrete types like PTDFPowerModel, CopperPlatePowerModel are defined in PowerSimulations)
-# ec = EvaluationContainer()
-# add_evaluator!(ec, PFS.PowerFlowEvaluationModel, PFS.PowerFlowEvaluationModel())
 # nw = NetworkModel(PTDFPowerModel;
-#                   network_source = NetworkReductionSpec(RadialReduction()),
-#                   evaluations = ec)
+#                   network_source = NetworkReductionSpec(RadialReduction()))
 #
 # nw2 = NetworkModel(CopperPlatePowerModel)
 """
 mutable struct NetworkModel{T <: AbstractNetworkModel}
     use_slacks::Bool
+    slack_penalty::Float64
     network_source::AbstractNetworkSource
-    reduction_exceptions::Vector{Int}
+    irreducible_buses::IS.ComponentSelector
     subnetworks::Dict{Int, Set{Int}}
     bus_area_map::Dict{IS.InfrastructureSystemsComponent, Int}
     duals::Vector{DataType}
+    attributes::Dict{String, Any}
     network_data::Union{Nothing, AbstractNetworkData}
-    evaluations::EvaluationContainer
     subsystem::Union{Nothing, String}
     hvdc_network_model::Union{Nothing, AbstractHVDCNetworkModel}
     modeled_branch_types::Vector{DataType}
@@ -100,24 +101,27 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
     function NetworkModel(
         ::Type{T};
         use_slacks = false,
+        slack_penalty::Real = BALANCE_SLACK_COST,
         network_source = DefaultNetworkSource(),
-        reduction_exceptions = Int[],
+        irreducible_buses::IS.ComponentSelector = IS.make_selector(),
         duals = Vector{DataType}(),
-        evaluations = EvaluationContainer(),
         hvdc_network_model = nothing,
+        attributes = Dict{String, Any}(),
     ) where {T <: AbstractNetworkModel}
         _check_network_formulation(T)
+        _check_slack_penalty(slack_penalty)
         new{T}(
             use_slacks,
+            slack_penalty,
             network_source,
-            reduction_exceptions,
+            irreducible_buses,
             Dict{Int, Set{Int}}(),
             Dict{IS.InfrastructureSystemsComponent, Int}(),
             duals,
+            attributes,
             # Populated by the network-matrix-aware instantiation code (POM); IOM
             # holds it behind an abstract type so it carries no PNM dependency.
             nothing,
-            evaluations,
             nothing,
             hvdc_network_model,
             Vector{DataType}(),
@@ -127,10 +131,13 @@ mutable struct NetworkModel{T <: AbstractNetworkModel}
 end
 
 get_use_slacks(m::NetworkModel) = m.use_slacks
+get_slack_penalty(m::NetworkModel) = m.slack_penalty
 get_network_source(m::NetworkModel) = m.network_source
-get_reduction_exceptions(m::NetworkModel) = m.reduction_exceptions
+get_irreducible_buses(m::NetworkModel) = m.irreducible_buses
 get_network_data(m::NetworkModel) = m.network_data
 get_duals(m::NetworkModel) = m.duals
+get_attributes(m::NetworkModel) = m.attributes
+get_attribute(m::NetworkModel, key::String) = get(m.attributes, key, nothing)
 
 """
 The network matrix derived during instantiation. Implemented in the matrix-aware
@@ -146,11 +153,12 @@ function get_network_reduction end
 
 get_network_formulation(::NetworkModel{T}) where {T} = T
 get_reduced_branch_tracker(m::NetworkModel) = m.reduced_branch_tracker
+"""Return the branch types that the network model represents."""
+get_modeled_branch_types(m::NetworkModel) = m.modeled_branch_types
 get_reference_buses(m::NetworkModel{T}) where {T <: AbstractNetworkModel} =
     collect(keys(m.subnetworks))
 get_subnetworks(m::NetworkModel) = m.subnetworks
 get_bus_area_map(m::NetworkModel) = m.bus_area_map
-get_evaluations(m::NetworkModel) = m.evaluations
 has_subnetworks(m::NetworkModel) = !isempty(m.bus_area_map)
 get_subsystem(m::NetworkModel) = m.subsystem
 get_hvdc_network_model(m::NetworkModel) = m.hvdc_network_model
@@ -252,17 +260,6 @@ function validate_network_model(
     _check_branch_network_compatibility(network_model, unmodeled_branch_types)
     _validate_branch_models(T, model_has_branch_filters)
     return
-end
-
-function _get_filters(branch_models::BranchModelContainer)
-    filters = Dict{DataType, Function}()
-    for v in values(branch_models)
-        filter_func = get_attribute(v, "filter_function")
-        if filter_func !== nothing
-            filters[get_component_type(v)] = filter_func
-        end
-    end
-    return filters
 end
 
 # NOTE: instantiate_network_model! implementations have been moved to

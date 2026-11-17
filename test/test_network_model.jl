@@ -13,13 +13,14 @@ struct MockReductionTracker <: IOM.AbstractBranchReductionTracker end
 
 @testset "NetworkModel with abstract network source and data" begin
     source = MockNetworkSource()
+    selector = IS.make_selector(IS.TestComponent, "component_1")
     nw = IOM.NetworkModel(
         TestPowerModel;
         network_source = source,
-        reduction_exceptions = [3, 7],
+        irreducible_buses = selector,
     )
     @test IOM.get_network_source(nw) === source
-    @test IOM.get_reduction_exceptions(nw) == [3, 7]
+    @test IOM.get_irreducible_buses(nw) == selector
     # Network data and tracker are populated by the matrix-aware downstream package.
     @test IOM.get_network_data(nw) === nothing
     @test IOM.get_reduced_branch_tracker(nw) === nothing
@@ -33,9 +34,29 @@ struct MockReductionTracker <: IOM.AbstractBranchReductionTracker end
     @test IOM.get_reduced_branch_tracker(nw) === tracker
 end
 
+@testset "NetworkModel slack penalty" begin
+    @test IOM.get_slack_penalty(IOM.NetworkModel(TestPowerModel)) ==
+          IOM.BALANCE_SLACK_COST
+    nw = IOM.NetworkModel(TestPowerModel; use_slacks = true, slack_penalty = 5.0e4)
+    @test IOM.get_slack_penalty(nw) == 5.0e4
+    @test_throws TypeError IOM.NetworkModel(TestPowerModel; slack_penalty = "1e4")
+    int_nw = IOM.NetworkModel(TestPowerModel; slack_penalty = 5000)
+    @test IOM.get_slack_penalty(int_nw) === 5000.0
+    for bad in (-1.0, Inf, NaN)
+        @test_throws ArgumentError IOM.NetworkModel(TestPowerModel; slack_penalty = bad)
+    end
+end
+
 @testset "NetworkModel defaults to the neutral source" begin
     nw = IOM.NetworkModel(TestPowerModel)
     @test IOM.get_network_source(nw) === IOM.DefaultNetworkSource()
-    @test isempty(IOM.get_reduction_exceptions(nw))
+    @test IOM.get_irreducible_buses(nw) == IS.make_selector()
     @test isempty(IOM.get_subnetworks(nw))
+end
+
+@testset "NetworkModel attributes" begin
+    @test isempty(IOM.get_attributes(IOM.NetworkModel(TestPowerModel)))
+    nw = IOM.NetworkModel(TestPowerModel; attributes = Dict{String, Any}("key" => 1))
+    @test IOM.get_attribute(nw, "key") == 1
+    @test IOM.get_attribute(nw, "missing") === nothing
 end

@@ -25,6 +25,7 @@ enable passing values between operation models at simulation time.
 # Accepted Key Words
 
   - `feedforwards::Vector{<:AbstractAffectFeedforward}` : use to pass parameters between models
+  - `slack_penalty::Real = SERVICES_SLACK_COST` : Objective cost of one unit of slack per hour, applied when `use_slacks` is `true`. Must be finite and nonnegative. Only formulations that read `get_slack_penalty` use it
 
 # Example
 
@@ -34,6 +35,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
     # Heterogeneous by design: concrete Vector of the abstract type, not a UnionAll field.
     feedforwards::Vector{AbstractAffectFeedforward}
     use_slacks::Bool
+    slack_penalty::Float64
     duals::Vector{DataType}
     time_series_names::Dict{Type{<:TimeSeriesParameter}, String}
     attributes::Dict{String, Any}
@@ -49,6 +51,7 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
         ::Type{D},
         ::Type{B};
         use_slacks = false,
+        slack_penalty::Real = SERVICES_SLACK_COST,
         feedforwards = Vector{AbstractAffectFeedforward}(),
         duals = Vector{DataType}(),
         time_series_names = get_default_time_series_names(D, B),
@@ -65,9 +68,11 @@ mutable struct ServiceModel{D <: IS.InfrastructureSystemsComponent, B}
 
         _check_service_formulation(D)
         _check_service_formulation(B)
+        _check_slack_penalty(slack_penalty)
         new{D, B}(
             convert(Vector{AbstractAffectFeedforward}, feedforwards),
             use_slacks,
+            slack_penalty,
             duals,
             time_series_names,
             attributes_for_model,
@@ -86,6 +91,7 @@ get_formulation(
 ) where {D <: IS.InfrastructureSystemsComponent, B} = B
 get_feedforwards(m::ServiceModel) = m.feedforwards
 get_use_slacks(m::ServiceModel) = m.use_slacks
+get_slack_penalty(m::ServiceModel) = m.slack_penalty
 get_duals(m::ServiceModel) = m.duals
 get_time_series_names(m::ServiceModel) = m.time_series_names
 get_attributes(m::ServiceModel) = m.attributes
@@ -98,18 +104,39 @@ const _EMPTY_CONTRIBUTING_DEVICES_MAP =
 # One service's inner `device type -> devices` map (the empty const if the service is absent).
 get_contributing_devices_map(m::ServiceModel, service_name::AbstractString) =
     get(m.contributing_devices_map, service_name, _EMPTY_CONTRIBUTING_DEVICES_MAP)
-# All contributing devices across ALL services (flatten the nested map).
-# TODO(services stability): flattening across device types yields a Vector whose element
-# type widens to the abstract common ancestor when a service has more than one contributing
-# device type, so downstream builders lose type stability. Revisit by iterating the
-# per-(device type) map groups (each concretely typed) instead of flattening.
+# The flatten accessors below mix device types, so the element type widens.
+# Build code must iterate `get_contributing_devices_map` groups instead.
 get_contributing_devices(m::ServiceModel) =
     [z for inner in values(m.contributing_devices_map) for x in values(inner) for z in x]
-# One service's contributing devices (flattened Vector).
-# TODO(services stability): same multi-device-type widening as the all-services flatten
-# above; revisit to iterate the concretely-typed per-device-type map groups.
 get_contributing_devices(m::ServiceModel, service_name::AbstractString) =
     [z for x in values(get_contributing_devices_map(m, service_name)) for z in x]
+
+"""
+Return the device types that contribute to the service `service_name`.
+Return an empty collection if the service has no entry.
+"""
+contributing_device_types(m::ServiceModel, service_name::AbstractString) =
+    keys(get_contributing_devices_map(m, service_name))
+
+"""
+Add `device` to the contributing devices of the service `service_name`.
+The function creates the entry for the service and for the type `D` if they do not exist.
+Each device type keeps its own `Vector{D}`.
+"""
+function add_contributing_device!(
+    m::ServiceModel,
+    service_name::AbstractString,
+    device::D,
+) where {D <: IS.InfrastructureSystemsComponent}
+    inner = get!(
+        Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}},
+        m.contributing_devices_map,
+        String(service_name),
+    )
+    devices = get!(Vector{D}, inner, D)::Vector{D}
+    push!(devices, device)
+    return
+end
 get_subsystem(m::ServiceModel) = m.subsystem
 get_outages(m::ServiceModel) = m.outages
 

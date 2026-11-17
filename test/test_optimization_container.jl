@@ -11,6 +11,100 @@ const ISOPT = InfrastructureSystems.Optimization
 struct MockConstraintType <: ISOPT.ConstraintType end
 struct MockExpressionType <: ISOPT.ExpressionType end
 
+# Aux variables that record a primal value and a dual value read after the solve.
+struct PrimalProbeAux <: ISOPT.AuxVariableType end
+struct DualProbeAux <: ISOPT.AuxVariableType end
+struct ContextProbeAux <: ISOPT.AuxVariableType end
+
+# Mutable so that `===` compares identity.
+mutable struct MockSolveContext <: IOM.AbstractSolveContext end
+struct NoContextTestTemplate <: IOM.AbstractProblemTemplate end
+
+const RECEIVED_SOLVE_CONTEXTS = IOM.AbstractSolveContext[]
+
+function IOM.calculate_aux_variable_value!(
+    container::IOM.OptimizationContainer,
+    key::IOM.AuxVarKey{PrimalProbeAux, MockComponentType},
+    ::IS.InfrastructureSystemsContainer,
+    ::IOM.AbstractSolveContext,
+)
+    p = IOM.lookup_value(container, TestVariableType, MockComponentType)
+    IOM.get_aux_variable(container, key)["g1", 1] = p["g1", 1]
+    return
+end
+
+function IOM.calculate_aux_variable_value!(
+    container::IOM.OptimizationContainer,
+    key::IOM.AuxVarKey{DualProbeAux, MockComponentType},
+    ::IS.InfrastructureSystemsContainer,
+    ::IOM.AbstractSolveContext,
+)
+    dual_key = IOM.ConstraintKey(TestConstraintType, MockComponentType)
+    IOM.get_aux_variable(container, key)["g1", 1] =
+        IOM.get_duals(container)[dual_key]["g1", 1]
+    return
+end
+
+function IOM.calculate_aux_variable_value!(
+    ::IOM.OptimizationContainer,
+    ::IOM.AuxVarKey{ContextProbeAux, MockComponentType},
+    ::IS.InfrastructureSystemsContainer,
+    context::IOM.AbstractSolveContext,
+)
+    push!(RECEIVED_SOLVE_CONTEXTS, context)
+    return
+end
+
+# min 3p + 10b  s.t.  p >= 2 (dual 3),  p <= 5b,  b binary.  Optimum p = 2, b = 1.
+# `dual_optimizer` is the optimizer used for the LP re-solve that computes the duals.
+function _build_milp_with_duals_container(dual_optimizer)
+    mock_sys = MockSystem(100.0)
+    settings = IOM.Settings(
+        mock_sys;
+        horizon = Dates.Hour(1),
+        resolution = Dates.Hour(1),
+        time_series_cache_size = 0,
+        optimizer = dual_optimizer,
+    )
+    container = IOM.OptimizationContainer(
+        mock_sys,
+        settings,
+        JuMP.Model(HiGHS_optimizer),
+        MockDeterministic,
+    )
+    IOM.set_time_steps!(container, 1:1)
+    model = IOM.get_jump_model(container)
+    names = ["g1"]
+
+    p_var = IOM.add_variable_container!(
+        container, TestVariableType, MockComponentType, names, 1:1)
+    b_var = IOM.add_variable_container!(
+        container, TestVariableType2, MockComponentType, names, 1:1)
+    p = p_var["g1", 1] = JuMP.@variable(model, lower_bound = 0.0)
+    b = b_var["g1", 1] = JuMP.@variable(model, binary = true)
+
+    demand = IOM.add_constraints_container!(
+        container, TestConstraintType, MockComponentType, names, 1:1)
+    demand["g1", 1] = JuMP.@constraint(model, p >= 2.0)
+    JuMP.@constraint(model, p <= 5.0 * b)
+    IOM.add_dual_container!(container, TestConstraintType, MockComponentType, names, 1:1)
+
+    cost = IOM.add_expression_container!(
+        container, MockExpressionType, MockComponentType, names, 1:1)
+    cost["g1", 1] = JuMP.@expression(model, 3.0 * p)
+    JuMP.@objective(model, Min, 3.0 * p + 10.0 * b)
+
+    IOM.add_aux_variable_container!(
+        container,
+        PrimalProbeAux,
+        MockComponentType,
+        names,
+        1:1,
+    )
+    IOM.add_aux_variable_container!(container, DualProbeAux, MockComponentType, names, 1:1)
+    return container
+end
+
 @testset "OptimizationContainer with MockSystem" begin
     @testset "Container creation" begin
         # Create mock system
@@ -367,6 +461,120 @@ struct MockExpressionType <: ISOPT.ExpressionType end
         @test !JuMP.is_fixed(v)
         @test JuMP.has_lower_bound(v) && JuMP.lower_bound(v) == 0.0
         @test JuMP.has_upper_bound(v) && JuMP.upper_bound(v) == 5.0
+    end
+
+    @testset "process_duals fails when the optimizer returns no duals" begin
+        MOI = IOM.MOI
+        mock_sys = MockSystem(100.0)
+        settings = IOM.Settings(
+            mock_sys;
+            horizon = Dates.Hour(1),
+            resolution = Dates.Hour(1),
+            time_series_cache_size = 0,
+        )
+        jump_model = JuMP.Model(HiGHS_optimizer)
+        container =
+            IOM.OptimizationContainer(mock_sys, settings, jump_model, MockDeterministic)
+        IOM.set_time_steps!(container, 1:1)
+        model = IOM.get_jump_model(container)
+        names = ["g1"]
+        var = IOM.add_variable_container!(
+            container, TestVariableType, MockComponentType, names, 1:1,
+        )
+        v = JuMP.@variable(model, integer = true, lower_bound = 0.0, upper_bound = 5.0)
+        var["g1", 1] = v
+        cons = IOM.add_constraints_container!(
+            container, TestConstraintType, MockComponentType, names, 1:1,
+        )
+        cons["g1", 1] = JuMP.@constraint(model, v <= 3.0)
+        IOM.add_dual_container!(
+            container, TestConstraintType, MockComponentType, names, 1:1,
+        )
+        JuMP.@objective(model, Max, v)
+        JuMP.optimize!(model)
+
+        no_dual_optimizer =
+            () -> begin
+                mock = MOI.Utilities.MockOptimizer(
+                    MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),
+                )
+                MOI.Utilities.set_mock_optimize!(
+                    mock,
+                    m -> MOI.Utilities.mock_optimize!(
+                        m,
+                        MOI.OPTIMAL,
+                        (MOI.FEASIBLE_POINT, [3.0]),
+                    ),
+                )
+                return mock
+            end
+        @test_logs (:error, r"no duals") match_mode = :any begin
+            @test IOM.process_duals(container, no_dual_optimizer) ==
+                  IOM.RunStatus.FAILED
+        end
+    end
+
+    @testset "execute_optimizer! computes aux variables after MILP duals" begin
+        container = _build_milp_with_duals_container(HiGHS_optimizer)
+        primal_key = IOM.AuxVarKey(PrimalProbeAux, MockComponentType)
+        dual_key = IOM.AuxVarKey(DualProbeAux, MockComponentType)
+
+        context = MockSolveContext()
+        @test IOM.execute_optimizer!(container, MockSystem(100.0), context) ==
+              IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+        # Undoing the MILP dual relaxation leaves JuMP without primal values.
+        @test !JuMP.has_values(IOM.get_jump_model(container))
+        @test IOM.get_aux_variable(container, primal_key)["g1", 1] ≈ 2.0
+        @test IOM.get_aux_variable(container, dual_key)["g1", 1] ≈ 3.0
+        p_key = IOM.VariableKey(TestVariableType, MockComponentType)
+        @test IOM.lookup_value(container, p_key)["g1", 1] ≈ 2.0
+        @test IOM.lookup_value(container, TestVariableType, MockComponentType)["g1", 1] ≈
+              2.0
+        e_key = IOM.ExpressionKey(MockExpressionType, MockComponentType)
+        @test IOM.lookup_value(container, e_key)["g1", 1] ≈ 6.0
+        @test IOM.get_optimizer_stats(container).objective_value ≈ 16.0
+    end
+
+    @testset "execute_optimizer! fails when the MILP dual computation fails" begin
+        infeasible_lp_optimizer = JuMP.optimizer_with_attributes() do
+            mock = MOI.Utilities.MockOptimizer(
+                MOI.Utilities.UniversalFallback(MOI.Utilities.Model{Float64}()),
+            )
+            MOI.Utilities.set_mock_optimize!(
+                mock,
+                m -> MOI.Utilities.mock_optimize!(m, MOI.INFEASIBLE),
+            )
+            return mock
+        end
+        container = _build_milp_with_duals_container(infeasible_lp_optimizer)
+        status =
+            @test_logs (:error, r"during dual calculation") match_mode = :any IOM.execute_optimizer!(
+                container,
+                MockSystem(100.0),
+                MockSolveContext(),
+            )
+        @test status == IOM.RunStatus.FAILED
+    end
+
+    @testset "make_solve_context throws without a method for the template" begin
+        @test_throws ArgumentError IOM.make_solve_context(NoContextTestTemplate())
+    end
+
+    @testset "execute_optimizer! passes the solve context to standalone aux variables" begin
+        container = _build_milp_with_duals_container(HiGHS_optimizer)
+        IOM.add_aux_variable_container!(
+            container,
+            ContextProbeAux,
+            MockComponentType,
+            ["g1"],
+            1:1,
+        )
+        context = MockSolveContext()
+        empty!(RECEIVED_SOLVE_CONTEXTS)
+        @test IOM.execute_optimizer!(container, MockSystem(100.0), context) ==
+              IOM.RunStatus.SUCCESSFULLY_FINALIZED
+        @test only(RECEIVED_SOLVE_CONTEXTS) === context
     end
 
     @testset "Key-based InitialCondition constructor (Task 2.4)" begin

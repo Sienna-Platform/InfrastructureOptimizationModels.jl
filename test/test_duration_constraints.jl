@@ -95,3 +95,35 @@ end
     @test all(i -> isassigned(con_up.data, i), eachindex(con_up.data))
     @test all(i -> isassigned(con_down.data, i), eachindex(con_down.data))
 end
+
+@testset "Compact retrospective duration keeps the initial-condition term at t = T" begin
+    time_steps = 1:4
+    dev_a = make_mock_thermal("A")
+    dev_b = make_mock_thermal("B")
+    # A: on for 2 steps. B: off for 2 steps. Both need 10 steps; the horizon is 4.
+    ics = IOM.InitialCondition[
+        IOM.InitialCondition(MockInitialCondition, dev_a, 2.0) IOM.InitialCondition(
+        MockInitialCondition,
+        dev_a,
+        0.0
+    )
+        IOM.InitialCondition(MockInitialCondition, dev_b, 0.0) IOM.InitialCondition(
+        MockInitialCondition,
+        dev_b,
+        2.0
+    )
+    ]
+    duration_data = [(up = 10.0, down = 10.0), (up = 10.0, down = 10.0)]
+    container = _make_duration_test_container(["A", "B"], time_steps)
+    IOM.device_duration_compact_retrospective!(
+        container, duration_data, ics, TestConstraintType, MockThermalGen,
+    )
+    con_up = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "up")
+    con_down = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "dn")
+    for t in time_steps
+        # 1 + Σ v - u_t <= 0
+        @test JuMP.normalized_rhs(con_up["A", t]) ≈ -1.0
+        # 1 + Σ w + u_t <= 1
+        @test JuMP.normalized_rhs(con_down["B", t]) ≈ 0.0
+    end
+end

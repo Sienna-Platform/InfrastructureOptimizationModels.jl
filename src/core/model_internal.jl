@@ -5,6 +5,7 @@ mutable struct ModelInternal{T <: AbstractOptimizationContainer}
     container::T
     initial_conditions_model_container::Union{Nothing, T}
     status::ModelBuildStatus.Value
+    released::Bool
     base_conversion::Bool
     executions::Int
     execution_count::Int
@@ -12,6 +13,11 @@ mutable struct ModelInternal{T <: AbstractOptimizationContainer}
     # Concrete value type (not `<:TimeSeriesCache`, a UnionAll field) — matches what
     # the constructor builds; reads happen per parameter per solve step.
     time_series_cache::Dict{TimeSeriesCacheKey, TimeSeriesCache}
+    # One reader per (time series type, name, resolution), built on first use.
+    time_series_readers::Dict{
+        Tuple{Type, String, Dates.Millisecond},
+        Union{IS.ForecastReader, IS.StaticTimeSeriesReader},
+    }
     recorders::Vector{Symbol}
     console_level::Base.CoreLogging.LogLevel
     file_level::Base.CoreLogging.LogLevel
@@ -29,11 +35,16 @@ function ModelInternal(
         container,
         nothing,
         ModelBuildStatus.EMPTY,
+        false,
         true,
         1, #Default executions is 1. The model will be run at least once
         0,
         nothing,
         Dict{TimeSeriesCacheKey, TimeSeriesCache}(),
+        Dict{
+            Tuple{Type, String, Dates.Millisecond},
+            Union{IS.ForecastReader, IS.StaticTimeSeriesReader},
+        }(),
         recorders,
         Logging.Warn,
         Logging.Info,
@@ -51,6 +62,7 @@ get_container(internal::ModelInternal) = internal.container
 get_recorders(internal::ModelInternal) = internal.recorders
 get_store_params(internal::ModelInternal) = internal.store_params
 get_status(internal::ModelInternal) = internal.status
+is_released(internal::ModelInternal) = internal.released
 get_constraints(internal::ModelInternal) = internal.container.constraints
 get_execution_count(internal::ModelInternal) = internal.execution_count
 get_executions(internal::ModelInternal) = internal.executions
@@ -59,6 +71,7 @@ get_initial_conditions_model_container(internal::ModelInternal) =
 get_optimization_container(internal::ModelInternal) = internal.container
 get_output_dir(internal::ModelInternal) = internal.output_dir
 get_time_series_cache(internal::ModelInternal) = internal.time_series_cache
+get_time_series_readers(internal::ModelInternal) = internal.time_series_readers
 
 set_container!(internal::ModelInternal, val) = internal.container = val
 set_console_level!(internal::ModelInternal, val) = internal.console_level = val
@@ -66,6 +79,7 @@ set_file_level!(internal::ModelInternal, val) = internal.file_level = val
 
 set_executions!(internal::ModelInternal, val::Int) = internal.executions = val
 set_execution_count!(internal::ModelInternal, val::Int) = internal.execution_count = val
+set_released!(internal::ModelInternal, val::Bool) = internal.released = val
 
 function set_initial_conditions_model_container!(
     internal::ModelInternal,

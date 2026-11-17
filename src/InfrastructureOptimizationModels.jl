@@ -13,7 +13,7 @@ import JuMP: optimizer_with_attributes
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
 import MathOptInterface
 import LinearAlgebra
-import JSON3
+import JSON
 import InfrastructureSystems
 import InfrastructureSystems.InfrastructureMatrices:
     AbstractInfrastructureNetworkMatrix, AbstractInfrastructureNetworkReductionData
@@ -107,6 +107,11 @@ function get_operation_cost end
 function get_dc_bus end
 function get_bustype end
 function has_service end
+# Timestamp-oriented time series readers over a whole system. Not exported: PSY exports
+# its own functions of these names, and a package re-exporting both would leave them
+# ambiguous.
+function build_forecast_reader end
+function build_static_time_series_reader end
 
 # Operation-model lifecycle extension points — downstream (e.g. POM) supplies methods
 # dispatched on concrete problem types.
@@ -159,6 +164,8 @@ using DocStringExtensions
 export DecisionModel
 export EmulationModel
 export AbstractProblemTemplate
+export AbstractSolveContext
+export make_solve_context
 export ServicesModelContainer, DevicesModelContainer, BranchModelContainer
 export InitialCondition
 
@@ -166,10 +173,11 @@ export InitialCondition
 export AbstractNetworkModel
 export NetworkModel
 export get_network_matrix, get_contingency_matrix
-export get_network_source, get_reduction_exceptions, get_network_data, set_network_data!
+export get_network_source, get_irreducible_buses, get_network_data, set_network_data!
 export get_outages
+export get_selected_outage_ids
 export get_duals, get_reference_buses, get_subnetworks, get_bus_area_map
-export get_evaluations, has_subnetworks, get_subsystem
+export get_evaluations, set_evaluations!, has_subnetworks, get_subsystem
 export set_subsystem!, add_dual!
 export requires_all_branch_models,
     supports_branch_filtering, ignores_branch_filtering, branches_modeled
@@ -292,6 +300,9 @@ export get_objective_expression
 export get_formulation
 export get_settings
 export get_rebuild_model
+export get_release_model
+export is_released
+export set_released!
 
 # Expression infrastructure (needed by add_to_expression.jl implementations)
 export get_parameter
@@ -331,7 +342,7 @@ export OnStatusParameter
 # optimization_container.jl refactor
 # parameter container builders
 export LeftHandSideTimeSeriesParameter
-export get_lhs_parameter_values, has_lhs_parameter_component
+export get_lhs_parameter_values, has_lhs_parameter_component, get_value_length
 export set_rebuild_model!
 export add_time_series_parameter_container!,
     add_cost_function_parameter_container!,
@@ -339,13 +350,12 @@ export add_time_series_parameter_container!,
     add_event_parameter_container!,
     add_param_container_split_axes!,
     add_param_container_shared_axes!
-# Compatibility alias for the four builders above; see add_param_container_shims.jl (issue #147).
-export add_param_container!
 export remove_undef!
 
 # Bulk-added: symbols used by POM but previously not exported
 # Network reduction tracker access (the tracker machinery itself lives in POM)
 export get_reduced_branch_tracker
+export get_modeled_branch_types
 # Container/variable helpers
 export add_variable_container!, add_constraint_dual!
 export add_to_objective_invariant_expression!, lazy_container_addition!
@@ -364,13 +374,15 @@ export add_shut_down_cost!, add_start_up_cost!
 export add_pwl_term_delta!, add_pwl_constraint_delta!
 export add_pwl_term_lambda!, _get_sos_value, _onvar_cost
 export uses_commitment_variables
-export add_cost_to_expression!
+export add_cost_to_expression!, add_variant_cost_to_expression!
 # Duration constraint helpers
 export device_duration_compact_retrospective!
 export device_duration_parameters!, device_duration_retrospective!
 # Ramp helpers
 export add_linear_ramp_constraints!
 export get_min_max_limits
+export get_min_max_limit_values
+export get_min_active_power_values
 export AbstractThermalDispatchFormulation, AbstractThermalUnitCommitment
 # Service/misc helpers
 # NOTE: get_time_series NOT exported — conflicts with IS.get_time_series. Use IOM.get_time_series.
@@ -429,7 +441,7 @@ export has_initial_condition_value, set_ic_quantity!, get_last_recorded_value
 export set_initial_conditions_model_container!, get_initial_conditions_model_container
 export get_component_type, get_component_name, add_jump_parameter
 # Template/model access
-export get_use_slacks, get_template, get_model
+export get_use_slacks, get_slack_penalty, get_template, get_model
 export get_attributes, get_parameter_column_values
 export get_services, get_contributing_devices, get_contributing_devices_map
 export set_resolution!, finalize_template!
@@ -488,12 +500,16 @@ export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariabl
 # intended for these to stay internal, but needed for POM due to moving
 # add_reserve_range_constraints! into POM (because it needs FooPowerVariableLimitsConstraint)
 export UpperBound, LowerBound, BoundDirection, get_bound_direction
+export FlowDirection, FromTo, ToFrom, DirectionalMinMax
+export get_directional_value, reverse_directions, effective_limit
+export add_directional_limit_constraints!
+export validate_directional_limits, validate_directional_limit_values
 export EventParameter
 
 # External evaluation abstraction (replaces the PowerFlows-specific shims)
 export AbstractEvaluator
 export AbstractEvaluationData
-export EvaluationContainer
+export EvaluationContainer, EvaluationDataContainer
 export initialize_evaluation_data
 export evaluate!
 export reset!
@@ -506,6 +522,7 @@ export add_evaluator!
 export add_evaluation_data!
 export reset_evaluations!
 export is_from_evaluator
+export bind_aux_variable!, get_bound_aux_var_keys, add_evaluator_aux_variables!
 export lookup_value
 export get_entry_type
 export get_component_names
@@ -558,6 +575,8 @@ export get_resolution
 
 export get_contributing_devices
 export get_contributing_devices_map
+export add_contributing_device!
+export contributing_device_types
 export get_parameter_column_values
 export update_container_parameter_values!
 export export_outputs
@@ -616,10 +635,10 @@ include("common_models/add_variable.jl")
 include("common_models/add_auxiliary_variable.jl")
 include("common_models/add_constraint_dual.jl")
 include("common_models/add_jump_expressions.jl")
-include("common_models/set_expression.jl")
 include("common_models/get_time_series.jl")
 # PWL interpolation methods moved to quadratic_approximations/
 include("common_models/constraint_helpers.jl")
+include("common_models/directional_limits.jl")
 include("common_models/range_constraint.jl")
 include("common_models/duration_constraints.jl")
 include("common_models/rateofchange_constraints.jl")
@@ -668,7 +687,6 @@ include("bilinear_approximations/nmdt.jl")
 # parameter container builders — must come after piecewise_linear.jl
 # (which defines VariableValueParameter and FixValueParameter)
 include("common_models/add_param_container.jl")
-include("common_models/add_param_container_shims.jl")
 
 include("operation/optimization_model_interface.jl")
 include("operation/decision_model_store.jl")

@@ -359,6 +359,7 @@ end
         fuel_curve = IS.FuelCurve(
             IS.LinearCurve(8.0),  # MMBTU/MWh
             IS.NaturalUnit(),
+            IS.CommodityUnits.MMBtu,
             5.0,  # $/MMBTU
         )
 
@@ -438,6 +439,7 @@ end
         fuel_curve = IS.FuelCurve(
             IS.LinearCurve(proportional_term),
             IS.SystemBaseUnit(),  # already normalized
+            IS.CommodityUnits.MMBtu,
             ts_key,
         )
 

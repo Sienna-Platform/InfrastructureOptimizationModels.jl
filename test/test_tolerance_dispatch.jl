@@ -358,7 +358,7 @@ end
                     d = IOM.tolerance_depth(IOM.Bin2Config{Q};
                         tolerance = tol, max_delta_x = delta_x, max_delta_y = delta_y,
                     )
-                    cfg = IOM.Bin2Config(make_inner(d); add_mccormick = false)
+                    cfg = IOM.Bin2Config(make_inner(d))
                     samples = _bilinear_samples(Q, d, delta_x, delta_y)
                     result = _eval_bilinear(cfg, samples, delta_x, delta_y, tol)
                     @info "Bin2Config{$(nameof(Q))}" tolerance = tol depth = d max_gap =

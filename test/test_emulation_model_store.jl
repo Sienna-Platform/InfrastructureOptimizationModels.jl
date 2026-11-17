@@ -50,3 +50,42 @@ end
     @test out["s1__d2", 1] == 2.0
     @test out["s2__d1", 1] == 3.0
 end
+
+@testset "EmulationModelStore writes a one-step slice of 2D and 3D datasets" begin
+    ts = Dates.DateTime(2024, 1, 1)
+    label_sets = (["l1"], ["l1", "l2"])
+    @testset "3D dataset with $(length(labels)) label(s)" for labels in label_sets
+        store = IOM.EmulationModelStore()
+        key = IOM.VariableKey(TestVariableType, MockComponentType)
+        storage = DenseAxisArray(fill(NaN, 2, length(labels), 3), ["d1", "d2"], labels, 1:3)
+        IOM.set_dataset!(store.data_container, key, IOM.InMemoryDataset(storage))
+
+        slice = DenseAxisArray(
+            reshape(collect(1.0:(2 * length(labels))), 2, length(labels)),
+            ["d1", "d2"],
+            labels,
+        )
+        IOM.write_output!(store, :variables, key, 2, ts, slice)
+
+        dataset = IOM.get_value(store, TestVariableType, MockComponentType)
+        @test dataset.values.data[:, :, 2] == slice.data
+        @test all(isnan, dataset.values.data[:, :, [1, 3]])
+        @test IOM.get_last_recorded_row(dataset) == 2
+        @test IOM.get_update_timestamp(dataset) == ts
+    end
+
+    @testset "2D dataset" begin
+        store = IOM.EmulationModelStore()
+        key = IOM.VariableKey(TestVariableType, MockComponentType)
+        storage = DenseAxisArray(fill(NaN, 2, 3), ["d1", "d2"], 1:3)
+        IOM.set_dataset!(store.data_container, key, IOM.InMemoryDataset(storage))
+
+        IOM.write_output!(
+            store, :variables, key, 2, ts, DenseAxisArray([1.0 2.0]', ["d1", "d2"], 1:1),
+        )
+
+        dataset = IOM.get_value(store, TestVariableType, MockComponentType)
+        @test dataset.values.data[:, 2] == [1.0, 2.0]
+        @test IOM.get_last_recorded_row(dataset) == 2
+    end
+end

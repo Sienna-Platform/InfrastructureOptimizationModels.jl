@@ -67,43 +67,19 @@ function initialize_storage!(
     return
 end
 
-function write_output!(
-    store::EmulationModelStore,
-    name::Symbol,
-    key::OptimizationContainerKey,
-    index::EmulationModelIndexType,
-    update_timestamp::Dates.DateTime,
-    array::DenseAxisArray{Float64, 2},
-)
-    if size(array, 2) == 1
-        write_output!(store, name, key, index, update_timestamp, array[:, 1])
-    else
-        container = get_data_field(store, get_store_container_type(key))
-        set_value!(
-            container[key],
-            array,
-            index,
-        )
-        set_last_recorded_row!(container[key], index)
-        set_update_timestamp!(container[key], update_timestamp)
-    end
-    return
-end
-
+# `array` holds one execution's values; the dataset's `set_value!` places them by the
+# dataset's own dimensions, so a 2D array is a (component, time) column of a 2D dataset or a
+# (component, label) slice of a 3D one.
 function write_output!(
     store::EmulationModelStore,
     ::Symbol,
     key::OptimizationContainerKey,
     index::EmulationModelIndexType,
     update_timestamp::Dates.DateTime,
-    array::DenseAxisArray{Float64, 1},
+    array::Union{DenseAxisArray{Float64, 1}, DenseAxisArray{Float64, 2}},
 )
     container = get_data_field(store, get_store_container_type(key))
-    set_value!(
-        container[key],
-        array,
-        index,
-    )
+    set_value!(container[key], array, index)
     set_last_recorded_row!(container[key], index)
     set_update_timestamp!(container[key], update_timestamp)
     return

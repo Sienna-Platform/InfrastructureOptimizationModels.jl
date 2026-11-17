@@ -1048,10 +1048,8 @@ function export_optimizer_stats(
     if uppercase(format) == "CSV"
         CSV.write(joinpath(directory, "optimizer_stats.csv"), data)
     elseif uppercase(format) == "JSON"
-        # `data` is a DataFrame; serialize it as an array of row objects. `JSON`
-        # was never imported (only `JSON3`), so the documented json path crashed.
         open(joinpath(directory, "optimizer_stats.json"), "w") do io
-            JSON3.write(io, [NamedTuple(row) for row in DataFrames.eachrow(data)])
+            JSON.json(io, [NamedTuple(row) for row in DataFrames.eachrow(data)])
         end
     else
         throw(error("writing optimizer stats only supports csv or json formats"))

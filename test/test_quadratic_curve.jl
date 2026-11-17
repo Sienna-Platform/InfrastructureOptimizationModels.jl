@@ -499,6 +499,7 @@ end
         fuel_curve = IS.FuelCurve(
             IS.QuadraticCurve(0.02, 7.0, 0.0),  # (quadratic, linear, constant)
             IS.NaturalUnit(),
+            IS.CommodityUnits.MMBtu,
             4.0,  # $/MMBTU
         )
 

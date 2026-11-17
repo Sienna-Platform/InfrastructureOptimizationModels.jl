@@ -15,7 +15,24 @@ get_executions(model::AbstractOptimizationModel) = get_executions(get_internal(m
 get_initial_time(model::AbstractOptimizationModel) = get_initial_time(get_settings(model))
 get_internal(model::AbstractOptimizationModel) = model.internal
 
+is_released(model::AbstractOptimizationModel) = is_released(get_internal(model))
+set_released!(model::AbstractOptimizationModel, val::Bool) =
+    set_released!(get_internal(model), val)
+
+function _check_not_released(model::AbstractOptimizationModel)
+    if is_released(model)
+        throw(
+            ArgumentError(
+                "$(get_name(model)) was released (release_model = true), " *
+                "so its JuMP model is gone; read its results from the simulation store.",
+            ),
+        )
+    end
+    return
+end
+
 function get_jump_model(model::AbstractOptimizationModel)
+    _check_not_released(model)
     return get_jump_model(get_container(get_internal(model)))
 end
 
@@ -31,6 +48,8 @@ function get_rebuild_model(model::AbstractOptimizationModel)
     end
     return get_rebuild_model(get_optimization_container(model).settings)
 end
+
+get_release_model(model::AbstractOptimizationModel) = get_release_model(get_settings(model))
 
 function get_optimization_container(model::AbstractOptimizationModel)
     return get_optimization_container(get_internal(model))
@@ -107,7 +126,11 @@ set_run_status!(model::AbstractOptimizationModel, status) =
     set_run_status!(get_simulation_info(model), status)
 get_time_series_cache(model::AbstractOptimizationModel) =
     get_time_series_cache(get_internal(model))
-empty_time_series_cache!(x::AbstractOptimizationModel) = empty!(get_time_series_cache(x))
+function empty_time_series_cache!(x::AbstractOptimizationModel)
+    empty!(get_time_series_cache(x))
+    empty!(get_time_series_readers(get_internal(x)))
+    return
+end
 
 function get_current_timestamp(model::AbstractOptimizationModel)
     # For EmulationModel interval and resolution are the same.
@@ -137,6 +160,7 @@ end
 
 # Called `solve_impl!(model)` in PSI.
 function solve_model!(model::AbstractOptimizationModel)
+    _check_not_released(model)
     if !is_built(model)
         error(
             "Model $(get_name(model)) is not built (status $(get_status(model))); \
@@ -159,7 +183,8 @@ function solve_model!(model::AbstractOptimizationModel)
         serialize_optimization_model(model, model_export_path, fmt)
     end
 
-    status = execute_optimizer!(container, get_system(model))
+    context = make_solve_context(get_template(model))
+    status = execute_optimizer!(container, get_system(model), context)
     set_run_status!(model, status)
     if status != RunStatus.SUCCESSFULLY_FINALIZED
         settings = get_settings(model)

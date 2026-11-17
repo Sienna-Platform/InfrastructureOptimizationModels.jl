@@ -40,8 +40,7 @@ function get_pwl_cost_expression_lambda(
         base_power,
         device_base_power,
     )
-    resolution = get_resolution(container)
-    dt = Dates.value(resolution) / MILLISECONDS_IN_HOUR
+    dt = get_resolution_in_hours(container)
     multiplier = _get_pwl_cost_multiplier(cost_function, U, V)
     name = get_name(component)
     fuel_consumption_expression = get_pwl_cost_expression_lambda(
@@ -65,7 +64,8 @@ Add PWL cost terms using the **lambda (convex combination) formulation**.
 Given a `PiecewisePointCurve` with breakpoints ``(P_i, C_i)``, this function:
 
 1. Creates lambda variables ``\\lambda_i \\in [0, 1]`` at each breakpoint via `add_pwl_variables_lambda!`.
-2. Adds linking and normalization constraints via `_add_pwl_constraint_standard!`.
+2. Adds linking and normalization constraints via `_add_pwl_linking!`. For
+   `PowerAboveMinimumVariable` the linking row is ``P^{min}_t u_t + \\hat{p}_t = \\sum_i \\lambda_i P_i``.
 3. If the cost curve is **non-convex**, adds an SOS2 adjacency constraint so that at most
    two neighboring ``\\lambda`` values are nonzero.
 4. Builds the cost expression ``C = \\sum_i \\lambda_i \\, C(P_i)``.
@@ -127,14 +127,9 @@ function add_pwl_term_lambda!(
     n_points = length(break_points)
     for t in time_steps
         add_pwl_variables_lambda!(container, T, name, t, data)
-        _add_pwl_constraint_standard!(
-            container,
-            component,
-            break_points,
-            sos_val,
-            t,
-            power_variables[name, t],
-        )
+    end
+    _add_pwl_linking!(container, component, U, break_points, sos_val, power_variables)
+    for t in time_steps
         if !cost_is_convex
             pwl_var_container = get_variable(container, PiecewiseLinearCostVariable, T)
             pwl_vars = [pwl_var_container[name, i, t] for i in 1:n_points]
@@ -224,14 +219,13 @@ function add_variable_cost_to_objective!(
             get_fuel_cost(component)
         end
         pwl_cost_expression = pwl_fuel_consumption_expressions[t] * fuel_cost_value
-        add_cost_to_expression!(
-            container,
-            FuelCostExpression,
-            pwl_cost_expression,
-            V,
-            component_name,
-            t,
-        )
+        if is_time_variant_
+            add_variant_cost_to_expression!(
+                container, FuelCostExpression, pwl_cost_expression, V, component_name, t)
+        else
+            add_cost_to_expression!(
+                container, FuelCostExpression, pwl_cost_expression, V, component_name, t)
+        end
         add_cost_to_expression!(
             container,
             FuelConsumptionExpression,
@@ -269,6 +263,7 @@ _rebuild_with_value_curve(c::IS.CostCurve, vc) =
 _rebuild_with_value_curve(c::IS.FuelCurve, vc) = IS.FuelCurve(;
     value_curve = vc,
     power_units = IS.get_power_units(c),
+    fuel_units = IS.get_fuel_units(c),
     fuel_cost = IS.get_fuel_cost(c),
     fuel_cost_time_series = IS.get_fuel_cost_time_series(c),
 )
