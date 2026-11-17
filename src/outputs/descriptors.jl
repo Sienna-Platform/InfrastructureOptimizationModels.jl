@@ -81,6 +81,16 @@ end
 model_type_name(::DecisionModelStore) = "decision"
 model_type_name(::EmulationModelStore) = "emulation"
 
+"Return true when a reader can stitch the datasets of many executions into one time axis."
+supports_realized_values_post_calculation(::EmulationModelStore, ::ModelStoreParams) = false
+
+function supports_realized_values_post_calculation(
+    ::DecisionModelStore,
+    params::ModelStoreParams,
+)
+    return get_num_executions(params) > 1
+end
+
 "Return the model axes and the axis data of a decision model store."
 function model_axes(
     ::DecisionModelStore,

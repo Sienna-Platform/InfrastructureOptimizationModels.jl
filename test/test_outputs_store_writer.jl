@@ -5,11 +5,11 @@ function _test_stats(objective, gap)
     )
 end
 
-function _test_params(num_executions::Int; horizon::Int = 3)
+function _test_params(num_executions::Int; horizon::Int = 3, interval::Int = 1)
     return IOM.ModelStoreParams(
         num_executions,
         horizon,
-        Millisecond(Hour(24)),
+        Millisecond(Hour(interval)),
         Millisecond(Hour(1)),
         100.0,
         Base.UUID(UInt128(1)),
@@ -51,18 +51,18 @@ end
 
 const _TEST_PRODUCER = IS.ProducerInfo("Test", "0.0.0", string(VERSION))
 
-function _test_write(dir, store, num_executions; horizon::Int = 3)
+function _test_write(dir, store, num_executions; horizon::Int = 3, interval::Int = 1)
     mkpath(joinpath(dir, IOM.make_system_dirname(Base.UUID(UInt128(1)))))
     return IOM.write_store_outputs!(
         dir,
         "m",
         store,
-        _test_params(num_executions; horizon = horizon),
+        _test_params(num_executions; horizon = horizon, interval = interval),
         MockSystem(),
         IOM.Settings(
             MockSystem();
             horizon = Hour(horizon),
-            interval = Hour(24),
+            interval = Hour(interval),
             resolution = Hour(1),
         ),
         _TEST_PRODUCER,
@@ -139,6 +139,17 @@ end
         @test IS.read_table(a, "m", "optimizer_stats").execution == [1, 2]
         @test IS.read_outputs_metadata(joinpath(dir, "outputs.json")).status ==
               "SUCCESSFULLY_FINALIZED"
+    end
+
+    @testset "single execution decision metadata" begin
+        store = _test_decision_store()
+        for data in values(store.variables)
+            delete!(data, DateTime(2024, 1, 2))
+        end
+        delete!(store.optimizer_stats, DateTime(2024, 1, 2))
+        dir = _test_write(mktempdir(), store, 1)
+        entry = IS.read_outputs_metadata(joinpath(dir, "outputs.json")).models["m"]
+        @test entry.supports_realized_values_post_calculation == false
     end
 
     @testset "emulation round trip" begin
@@ -288,7 +299,7 @@ end
         (metadata, _, datasets) = IOM.outputs_metadata(
             "m", store, _test_params(2), MockSystem(),
             IOM.Settings(
-                MockSystem(); horizon = Hour(3), interval = Hour(24),
+                MockSystem(); horizon = Hour(3), interval = Hour(1),
                 resolution = Hour(1),
             ),
             _TEST_PRODUCER, DateTime(2024, 1, 1),
@@ -310,7 +321,7 @@ end
             (metadata, _, datasets) = IOM.outputs_metadata(
                 "m", store, _test_params(2), MockSystem(),
                 IOM.Settings(
-                    MockSystem(); horizon = Hour(3), interval = Hour(24),
+                    MockSystem(); horizon = Hour(3), interval = Hour(1),
                     resolution = Hour(1),
                 ),
                 _TEST_PRODUCER, DateTime(2024, 1, 1), table,
@@ -400,7 +411,7 @@ end
             (metadata, _, _) = IOM.outputs_metadata(
                 "m", store, _test_params(2), MockSystem(),
                 IOM.Settings(
-                    MockSystem(); horizon = Hour(3), interval = Hour(24),
+                    MockSystem(); horizon = Hour(3), interval = Hour(1),
                     resolution = Hour(1), system_to_file = system_to_file,
                 ),
                 _TEST_PRODUCER, DateTime(2024, 1, 1), table,

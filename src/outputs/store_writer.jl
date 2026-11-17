@@ -180,6 +180,7 @@ function outputs_metadata(
         settings_dict(settings),
         reg.axes,
         IS.OutputDataset[d for (_, d) in datasets],
+        supports_realized_values_post_calculation(store, params),
         [table],
     )
     metadata = IS.OutputsMetadata(
