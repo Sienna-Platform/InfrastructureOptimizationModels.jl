@@ -73,9 +73,5 @@ end
     container = IOM.get_optimization_container(model)
 
     IOM.init_optimization_container!(container, t, portfolio)
-    @test IOM.get_time_mapping(container) === nothing
-
-    tmap = build_mock_invest_time_mapping()
-    IOM.set_time_mapping!(container, tmap)
-    @test IOM.get_time_mapping(container) === tmap
+    @test !IOM.has_time_mapping(container)
 end

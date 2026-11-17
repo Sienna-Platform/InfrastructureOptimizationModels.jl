@@ -169,10 +169,12 @@ using Dates
             time_series_cache_size = 0,
         )
         container = IOM.OptimizationContainer(sys, settings, nothing, MockDeterministic)
-        @test IOM.get_time_mapping(container) === nothing
+        @test !IOM.has_time_mapping(container)
+        @test_throws ErrorException IOM.get_time_mapping(container)
 
         nested = IOM.NestedTimeMapping(DateTime(2030, 1, 1), Hour(1), 1:24, Day(1))
         IOM.set_time_mapping!(container, nested)
+        @test IOM.has_time_mapping(container)
         @test IOM.get_time_mapping(container) === nested
 
         invest = build_mock_invest_time_mapping()

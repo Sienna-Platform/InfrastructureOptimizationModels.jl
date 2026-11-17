@@ -118,7 +118,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     JuMPmodel::JuMP.Model
     time_steps::UnitRange{Int}
     settings::Settings
-    time_mapping::Union{Nothing, AbstractTimeMapping}
+    time_mapping::AbstractTimeMapping
     variables::OrderedDict{VariableKey, JuMPArray}
     aux_variables::OrderedDict{AuxVarKey, JuMPArray}
     duals::OrderedDict{ConstraintKey, JuMPArray}
@@ -173,7 +173,7 @@ function OptimizationContainer(
         isnothing(jump_model) ? JuMP.Model() : jump_model,
         1:1,
         settings,
-        nothing,
+        NoTimeMapping(),
         OrderedDict{VariableKey, JuMPArray}(),
         OrderedDict{AuxVarKey, JuMPArray}(),
         OrderedDict{ConstraintKey, JuMPArray}(),
@@ -251,7 +251,24 @@ get_objective_expression(container::OptimizationContainer) = container.objective
 
 get_serialization_task(container::OptimizationContainer) = container.serialization_task
 
-get_time_mapping(container::OptimizationContainer) = container.time_mapping
+"""
+Return `true` if `set_time_mapping!` attached a time mapping to the container.
+"""
+has_time_mapping(container::OptimizationContainer) =
+    _has_time_mapping(container.time_mapping)
+
+_has_time_mapping(::NoTimeMapping) = false
+_has_time_mapping(::AbstractTimeMapping) = true
+
+function get_time_mapping(container::OptimizationContainer)
+    return _get_time_mapping(container.time_mapping)
+end
+
+function _get_time_mapping(::NoTimeMapping)
+    error("The OptimizationContainer has no time mapping. Call set_time_mapping! first.")
+end
+
+_get_time_mapping(time_mapping::AbstractTimeMapping) = time_mapping
 
 function set_time_mapping!(
     container::OptimizationContainer,

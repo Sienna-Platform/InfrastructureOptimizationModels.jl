@@ -17,6 +17,11 @@ time mappings):
 """
 abstract type AbstractTimeMapping end
 
+"""
+Placeholder held by an `OptimizationContainer` until `set_time_mapping!` attaches a mapping.
+"""
+struct NoTimeMapping <: AbstractTimeMapping end
+
 function get_period_count end
 function get_block_ranges end
 function get_block_period_index end

@@ -557,7 +557,7 @@ export AbstractTimeMapping, NestedTimeMapping
 export get_period_count, get_block_ranges, get_block_period_index
 export get_periods, get_blocks, get_period_time_steps
 export get_period_index, get_last_time_step, get_block_weights, validate_time_mapping
-export get_time_mapping, set_time_mapping!
+export get_time_mapping, set_time_mapping!, has_time_mapping
 
 # Constants
 export COST_EPSILON
