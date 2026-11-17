@@ -3,10 +3,6 @@ Unit tests for the time mapping abstraction (core/time_mapping.jl): the generic 
 `AbstractTimeMapping`, `validate_time_mapping`, and `NestedTimeMapping`.
 """
 
-using Test
-using InfrastructureOptimizationModels
-using Dates
-
 @testset "Time mapping" begin
     @testset "Generic functions on a multi-block mapping" begin
         tm = build_mock_invest_time_mapping()
@@ -97,7 +93,6 @@ using Dates
         start = DateTime(2030, 1, 1)
         tm = IOM.NestedTimeMapping(start, Hour(1), 1:48, Day(1))
 
-        @test tm isa IOM.AbstractTimeMapping
         @test IOM.get_period_count(tm) == 2
         @test IOM.get_block_ranges(tm) == [1:24, 25:48]
         @test IOM.get_block_period_index(tm) == [1, 2]

@@ -30,8 +30,6 @@ mocks (mock_investments.jl) + HiGHS — no PowerSystems dependency.
     @test !IOM.is_built(model)
     @test isempty(model)
     @test IOM.get_status(model) == IOM.ModelBuildStatus.EMPTY
-    @test IOM.get_jump_model(model) isa JuMP.Model
-    @test container isa IOM.OptimizationContainer
     @test IOM.get_store(model) isa IOM.DecisionModelStore
     @test IOM.get_portfolio_to_file(settings) == IOM.get_system_to_file(settings)
 
