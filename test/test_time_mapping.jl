@@ -89,12 +89,44 @@ using Dates
         @test IOM.get_last_time_step(partial, 2) == 30
         @test IOM.validate_time_mapping(partial) === nothing
 
-        @test_throws r"not a positive multiple" IOM.NestedTimeMapping(
+        @test_throws r"align" IOM.NestedTimeMapping(start, Hour(5), 1:48, Day(1))
+
+        years = IOM.NestedTimeMapping(DateTime(2031, 1, 1), Hour(1), 1:17544, Year(1))
+        @test IOM.get_block_ranges(years) == [1:8760, 8761:17544]
+        @test IOM.get_block_period_index(years) == [1, 2]
+
+        months = IOM.NestedTimeMapping(DateTime(2030, 1, 1), Hour(1), 1:1416, Month(1))
+        @test IOM.get_block_ranges(months) == [1:744, 745:1416]
+        @test_throws ErrorException IOM.NestedTimeMapping(
+            DateTime(2030, 1, 1),
+            Hour(1),
+            1:1000,
+            Month(1),
+        )
+        month_partial = IOM.NestedTimeMapping(
+            DateTime(2030, 1, 1),
+            Hour(1),
+            1:1000,
+            Month(1);
+            allow_partial = true,
+        )
+        @test IOM.get_block_ranges(month_partial) == [1:744, 745:1000]
+
+        @test_throws r"align" IOM.NestedTimeMapping(
             start,
             Hour(5),
-            1:24,
-            Day(1),
+            1:5,
+            Day(1);
+            allow_partial = true,
         )
+
+        month_end = IOM.NestedTimeMapping(DateTime(2030, 1, 31), Day(1), 1:59, Month(1))
+        @test IOM.get_block_ranges(month_end) == [1:28, 29:59]
+
+        @test_throws r"positive" IOM.NestedTimeMapping(start, Hour(1), 1:24, Day(0))
+        @test_throws r"positive" IOM.NestedTimeMapping(start, Hour(1), 1:24, Day(-1))
+        @test_throws r"start at 1" IOM.NestedTimeMapping(start, Hour(1), 25:48, Day(1))
+        @test_throws r"fixed" IOM.NestedTimeMapping(start, Month(1), 1:48, Day(1))
     end
 
     @testset "Container accepts any AbstractTimeMapping" begin

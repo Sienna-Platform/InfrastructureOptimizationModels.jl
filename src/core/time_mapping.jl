@@ -92,17 +92,26 @@ function validate_time_mapping(tm::AbstractTimeMapping)
 end
 
 """
-Time mapping with one block per period, all periods of equal length.
+Time mapping with one block per period. Calendar periods such as `Dates.Month(1)` or
+`Dates.Year(1)` give blocks of unequal length.
 
     NestedTimeMapping(initial_time, resolution, time_steps, period; allow_partial = false)
 
 groups `time_steps` of length `resolution` starting at `initial_time` into periods of length
-`period`, e.g. `Dates.Day(1)` for daily windows in an hourly model. A last period shorter than
-the others is an error unless `allow_partial` is set.
+`period`, e.g. `Dates.Day(1)` for daily windows in an hourly model. `resolution` must be a
+fixed period and `time_steps` must start at 1. A last period shorter than the others is an
+error unless `allow_partial` is set.
 """
 struct NestedTimeMapping <: AbstractTimeMapping
     timestamps::Vector{Dates.DateTime}
     block_ranges::Vector{UnitRange{Int}}
+    block_period_index::Vector{Int}
+end
+
+_fixed_period_ms(p::Dates.FixedPeriod) = Dates.value(Dates.Millisecond(p))
+
+function _fixed_period_ms(p::Dates.OtherPeriod)
+    error("The resolution $p must be a fixed period such as Hour or Minute.")
 end
 
 function NestedTimeMapping(
@@ -112,31 +121,45 @@ function NestedTimeMapping(
     period::Dates.Period;
     allow_partial::Bool = false,
 )
-    resolution_ms = Dates.value(Dates.Millisecond(resolution))
-    period_ms = Dates.value(Dates.Millisecond(period))
-    if resolution_ms <= 0 || period_ms % resolution_ms != 0
-        error(
-            "The period $period is not a positive multiple of the resolution $resolution.",
-        )
+    resolution_ms = _fixed_period_ms(resolution)
+    if resolution_ms <= 0
+        error("The resolution $resolution must be positive.")
     end
-    steps_per_period = period_ms ÷ resolution_ms
+    if first(time_steps) != 1
+        error("The time steps $time_steps must start at 1.")
+    end
+    if !(initial_time + period > initial_time)
+        error("The period $period must be positive.")
+    end
     step_count = length(time_steps)
-    if step_count % steps_per_period != 0 && !allow_partial
-        error(
-            "$step_count time steps do not divide into periods of $steps_per_period " *
-            "time steps; set allow_partial = true to keep a shorter last period.",
-        )
-    end
     timestamps =
         [initial_time + Dates.Millisecond((t - 1) * resolution_ms) for t in 1:step_count]
-    block_ranges = [
-        s:min(s + steps_per_period - 1, step_count) for
-        s in 1:steps_per_period:step_count
-    ]
-    return NestedTimeMapping(timestamps, block_ranges)
+    end_time = initial_time + Dates.Millisecond(step_count * resolution_ms)
+    block_ranges = UnitRange{Int}[]
+    start, k = 1, 1
+    while start <= step_count
+        boundary = initial_time + k * period
+        stop = searchsortedfirst(timestamps, boundary) - 1
+        if (stop < step_count && timestamps[stop + 1] != boundary) ||
+           (stop == step_count && end_time > boundary)
+            error(
+                "The period boundary $boundary does not align with the resolution " *
+                "$resolution.",
+            )
+        end
+        if stop == step_count && boundary != end_time && !allow_partial
+            error(
+                "The last period of $period ends at $end_time, before $boundary; " *
+                "set allow_partial = true to keep a shorter last period.",
+            )
+        end
+        push!(block_ranges, start:stop)
+        start, k = stop + 1, k + 1
+    end
+    return NestedTimeMapping(timestamps, block_ranges, collect(1:length(block_ranges)))
 end
 
 get_period_count(tm::NestedTimeMapping) = length(tm.block_ranges)
 get_block_ranges(tm::NestedTimeMapping) = tm.block_ranges
-get_block_period_index(tm::NestedTimeMapping) = collect(1:length(tm.block_ranges))
+get_block_period_index(tm::NestedTimeMapping) = tm.block_period_index
 get_timestamps(tm::NestedTimeMapping) = tm.timestamps
