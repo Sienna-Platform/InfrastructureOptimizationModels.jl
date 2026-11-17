@@ -92,6 +92,19 @@ function write_output!(
     key::OptimizationContainerKey,
     index::DecisionModelIndexType,
     update_timestamp::Dates.DateTime,
+    array::DenseAxisArray{T, 2, <:Tuple{Vector{String}, Vector{Int}}},
+) where {T}
+    container = getfield(store, get_store_container_type(key))
+    container[key][index] = DenseAxisArray(array.data, axes(array, 1), 1:size(array, 2))
+    return
+end
+
+function write_output!(
+    store::DecisionModelStore,
+    name::Symbol,
+    key::OptimizationContainerKey,
+    index::DecisionModelIndexType,
+    update_timestamp::Dates.DateTime,
     array::DenseAxisArray{T, 1, <:Tuple{U}},
 ) where {T, U <: Union{Vector{String}, UnitRange}}
     container = getfield(store, get_store_container_type(key))
@@ -162,46 +175,4 @@ function write_output!(
     container[key][index] =
         DenseAxisArray(permutedims(matrix), columns, 1:size(matrix, 1))
     return
-end
-
-function read_outputs(
-    store::DecisionModelStore,
-    key::OptimizationContainerKey;
-    index::Union{DecisionModelIndexType, Nothing} = nothing,
-)
-    container = getfield(store, get_store_container_type(key))
-    data = container[key]
-    if isnothing(index)
-        @assert_op length(data) == 1
-        index = first(keys(data))
-    end
-
-    # Return a copy because callers may mutate it.
-    return deepcopy(data[index])
-end
-
-function write_optimizer_stats!(
-    store::DecisionModelStore,
-    stats::OptimizerStats,
-    index::DecisionModelIndexType,
-)
-    # TODO: This check is incompatible with test calls to psi_checksolve_test
-    # Overwriting should not be allowed in normal operation.
-    # if index in keys(store.optimizer_stats)
-    #     error("Bug: Overwriting optimizer stats for index = $index")
-    # end
-    store.optimizer_stats[index] = stats
-    return
-end
-
-function read_optimizer_stats(store::DecisionModelStore)
-    stats = [IS.to_namedtuple(x) for x in values(store.optimizer_stats)]
-    df = DataFrames.DataFrame(stats)
-    DataFrames.insertcols!(df, 1, :DateTime => keys(store.optimizer_stats))
-    return df
-end
-
-function get_column_names(store::DecisionModelStore, key::OptimizationContainerKey)
-    container = getfield(store, get_store_container_type(key))
-    return get_column_names_from_axis_array(key, first(values(container[key])))
 end

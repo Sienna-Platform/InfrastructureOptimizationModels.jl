@@ -118,6 +118,7 @@ mutable struct OptimizationContainer <: AbstractOptimizationContainer
     JuMPmodel::JuMP.Model
     time_steps::UnitRange{Int}
     settings::Settings
+    time_mapping::AbstractTimeMapping
     variables::OrderedDict{VariableKey, JuMPArray}
     aux_variables::OrderedDict{AuxVarKey, JuMPArray}
     duals::OrderedDict{ConstraintKey, JuMPArray}
@@ -172,6 +173,7 @@ function OptimizationContainer(
         isnothing(jump_model) ? JuMP.Model() : jump_model,
         1:1,
         settings,
+        NoTimeMapping(),
         OrderedDict{VariableKey, JuMPArray}(),
         OrderedDict{AuxVarKey, JuMPArray}(),
         OrderedDict{ConstraintKey, JuMPArray}(),
@@ -248,6 +250,33 @@ set_initial_conditions_data!(container::OptimizationContainer, data) =
 get_objective_expression(container::OptimizationContainer) = container.objective_function
 
 get_serialization_task(container::OptimizationContainer) = container.serialization_task
+
+"""
+Return `true` if `set_time_mapping!` attached a time mapping to the container.
+"""
+has_time_mapping(container::OptimizationContainer) =
+    _has_time_mapping(container.time_mapping)
+
+_has_time_mapping(::NoTimeMapping) = false
+_has_time_mapping(::AbstractTimeMapping) = true
+
+function get_time_mapping(container::OptimizationContainer)
+    return _get_time_mapping(container.time_mapping)
+end
+
+function _get_time_mapping(::NoTimeMapping)
+    error("The OptimizationContainer has no time mapping. Call set_time_mapping! first.")
+end
+
+_get_time_mapping(time_mapping::AbstractTimeMapping) = time_mapping
+
+function set_time_mapping!(
+    container::OptimizationContainer,
+    time_mapping::AbstractTimeMapping,
+)
+    container.time_mapping = time_mapping
+    return
+end
 
 function set_serialization_task!(container::OptimizationContainer, task::Task)
     container.serialization_task = task
@@ -497,9 +526,23 @@ function init_optimization_container!(
         )
     end
 
+    _finalize_optimization_container!(container)
+    return
+end
+
+function init_optimization_container!(
+    container::OptimizationContainer,
+    template::AbstractProblemTemplate,
+    sys::IS.InfrastructureSystemsContainer,
+)
+    _finalize_optimization_container!(container)
+    return
+end
+
+function _finalize_optimization_container!(container::OptimizationContainer)
+    settings = get_settings(container)
     stats = get_optimizer_stats(container)
     stats.detailed_stats = get_detailed_optimizer_stats(settings)
-
     finalize_jump_model!(container, settings)
     return
 end

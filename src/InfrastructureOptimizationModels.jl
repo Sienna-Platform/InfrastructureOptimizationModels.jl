@@ -493,6 +493,7 @@ export ReservationVariable
 export PiecewiseLinearCostVariable
 export RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown
 export DCVoltage
+
 # Abstract types needed by POM for type hierarchy
 export SparseVariableType, InterpolationVariableType, BinaryInterpolationVariableType
 
@@ -550,6 +551,13 @@ export use_time_series_cache
 export set_horizon!, set_initial_time!, set_warm_start!
 export log_values
 export InitialConditionsData
+
+# Time Mapping
+export AbstractTimeMapping, NestedTimeMapping
+export get_period_count, get_block_ranges, get_block_period_index
+export get_periods, get_blocks, get_period_time_steps
+export get_period_index, get_last_time_step, get_block_weights, validate_time_mapping
+export get_time_mapping, set_time_mapping!, has_time_mapping
 
 # Constants
 export COST_EPSILON
@@ -613,6 +621,7 @@ include("core/outputs_by_time.jl")
 
 # Order Required
 include("operation/problem_template.jl")
+include("core/time_mapping.jl")
 include("core/optimization_container.jl")
 include("core/lhs_parameters.jl")
 include("core/dual_processing.jl")
