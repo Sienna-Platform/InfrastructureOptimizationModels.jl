@@ -1,12 +1,14 @@
 # InfrastructureOptimizationModels.jl — Claude Guide
 
-Platform-wide Sienna conventions (performance, type stability, formatter, environments, code style) live in `.claude/Sienna.md` — read it too. This file is repo-specific and does not restate them.
+This file is repo-specific. The shared Sienna rules load from the import below; the `sienna-dev` skill holds the cross-package
+context; the `sienna-dev` and `sienna-reviewer` subagents implement and review.
+
+@Sienna.md
 
 ## Purpose & Role
 
 IOM is the **optimization-model utility layer** of the psy6 stack — the domain-neutral
-abstraction beneath PowerOperationsModels.jl (POM). In this line the old PowerSimulations.jl
-does not exist: **PSI ≈ POM + IOM**. IOM defines the generic,
+abstraction beneath PowerOperationsModels.jl (POM). PowerSimulations (PSI) is the simulation layer above IOM + POM. IOM defines the generic,
 domain-agnostic machinery for *building* optimization models: the optimization container,
 variable/constraint/expression/parameter abstractions and their containers, model wrappers
 (`DeviceModel`/`NetworkModel`/`ServiceModel`), the two operation-model types
@@ -27,17 +29,16 @@ JuMP objective expressions.
 
 PR #104 moved the problem taxonomy out of IOM. IOM **removed**: `OperationModel`,
 `DecisionProblem`, `EmulationProblem`, the `Generic*`/`Default*` problem types, and the
-`Simulation*` stubs. POM now owns the `PowerOperationModel <: IOM.AbstractOptimizationProblem`
+`Simulation*` stubs. POM now owns the `AbstractPowerOperationProblem <: IOM.AbstractOptimizationProblem`
 chain (`POM/src/core/problem_types.jl`); the old `OperationModel` abstract became
 `IOM.AbstractOptimizationModel`; `validate_time_series!`/`validate_template` remain here as
 stubs on the neutral abstract. **When a symbol is "missing from IOM", check whether #104
 moved it to POM before re-adding anything here.**
 
 Domain-neutrality litmus: if a name only makes sense for power systems, it belongs in POM.
-Known audit-flagged leaks to shrink, not extend: power vocabulary in `src/core/network_model.jl`
-(`PTDF_matrix`, `MODF_matrix`, `AbstractPowerModel`, `reduce_radial_branches`), the dead
-`pm::Union{Nothing,AbstractPowerModel}` field in `optimization_container.jl`, and
-model-lifecycle stubs that silently no-op instead of erroring.
+
+Known item to shrink, not extend: model-lifecycle stubs that silently no-op
+instead of erroring.
 
 ## Optimization Model Construction Conventions
 
@@ -55,34 +56,15 @@ Avoid creating expression containers solely as intermediate computation steps.
 
 ## Architecture & src/ Layout
 
-- **`src/core/`** — foundational types and containers. `OptimizationContainer` (central
-  JuMP-backed container), its keys/types/metadata/utils, `DeviceModel`/`NetworkModel`/
-  `ServiceModel` parametric wrappers, `Settings`, `ParameterContainer`, dataset
-  (`dataset.jl`/`dataset_container.jl`), abstract store interface, initial conditions,
-  optimizer stats, time-series parameter types, network reductions, dual processing,
-  external evaluation, outputs access layers.
+- **`src/core/`** — `OptimizationContainer` (the central JuMP-backed container), its keys,
+  the `DeviceModel`/`NetworkModel`/`ServiceModel` wrappers, settings, and parameter containers.
 - **`src/common_models/`** — reusable variable/constraint/expression/parameter builders that
-  concrete formulations call into (`add_variable.jl`, `add_jump_expressions.jl`,
-  `range_constraint.jl`, `duration_constraints.jl`, `rateofchange_constraints.jl`,
-  `add_param_container.jl`, `constraint_helpers.jl`, `interfaces.jl`, etc.).
+  concrete formulations call into.
 - **`src/objective_function/`** — generic objective-function formulations, one file per value
-  curve / term type (`linear_curve.jl`, `quadratic_curve.jl`, `piecewise_linear.jl`,
-  `value_curve_cost.jl`, `proportional.jl`, `start_up_shut_down.jl`, lambda/delta PWL
-  builders, `offer_curve_types.jl`, `cost_term_helpers.jl`).
-- **`src/quadratic_approximations/`** — PWL approximations of x²: incremental, solver-SOS2,
-  manual-SOS2, sawtooth, epigraph, DNMDT (`nmdt.jl`/`nmdt_common.jl`), no-op passthrough,
-  McCormick cuts, shared breakpoint utils.
-- **`src/bilinear_approximations/`** — approximations of bilinear products x·y: McCormick
-  envelopes, Bin2, HybS, NMDT, no-op passthrough.
-- **`src/operation/`** — `DecisionModel` (single-period) and `EmulationModel` (rolling
-  horizon), their output stores, `ProblemTemplate`, serialization, time-series integration,
-  numerical-analysis and debugging utils.
-- **`src/initial_conditions/`** — initial-condition calculation logic.
-- **`src/utils/`** — pure utilities with no domain coupling (JuMP/DataFrames/datetime/file/
-  logging/indexing/time-series helpers, formulation validation, pretty-printing).
-
-The repo-wide directory tree is detailed enough to reconstruct from `src/` itself; keep this
-section in sync only at the directory/role level when structure changes.
+  curve or term type.
+- **`src/quadratic_approximations/`, `src/bilinear_approximations/`** — PWL approximations of
+  x² and x·y (SOS2, sawtooth, McCormick, NMDT, and others).
+- **`src/operation/`** — `DecisionModel`, `EmulationModel`, their output stores, and `ProblemTemplate`.
 
 ## What IOM is
 
@@ -102,34 +84,18 @@ anything else tomorrow. That shapes how to read this code:
 
 ## Main Public API
 
-275 exports in the main module file (`src/InfrastructureOptimizationModels.jl`). Notable
-groups:
-- **Model types:** `DecisionModel`, `EmulationModel`, `AbstractProblemTemplate`,
-  `DeviceModel`, `NetworkModel`, `ServiceModel`, `FixedOutput`.
-- **Containers:** `ServicesModelContainer`, `DevicesModelContainer`, `BranchModelContainer`,
-  `ParameterContainer`, parameter attribute types (`TimeSeriesAttributes`,
-  `VariableValueAttributes`, `CostFunctionAttributes`, etc.).
-- **Template setup:** `set_device_model!`, `set_service_model!`, `set_network_model!`,
-  `set_hvdc_network_model!`, `get_device_models`, `get_branch_models`, etc.
-- **Build/solve hooks:** `init_optimization_container!`, `validate_time_series!`,
-  `get_initial_conditions`, `serialize_outputs`, `serialize_optimization_model`.
-- **Model-building helpers:** `add_variables!`, `add_to_expression!`, the
-  `add_*_to_jump_expression!` family, PWL builders (`add_pwl_variables_delta!`,
-  `add_pwl_linking_constraint!`, `add_pwl_sos2_constraint!`, …), cost-term helpers.
-- **Output access:** `get_variable_values`, `get_dual_values`, `get_parameter_values`,
-  `get_aux_variable_values`, `get_expression_values`, network accessors (`get_PTDF_matrix`,
-  `get_duals`, `get_subnetworks`, …).
+The export list in the main module file (`src/InfrastructureOptimizationModels.jl`) is authoritative.
 
 ## Conventions, Invariants, Gotchas
 
-- **Never create container keys directly.** Constraint/variable/aux-variable/parameter keys
-  must only be created through `add_constraints_container!`, `add_variables_container!`,
-  `add_aux_variables_container!`, `add_parameters_container!`. Do not instantiate keys
+- **Never create container keys directly.** Create keys only inside the `add_*_container!`
+  functions in `src/core/optimization_container.jl` and `src/common_models/add_param_container.jl`
+  (for example `add_variable_container!`, `add_constraints_container!`). Do not instantiate keys
   outside these functions. (See also the `add_*!` return-`nothing` rule above.)
 - **Prefer IS types over PSY types.** Use IS parent types where possible:
   `PSY.Component` → `IS.InfrastructureSystemsComponent`,
   `PSY.System` → `IS.InfrastructureSystemsContainer`, cost curves via `IS.CostCurve`,
-  `IS.LinearCurve`, unit markers via `IS.RelativeUnits` (`SU`/`DU`/`NU` — the legacy
+  `IS.LinearCurve`, unit markers via `IS.RelativeUnits` (`SU`/`CU`/`NU`, for cost curves only; getters take `u"SU"` — the legacy
   `IS.UnitSystem` enum is gone from the cost-curve API in IS4). IOM imports key/formulation abstract types and
   generic accessors from `InfrastructureSystems.Optimization` / `InfrastructureSystems` to
   avoid duplication.
@@ -138,27 +104,22 @@ groups:
   `get_operation_cost`, `has_service`, `validate_time_series!`, …) that downstream packages
   (chiefly POM) add methods to, dispatched on concrete PSY types. Do not add PSY-specific
   methods here.
-- **No Project.toml version bump.** Do NOT edit the `version` field in `Project.toml`, even
+- **No Project.toml version bump.** Do not edit the `version` field in `Project.toml`, even
   for breaking-change work. A local version ahead of the registry breaks cross-repo
   `Pkg.develop`/test resolution for the rest of the stack. Keep IS unbumped (do not push it
   to `4.0.0`), and the same for sibling packages. If a bump reappears in the working tree
   (it has done so spontaneously mid-session), revert it. Release versions are set at publish
   time, not during dev.
 - **Plans/specs live in `.claude/`** (e.g. `.claude/plans/`), not in `docs/`. Keep generated
-  planning artifacts out of the project source tree. An existing plan lives at
-  `.claude/plans/2026-06-09-deep-review-corrections.md`.
-- **Vararg specialization caution (durable note).** A prior blanket `args...` →
-  `Vararg{Any,N}` conversion was found counterproductive for throw-only fallbacks (compiles
-  dead specializations) and for user-facing API boundaries (`read_*` forwarders in
-  `optimization_problem_outputs.jl`, the template setters in `problem_template.jl`) where
-  plain `args...` gives better arity errors and no runtime benefit. Keep `Vararg{Any,N}` only
-  where arity genuinely propagates into container construction (`optimization_container.jl`,
-  `jump_utils.jl`).
+  planning artifacts out of the project source tree.
+- **Vararg specialization.** Keep `Vararg{Any,N}` only where arity propagates into container
+  construction (`optimization_container.jl`, `jump_utils.jl`). Throw-only fallbacks and user-facing
+  forwarders (`read_*`, template setters) use plain `args...`, which gives better arity errors.
 
 ## Time-Varying MarketBidCost (cross-repo)
 
 Relevant to `src/objective_function/value_curve_cost.jl`, `offer_curve_types.jl`,
-`start_up_shut_down.jl`, and parameter-update logic. Summary; see `IS/.claude/claude.md`
+`start_up_shut_down.jl`, and parameter-update logic. Summary; see `InfrastructureSystems.jl/.claude/CLAUDE.md`
 → "Time-Varying Cost Curve Type Hierarchy" for the full IS type tree.
 
 - IS provides parallel static and time-series-backed cost-curve hierarchies sharing abstract
@@ -167,23 +128,19 @@ Relevant to `src/objective_function/value_curve_cost.jl`, `offer_curve_types.jl`
   every level (CostCurve → ValueCurve → FunctionData).
 - `MarketBidCost` (in PSY) holds each field as either a scalar/struct (static) or a
   `TimeSeriesKey` (time-varying); time-varying data lives in the System's time-series store.
-- **IOM orchestrates; POM implements.** `process_market_bid_parameters!()` filters devices,
-  checks time-variance, and calls `add_parameters!(...)` — implemented in POM, which
-  decomposes each `PiecewiseStepData` into separate slope/breakpoint/at-min parameter arrays
-  (`IncrementalPiecewiseLinearSlopeParameter`, `…BreakpointParameter`,
-  `IncrementalCostAtMinParameter`, `StartupCostParameter`, `ShutdownCostParameter`;
-  decremental variants mirror these).
-- `add_pwl_term!()` builds, per time step, the delta/block PWL variables, the linking
+- **POM owns `process_market_bid_parameters!`**: it filters devices, checks time-variance,
+  and calls `add_parameters!`, which decomposes each `PiecewiseStepData` into slope,
+  breakpoint, and at-min parameter arrays (`IncrementalPiecewiseLinearSlopeParameter`,
+  `…BreakpointParameter`, `IncrementalCostAtMinParameter`, `StartupCostParameter`,
+  `ShutdownCostParameter`; decremental variants mirror these). IOM holds the stubs and the
+  generic objective builders.
+- `add_pwl_term_delta!` builds, per time step, the delta PWL variables, the linking
   constraint `p = Σ δ_k`, the width bounds, and the cost expression `Σ slope_k·δ_k·dt`,
   routing to **variant** expressions (time-varying, rebuilt each step) or **invariant**
-  (static, computed once).
+  (static, computed once). POM supplies its static entry point. `add_pwl_term_lambda!`
+  builds the lambda form.
 - Direction dispatch via `OfferDirection` (`IncrementalOffer`/`DecrementalOffer`,
   `src/core/definitions.jl`) selects accessors and parameter types.
-- **Target refactor (future):** replace bare `TimeSeriesKey` unions on `MarketBidCost` with
-  typed `CostCurve{TimeSeriesPiecewiseIncrementalCurve}`, so `is_time_series_backed()` and
-  dispatch replace `isa(field, TimeSeriesKey)` runtime branches throughout IOM/POM. IS
-  Phases 1–2 (TS function-data and value-curve types) are done; remaining work is PSY field
-  retyping, then IOM `value_curve_cost.jl` and POM dispatch simplification.
 
 ## Cross-Package Coupling
 
@@ -194,7 +151,7 @@ Relevant to `src/objective_function/value_curve_cost.jl`, `offer_curve_types.jl`
   concrete formulations and supply methods for IOM's extension-point stubs using PSY types.
   Consider downstream impact for any signature/abstract-type change; run the POM suite after
   IOM edits.
-- **The `IOM._*` surface is load-bearing.** POM currently calls ~28 distinct non-exported
+- **The `IOM._*` surface is load-bearing.** POM calls many non-exported
   `IOM._*` helpers (parameter/multiplier setters, PWL machinery). Renaming or changing any
   `_`-prefixed function here can break a consumer even though it is "private", so treat `_*`
   signature changes as breaking.
@@ -222,13 +179,9 @@ julia --project=test -e 'using Pkg; Pkg.instantiate()'
 # Build docs
 julia --project=docs docs/make.jl
 
-# Formatter — run after completing each task (not optional)
+# Formatter — run after each task
 julia --project=scripts/formatter -e 'include("scripts/formatter/formatter_code.jl")'
 ```
-
-The formatter script self-activates `scripts/formatter` and instantiates JuliaFormatter; it
-formats `./src`, `./test`, and `./docs/src` (`.jl` and `.md`). Do not manually revert its
-output.
 
 ### Testing specifics
 
@@ -241,6 +194,4 @@ output.
   `MockSystem`, mock container/optimizer/services/time-series so tests don't depend on
   PowerSystems concrete types. `test/verify_mocks.jl` validates mocks match real interfaces.
   Shared fixtures live in `test/test_utils/`.
-- Run the full suite after changes and report results (do not assume pass). After each Julia
-  edit, verify it compiles
-  (`julia --project=test -e 'using InfrastructureOptimizationModels'`) before moving on.
+- Compile-check after each Julia edit: `julia --project=test -e 'using InfrastructureOptimizationModels'`.
