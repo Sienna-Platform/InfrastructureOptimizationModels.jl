@@ -27,6 +27,23 @@ using Dates
         @test IOM.validate_time_mapping(tm) === nothing
     end
 
+    @testset "Accessors on a full-year mapping" begin
+        tm = NestedTimeMapping(DateTime(2030, 1, 1), Hour(1), 1:8760, Day(1))
+        period_index_allocs(tm, 8760)
+        @test period_index_allocs(tm, 8760) == 0
+        @test_throws ErrorException IOM.get_period_index(tm, 0)
+        @test_throws ErrorException IOM.get_period_index(tm, 8761)
+    end
+
+    @testset "Interleaved periods" begin
+        ts = [DateTime(2030, 1, 1, h) for h in 0:7]
+        tm = MockInvestTimeMapping(
+            Date(2030, 1, 1), ts, [1:2, 3:4, 5:6, 7:8], [1, 2, 1, 2], 2, 8,
+        )
+        @test IOM.get_blocks(tm, 1) == [1, 3]
+        @test IOM.get_period_time_steps(tm, 1) == [1, 2, 5, 6]
+    end
+
     @testset "Empty mapping" begin
         tm = build_empty_mock_invest_time_mapping()
         @test IOM.get_time_steps(tm) == 1:0

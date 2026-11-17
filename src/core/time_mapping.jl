@@ -29,13 +29,13 @@ get_blocks(tm::AbstractTimeMapping, period::Int) =
     findall(==(period), get_block_period_index(tm))
 
 function get_period_time_steps(tm::AbstractTimeMapping, period::Int)
-    ranges = get_block_ranges(tm)
-    return mapreduce(b -> collect(ranges[b]), vcat, get_blocks(tm, period); init = Int[])
+    return reduce(vcat, get_block_ranges(tm)[get_blocks(tm, period)])
 end
 
 function get_period_index(tm::AbstractTimeMapping, t::Int)
-    block = findfirst(r -> t in r, get_block_ranges(tm))
-    if block === nothing
+    ranges = get_block_ranges(tm)
+    block = searchsortedlast(ranges, t; by = first)
+    if iszero(block) || t > last(ranges[block])
         error("Time step $t is not in any block of the time mapping.")
     end
     return get_block_period_index(tm)[block]
