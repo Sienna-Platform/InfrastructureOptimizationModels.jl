@@ -287,3 +287,36 @@ end
 @testset "LHS docstring covers selecting a variable" begin
     @test occursin("selects", string(@doc IOM.LeftHandSideTimeSeriesParameter))
 end
+
+struct MockLHSEventParameter <: IOM.EventParameter end
+
+# Event status for "c1" over two steps, with multiplier 2.0.
+function _lhs_event_fixture(; rebuild_model = true)
+    container = _make_lhs_container(1:2; rebuild_model = rebuild_model)
+    container.built_for_recurrent_solves = true
+    pc = IOM.add_event_parameter_container!(
+        container,
+        MockLHSEventParameter,
+        MockThermalGen,
+        MockOutageAttribute,
+        ["c1"],
+        1:2,
+    )
+    jm = IOM.get_jump_model(container)
+    data = IOM.get_parameter_array_data(pc)
+    IOM._set_parameter_at!(data, jm, 1.0, 1, 1)
+    IOM._set_parameter_at!(data, jm, 0.0, 1, 2)
+    IOM._set_multiplier_at!(IOM.get_multiplier_array_data(pc), 2.0, 1)
+    return container, IOM.ParameterKey(MockLHSEventParameter, MockThermalGen)
+end
+
+@testset "Event parameters read as LHS coefficients" begin
+    container, key = _lhs_event_fixture()
+    @test IOM.has_lhs_parameter_component(container, key, "c1")
+    @test !IOM.has_lhs_parameter_component(container, key, "c2")
+    @test IOM.get_lhs_parameter_values(container, key, "c1") == [2.0, 0.0]
+    @test_throws ArgumentError IOM.get_lhs_parameter_values(container, key, "c2")
+
+    jump_backed, jump_key = _lhs_event_fixture(; rebuild_model = false)
+    @test_throws ArgumentError IOM.get_lhs_parameter_values(jump_backed, jump_key, "c1")
+end

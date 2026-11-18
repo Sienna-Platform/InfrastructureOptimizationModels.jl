@@ -592,9 +592,6 @@ function _bound_range_with_parameter!(
     return
 end
 
-# FIXME better spot for this?
-abstract type EventParameter <: ParameterType end
-
 # originally was AvailableStatusParameter, but broadened to EventParameter to keep
 # concrete types out of IOM.
 function _bound_range_with_parameter!(
