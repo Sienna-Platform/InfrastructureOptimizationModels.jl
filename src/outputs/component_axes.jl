@@ -1,6 +1,6 @@
 "Axes and axis data of one model. `dataset_axes!` adds component axes to it."
 struct AxisRegistry
-    axes::Dict{String, IS.AbstractAxis}
+    axes::Dict{String, PowerOutputSchemas.Axis}
     data::Dict{Tuple{String, String}, IS.AxisData}
     model::String
 end
@@ -46,6 +46,22 @@ function _same_labels(reg::AxisRegistry, key::String, labels::Matrix{String})
     return reg.data[(reg.model, key)].labels == labels
 end
 
+function _component_axis(
+    columns::Vector{PowerOutputSchemas.ComponentAxisColumnsItem},
+    n::Int,
+    group::String,
+    subset::String,
+)
+    if isempty(subset)
+        return PowerOutputSchemas.ComponentAxis(;
+            kind = "component", columns = columns, length = n, group = group,
+        )
+    end
+    return PowerOutputSchemas.ComponentAxis(;
+        kind = "component", columns = columns, length = n, group = group, subset = subset,
+    )
+end
+
 "Add a component axis for `labels` to `reg`. Return the axis key."
 function register_component_axis!(
     reg::AxisRegistry,
@@ -64,12 +80,15 @@ function register_component_axis!(
     has_ids = !isempty(ids)
     label_matrix = reshape(names, 1, :)
     for subset in ("", _lower_snake(dataset_name))
-        columns = [IS.AxisColumn(string(nameof(U)), has_ids)]
-        key =
-            IS.axis_key(IS.ComponentAxis("component", columns, length(labels), "", subset))
+        columns = [
+            PowerOutputSchemas.ComponentAxisColumnsItem(;
+                component_type = string(nameof(U)), has_ids = has_ids,
+            ),
+        ]
+        key = IS.axis_key(_component_axis(columns, length(labels), "", subset))
         if !haskey(reg.axes, key)
-            reg.axes[key] = IS.ComponentAxis(
-                "component", columns, length(labels), "/$(reg.model)/axes/$key", subset,
+            reg.axes[key] = PowerOutputSchemas.Axis(
+                _component_axis(columns, length(labels), "/$(reg.model)/axes/$key", subset),
             )
             reg.data[(reg.model, key)] =
                 IS.AxisData(_id_matrix(ids), label_matrix, Dates.DateTime[])
@@ -86,6 +105,11 @@ function register_component_axis!(
     )
 end
 
+_has_labels(a::PowerOutputSchemas.Axis, labels::Vector{String}) =
+    _has_labels(a.value, labels)
+_has_labels(a::PowerOutputSchemas.LabelAxis, labels::Vector{String}) = a.labels == labels
+_has_labels(::Any, ::Vector{String}) = false
+
 "Add a label axis for `labels` to `reg` under `key`. Return `key`."
 function register_label_axis!(
     reg::AxisRegistry,
@@ -93,12 +117,13 @@ function register_label_axis!(
     key::String,
     dataset_name::String,
 )
-    axis = IS.LabelAxis("label", key, labels)
     if !haskey(reg.axes, key)
-        reg.axes[key] = axis
+        reg.axes[key] = PowerOutputSchemas.Axis(
+            PowerOutputSchemas.LabelAxis(; kind = "label", name = key, labels = labels),
+        )
         return key
     end
-    if reg.axes[key] == axis
+    if _has_labels(reg.axes[key], labels)
         return key
     end
     throw(

@@ -44,7 +44,7 @@ end
 _axis_types(::Type{U}) where {U} = (U,)
 _axis_types(::Type{ComponentPairKey{A, B}}) where {A, B} = (A, B)
 
-"Return the `IS.OutputDataset` of `key`. The first axis type of `U` gives the component type."
+"Return the `PowerOutputSchemas.Dataset` of `key`. The first axis type of `U` gives the component type."
 function dataset_descriptor(
     key::OptimizationContainerKey{T, U};
     model::String,
@@ -61,7 +61,7 @@ function dataset_descriptor(
     )
 end
 
-"Return the `IS.OutputDataset` of `key` for a dataset that has no component."
+"Return the `PowerOutputSchemas.Dataset` of `key` for a dataset that has no component."
 function dataset_descriptor_componentless(
     key::OptimizationContainerKey{T, U};
     model::String,
@@ -100,21 +100,24 @@ function model_axes(
 )
     interval = get_interval(params)
     num_executions = get_num_executions(params)
-    execution = IS.ExecutionAxis(
-        "execution",
-        initial_time,
-        IS.iso_duration(interval),
-        num_executions,
-        "/$model/axes/execution",
+    execution = PowerOutputSchemas.ExecutionAxis(;
+        kind = "execution",
+        initial_timestamp = string(initial_time),
+        interval = IS.iso_duration(interval),
+        count = num_executions,
+        group = "/$model/axes/execution",
     )
-    horizon = IS.HorizonAxis(
-        "horizon",
-        IS.iso_duration(get_resolution(params)),
-        get_horizon_count(params),
+    horizon = PowerOutputSchemas.HorizonAxis(;
+        kind = "horizon",
+        resolution = IS.iso_duration(get_resolution(params)),
+        horizon_count = get_horizon_count(params),
     )
     timestamps =
         collect(range(initial_time; step = interval, length = num_executions))
-    axes = Dict{String, IS.AbstractAxis}("execution" => execution, "horizon" => horizon)
+    axes = Dict{String, PowerOutputSchemas.Axis}(
+        "execution" => PowerOutputSchemas.Axis(execution),
+        "horizon" => PowerOutputSchemas.Axis(horizon),
+    )
     data = Dict{Tuple{String, String}, IS.AxisData}(
         (model, "execution") => IS.AxisData(timestamps),
     )
@@ -130,16 +133,17 @@ function model_axes(
 )
     resolution = get_resolution(params)
     num_executions = get_num_executions(params)
-    time_axis = IS.TimeAxis(
-        "time",
-        initial_time,
-        IS.iso_duration(resolution),
-        num_executions,
-        "/$model/axes/time",
+    time_axis = PowerOutputSchemas.TimeAxis(;
+        kind = "time",
+        initial_timestamp = string(initial_time),
+        resolution = IS.iso_duration(resolution),
+        length = num_executions,
+        group = "/$model/axes/time",
     )
     timestamps =
         collect(range(initial_time; step = resolution, length = num_executions))
-    axes = Dict{String, IS.AbstractAxis}("time" => time_axis)
+    axes =
+        Dict{String, PowerOutputSchemas.Axis}("time" => PowerOutputSchemas.Axis(time_axis))
     data = Dict{Tuple{String, String}, IS.AxisData}(
         (model, "time") => IS.AxisData(timestamps),
     )

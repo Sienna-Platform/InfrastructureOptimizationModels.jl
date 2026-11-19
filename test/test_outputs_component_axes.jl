@@ -1,6 +1,6 @@
 function _test_registry()
     return IOM.AxisRegistry(
-        Dict{String, IS.AbstractAxis}(),
+        Dict{String, PowerOutputSchemas.Axis}(),
         Dict{Tuple{String, String}, IS.AxisData}(),
         "m",
     )
@@ -13,7 +13,7 @@ end
         reg = _test_registry()
         key = IOM.register_component_axis!(reg, sys, MockComponentType, ["g1", "g2"], "d")
         @test key == "MockComponentType"
-        axis = reg.axes[key]
+        axis = reg.axes[key].value
         @test axis.columns[1].has_ids
         @test axis.length == 2
         @test axis.group == "/m/axes/MockComponentType"
@@ -58,7 +58,7 @@ end
     @testset "label only axis" begin
         reg = _test_registry()
         k = IOM.register_component_axis!(reg, sys, MockLabelOnlyType, ["x", "y"], "d")
-        @test !reg.axes[k].columns[1].has_ids
+        @test !reg.axes[k].value.columns[1].has_ids
         @test isempty(reg.data[("m", k)].ids)
         @test reg.data[("m", k)].labels == ["x" "y"]
     end
@@ -68,7 +68,7 @@ end
         k = IOM.register_component_axis!(
             reg, sys, MockComponentType, ["s1__g1", "s1__g2"], "d",
         )
-        @test !reg.axes[k].columns[1].has_ids
+        @test !reg.axes[k].value.columns[1].has_ids
         @test isempty(reg.data[("m", k)].ids)
     end
 
@@ -80,7 +80,7 @@ end
         k = IOM.register_component_axis!(
             reg, sys, MockComponentType, ["s1__g1", "g2"], "d",
         )
-        @test reg.axes[k].columns[1].has_ids
+        @test reg.axes[k].value.columns[1].has_ids
         @test reg.data[("m", k)].labels == ["s1__g1" "g2"]
     end
 
@@ -112,7 +112,13 @@ end
             reg, sys, key, [["a1", "a2"], ["b1"], ["t1", "t2", "t3"]], "Name__X",
         )
         @test keys == ["MockComponentType", "MockComponentType2", "name__x"]
-        @test reg.axes["name__x"] == IS.LabelAxis("label", "name__x", ["t1", "t2", "t3"])
+        expected = PowerOutputSchemas.Axis(
+            PowerOutputSchemas.LabelAxis(;
+                kind = "label", name = "name__x", labels = ["t1", "t2", "t3"],
+            ),
+        )
+        @test PowerOutputSchemas.encode(reg.axes["name__x"]) ==
+              PowerOutputSchemas.encode(expected)
         keys = IOM.dataset_axes!(
             reg, sys, key, [["a1", "a2"], ["b1"], ["t1"], ["u1", "u2"]], "Other",
         )

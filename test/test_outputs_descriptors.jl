@@ -9,7 +9,7 @@
         )
         @test d.entry_type == "TestVariableType"
         @test d.component_type == "MockComponentType"
-        @test d.container == "variables"
+        @test string(d.container) == "variables"
         @test d.layout.chunks == [1, 2, 4]
         @test d.path == "/m/datasets/TestVariableType__MockComponentType"
     end
@@ -42,9 +42,9 @@
         (axes, data) =
             IOM.model_axes(IOM.DecisionModelStore(), params, DateTime(2024, 1, 1), "m")
         @test Set(keys(axes)) == Set(["execution", "horizon"])
-        @test axes["execution"].interval == "P1D"
-        @test axes["execution"].count == 3
-        @test axes["horizon"].horizon_count == 4
+        @test axes["execution"].value.interval == "P1D"
+        @test axes["execution"].value.count == 3
+        @test axes["horizon"].value.horizon_count == 4
         @test data[("m", "execution")].timestamps ==
               [DateTime(2024, 1, 1), DateTime(2024, 1, 2), DateTime(2024, 1, 3)]
         @test IOM.model_type_name(IOM.DecisionModelStore()) == "decision"
@@ -54,8 +54,8 @@
         (axes, data) =
             IOM.model_axes(IOM.EmulationModelStore(), params, DateTime(2024, 1, 1), "m")
         @test Set(keys(axes)) == Set(["time"])
-        @test axes["time"].length == 3
-        @test axes["time"].resolution == "PT1H"
+        @test axes["time"].value.length == 3
+        @test axes["time"].value.resolution == "PT1H"
         @test data[("m", "time")].timestamps ==
               [DateTime(2024, 1, 1, h) for h in 0:2]
         @test IOM.model_type_name(IOM.EmulationModelStore()) == "emulation"

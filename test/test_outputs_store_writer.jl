@@ -49,7 +49,12 @@ function _test_emulation_store()
     return store
 end
 
-const _TEST_PRODUCER = IS.ProducerInfo("Test", "0.0.0", string(VERSION))
+const _TEST_PRODUCER =
+    PowerOutputSchemas.ProducerInfo(;
+        package = "Test",
+        version = "0.0.0",
+        julia = string(VERSION),
+    )
 
 function _test_write(dir, store, num_executions; horizon::Int = 3, interval::Int = 1)
     mkpath(joinpath(dir, IOM.make_system_dirname(Base.UUID(UInt128(1)))))
@@ -117,8 +122,8 @@ end
         ]
         @test columns.execution == [1, 2]
         @test columns.objective_value == [1.5, 2.5]
-        @test isempty(table.columns[2].units)
-        @test isempty(table.columns[2].quantity_kind)
+        @test !haskey(PowerOutputSchemas.encode(table.columns[2]), "units")
+        @test !haskey(PowerOutputSchemas.encode(table.columns[2]), "quantity_kind")
         @test table.columns[6].units == "s"
         @test isnan(columns.objective_bound[1])
         @test columns.relative_gap[1] == 0.1
@@ -137,7 +142,7 @@ end
         @test vals2[:, 1] == [11.0, 12.0, 13.0]
         @test axes2 == ["horizon", "execution"]
         @test IS.read_table(a, "m", "optimizer_stats").execution == [1, 2]
-        @test IS.read_outputs_metadata(joinpath(dir, "outputs.json")).status ==
+        @test string(IS.read_outputs_metadata(joinpath(dir, "outputs.json")).status) ==
               "SUCCESSFULLY_FINALIZED"
     end
 
@@ -363,13 +368,16 @@ end
         @test size(vals) == (3, 3, 2, 2)
         @test vals[:, :, :, 2] ==
               permutedims(last(collect(values(executions))).data, (3, 2, 1))
-        @test IS.get_axis(a, "m", snake) == IS.LabelAxis("label", snake, ["t1", "t2", "t3"])
-        @test IS.get_axis(a, "m", "testvariabletype2__mockcomponenttype") ==
-              IS.LabelAxis(
-            "label",
-            "testvariabletype2__mockcomponenttype",
-            ["u1", "u2", "u3"],
+        for (name, labels) in (
+            (snake, ["t1", "t2", "t3"]),
+            ("testvariabletype2__mockcomponenttype", ["u1", "u2", "u3"]),
         )
+            expected = PowerOutputSchemas.LabelAxis(;
+                kind = "label", name = name, labels = labels,
+            )
+            @test PowerOutputSchemas.encode(IS.get_axis(a, "m", name)) ==
+                  PowerOutputSchemas.encode(expected)
+        end
         @test size(IS.read_dataset(a, "m", "TestVariableType2", "MockComponentType")[1]) ==
               (3, 3, 2, 2)
     end
@@ -422,7 +430,8 @@ end
                 _TEST_PRODUCER, DateTime(2024, 1, 1), table,
             )
             uuid = Base.UUID(UInt128(1))
-            @test metadata.systems == Dict(string(uuid) => IOM.make_system_dirname(uuid))
+            @test metadata.systems.additional_properties ==
+                  Dict(string(uuid) => IOM.make_system_dirname(uuid))
         end
     end
 
@@ -432,7 +441,7 @@ end
         _test_write(dir, store, 2)
         _test_write(dir, store, 2)
         a = IS.open_outputs(dir)
-        @test IS.get_metadata(a).status == "SUCCESSFULLY_FINALIZED"
+        @test string(IS.get_metadata(a).status) == "SUCCESSFULLY_FINALIZED"
     end
 
     @testset "missing trait fails" begin

@@ -4,27 +4,39 @@ _nan(x::Real) = Float64(x)
 _float_column(stats, field::Symbol) = Float64[_nan(getfield(s, field)) for s in stats]
 _int_column(stats, field::Symbol) = Int64[getfield(s, field) for s in stats]
 
-_seconds_column(name::String) =
-    IS.OutputColumn(name, "f64", "Duration", "NATURAL_UNITS", "", "s")
+_column(name::String, dtype::String) =
+    PowerOutputSchemas.Column(; name = name, dtype = PowerOutputSchemas.ColumnDtype(dtype))
+
+function _natural_column(name::String, quantity_kind::String, units::String)
+    return PowerOutputSchemas.Column(;
+        name = name,
+        dtype = PowerOutputSchemas.ColumnDtype("f64"),
+        quantity_kind = PowerOutputSchemas.QuantityKind(quantity_kind),
+        unit_system = PowerOutputSchemas.UnitSystem("NATURAL_UNITS"),
+        units = units,
+    )
+end
+
+_seconds_column(name::String) = _natural_column(name, "Duration", "s")
 
 # The objective has no unit: IOM does not know the currency of the model.
 "Return the `optimizer_stats` table description and its columns for `stats`."
 function optimizer_stats_table(stats::AbstractDict, model::String)
     rows = collect(values(stats))
-    table = IS.OutputTable(
-        "optimizer_stats",
-        "/$model/tables/optimizer_stats",
-        length(rows),
-        [
-            IS.OutputColumn("execution", "i64"),
-            IS.OutputColumn("objective_value", "f64"),
-            IS.OutputColumn("termination_status", "i64"),
-            IS.OutputColumn("primal_status", "i64"),
-            IS.OutputColumn("dual_status", "i64"),
+    table = PowerOutputSchemas.Table(;
+        name = "optimizer_stats",
+        group = "/$model/tables/optimizer_stats",
+        length = length(rows),
+        columns = [
+            _column("execution", "i64"),
+            _column("objective_value", "f64"),
+            _column("termination_status", "i64"),
+            _column("primal_status", "i64"),
+            _column("dual_status", "i64"),
             _seconds_column("solve_time"),
             _seconds_column("solver_solve_time"),
-            IS.OutputColumn("objective_bound", "f64"),
-            IS.OutputColumn("relative_gap", "f64", "Fraction", "NATURAL_UNITS", "", "1"),
+            _column("objective_bound", "f64"),
+            _natural_column("relative_gap", "Fraction", "1"),
         ],
     )
     columns = (
@@ -58,8 +70,8 @@ function execution_slice(array::DenseAxisArray)
     return permutedims(array.data, reverse(1:ndims(array)))
 end
 
-function _dataset_values(d::IS.OutputDataset, values::AbstractArray)
-    if isempty(d.component_type)
+function _dataset_values(d::PowerOutputSchemas.Dataset, values::AbstractArray)
+    if isempty(IS.dataset_key(d)[2])
         return vec(values)
     end
     return values
@@ -112,7 +124,7 @@ _data_axes(::DecisionModelStore, components::Vector{String}, trailing::Vector{St
 _data_axes(::EmulationModelStore, components::Vector{String}, ::Vector{String}) =
     vcat(["time"], components)
 
-function _decision_values(d::IS.OutputDataset, array::DenseAxisArray)
+function _decision_values(d::PowerOutputSchemas.Dataset, array::DenseAxisArray)
     slice = execution_slice(array)
     if "horizon" in d.axes
         return _dataset_values(d, slice)
@@ -163,36 +175,44 @@ function outputs_metadata(
     params::ModelStoreParams,
     sys,
     settings::Settings,
-    producer::IS.ProducerInfo,
+    producer::PowerOutputSchemas.ProducerInfo,
     initial_time::Dates.DateTime,
-    table::IS.OutputTable,
+    table::PowerOutputSchemas.Table,
 )
     reg = AxisRegistry(model_axes(store, params, initial_time, model)..., model)
-    datasets = Tuple{OptimizationContainerKey, IS.OutputDataset}[]
+    datasets = Tuple{OptimizationContainerKey, PowerOutputSchemas.Dataset}[]
     for key in _store_keys(store)
         push!(datasets, (key, _key_dataset!(reg, store, sys, key, params)))
     end
     uuid = get_system_uuid(params)
-    entry = IS.ModelEntry(
-        model,
-        model_type_name(store),
-        string(uuid),
-        get_base_power(params),
-        settings_dict(settings),
-        IS.AbstractAxis[reg.axes[k] for k in sort!(collect(keys(reg.axes)))],
-        IS.OutputDataset[d for (_, d) in datasets],
-        supports_realized_values_post_calculation(store, params),
-        [table],
+    entry = PowerOutputSchemas.Model(;
+        name = model,
+        model_type = PowerOutputSchemas.ModelType(model_type_name(store)),
+        system_uuid = string(uuid),
+        base_power = get_base_power(params),
+        supports_realized_values_post_calculation = supports_realized_values_post_calculation(
+            store,
+            params,
+        ),
+        settings = PowerOutputSchemas.ModelSettings(;
+            additional_properties = settings_dict(settings),
+        ),
+        axes = PowerOutputSchemas.Axis[reg.axes[k] for k in sort!(collect(keys(reg.axes)))],
+        datasets = PowerOutputSchemas.Dataset[d for (_, d) in datasets],
+        tables = [table],
     )
-    metadata = IS.OutputsMetadata(
-        IS.OUTPUTS_SCHEMA_VERSION,
-        "single",
-        producer,
-        Dates.format(Dates.now(Dates.UTC), "yyyy-mm-ddTHH:MM:SS") * "Z",
-        "RUNNING",
-        Dict(string(uuid) => make_system_dirname(uuid)),
-        [entry],
-        IS.Simulation.NoSimulation(),
+    metadata = PowerOutputSchemas.OutputsDocument(;
+        schema_version = IS.OUTPUTS_SCHEMA_VERSION,
+        kind = PowerOutputSchemas.Kind("single"),
+        producer = producer,
+        created_at = TimeZones.now(TimeZones.tz"UTC"),
+        status = PowerOutputSchemas.RunStatus("RUNNING"),
+        systems = PowerOutputSchemas.OutputsDocumentSystems(;
+            additional_properties = Dict{String, String}(
+                string(uuid) => make_system_dirname(uuid),
+            ),
+        ),
+        models = [entry],
     )
     IS.validate_metadata(metadata)
     return (metadata, reg.data, datasets)
@@ -257,7 +277,7 @@ function write_store_outputs!(
     params::ModelStoreParams,
     sys,
     settings::Settings,
-    producer::IS.ProducerInfo,
+    producer::PowerOutputSchemas.ProducerInfo,
     initial_time::Dates.DateTime,
 )
     rm(joinpath(dir, "outputs.json"); force = true)
@@ -283,7 +303,10 @@ Write the outputs artifact of `model` to its output directory. Return the direct
 The caller must write the system bundle at `joinpath(dir, make_system_dirname(uuid))` first.
 `system_to_file` does not apply: the artifact always declares the bundle.
 """
-function write_model_outputs!(model::AbstractOptimizationModel, producer::IS.ProducerInfo)
+function write_model_outputs!(
+    model::AbstractOptimizationModel,
+    producer::PowerOutputSchemas.ProducerInfo,
+)
     return write_store_outputs!(
         get_output_dir(model),
         string(get_name(model)),

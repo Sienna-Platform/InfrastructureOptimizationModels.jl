@@ -17,6 +17,7 @@ using Dates
 using JuMP
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
 using HiGHS
+import PowerOutputSchemas
 
 # Import InfrastructureSystems for logging utilities
 using InfrastructureSystems
