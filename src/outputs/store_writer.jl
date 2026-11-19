@@ -213,7 +213,7 @@ function write_executions!(
 )
     for (key, d) in datasets
         for (i, array) in enumerate(store_arrays(store, key))
-            IS.append!(
+            IS.write_execution!(
                 w,
                 model,
                 IS.dataset_key(d),
