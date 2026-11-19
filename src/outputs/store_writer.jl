@@ -192,7 +192,7 @@ function outputs_metadata(
         "RUNNING",
         Dict(string(uuid) => make_system_dirname(uuid)),
         [entry],
-        IS.NoSimulation(),
+        IS.Simulation.NoSimulation(),
     )
     IS.validate_metadata(metadata)
     return (metadata, reg.data, datasets)
