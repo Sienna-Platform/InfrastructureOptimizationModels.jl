@@ -112,7 +112,7 @@ end
             reg, sys, key, [["a1", "a2"], ["b1"], ["t1", "t2", "t3"]], "Name__X",
         )
         @test keys == ["MockComponentType", "MockComponentType2", "name__x"]
-        @test reg.axes["name__x"] == IS.LabelAxis("label", ["t1", "t2", "t3"])
+        @test reg.axes["name__x"] == IS.LabelAxis("label", "name__x", ["t1", "t2", "t3"])
         keys = IOM.dataset_axes!(
             reg, sys, key, [["a1", "a2"], ["b1"], ["t1"], ["u1", "u2"]], "Other",
         )

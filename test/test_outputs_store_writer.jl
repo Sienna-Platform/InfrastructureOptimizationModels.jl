@@ -148,7 +148,8 @@ end
         end
         delete!(store.optimizer_stats, DateTime(2024, 1, 2))
         dir = _test_write(mktempdir(), store, 1)
-        entry = IS.read_outputs_metadata(joinpath(dir, "outputs.json")).models["m"]
+        entry = IS.read_outputs_metadata(joinpath(dir, "outputs.json")).models[1]
+        @test entry.name == "m"
         @test entry.supports_realized_values_post_calculation == false
     end
 
@@ -362,9 +363,13 @@ end
         @test size(vals) == (3, 3, 2, 2)
         @test vals[:, :, :, 2] ==
               permutedims(last(collect(values(executions))).data, (3, 2, 1))
-        @test IS.get_axis(a, "m", snake) == IS.LabelAxis("label", ["t1", "t2", "t3"])
+        @test IS.get_axis(a, "m", snake) == IS.LabelAxis("label", snake, ["t1", "t2", "t3"])
         @test IS.get_axis(a, "m", "testvariabletype2__mockcomponenttype") ==
-              IS.LabelAxis("label", ["u1", "u2", "u3"])
+              IS.LabelAxis(
+            "label",
+            "testvariabletype2__mockcomponenttype",
+            ["u1", "u2", "u3"],
+        )
         @test size(IS.read_dataset(a, "m", "TestVariableType2", "MockComponentType")[1]) ==
               (3, 3, 2, 2)
     end
@@ -399,7 +404,7 @@ end
         @test_logs (:info, r"FuelConsumptionExpression") _test_write(dir, store, 2)
         @test haskey(store.expressions, key)
         metadata = IS.get_metadata(IS.open_outputs(dir))
-        names = [d.entry_type for d in metadata.models["m"].datasets]
+        names = [d.entry_type for d in only(metadata.models).datasets]
         @test !any(occursin("Fuel", n) for n in names)
         @test "TestVariableType" in names
     end

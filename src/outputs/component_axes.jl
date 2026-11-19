@@ -93,7 +93,7 @@ function register_label_axis!(
     key::String,
     dataset_name::String,
 )
-    axis = IS.LabelAxis("label", labels)
+    axis = IS.LabelAxis("label", key, labels)
     if !haskey(reg.axes, key)
         reg.axes[key] = axis
         return key

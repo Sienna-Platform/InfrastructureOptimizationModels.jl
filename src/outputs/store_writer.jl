@@ -174,11 +174,12 @@ function outputs_metadata(
     end
     uuid = get_system_uuid(params)
     entry = IS.ModelEntry(
+        model,
         model_type_name(store),
         string(uuid),
         get_base_power(params),
         settings_dict(settings),
-        reg.axes,
+        IS.AbstractAxis[reg.axes[k] for k in sort!(collect(keys(reg.axes)))],
         IS.OutputDataset[d for (_, d) in datasets],
         supports_realized_values_post_calculation(store, params),
         [table],
@@ -190,7 +191,7 @@ function outputs_metadata(
         Dates.format(Dates.now(Dates.UTC), "yyyy-mm-ddTHH:MM:SS") * "Z",
         "RUNNING",
         Dict(string(uuid) => make_system_dirname(uuid)),
-        Dict(model => entry),
+        [entry],
         IS.NoSimulation(),
     )
     IS.validate_metadata(metadata)
