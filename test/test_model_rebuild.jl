@@ -30,7 +30,7 @@ function _rebuild_container(; recurrent = true, rebuild_model = false, time_step
     )
     container = IOM.OptimizationContainer(mock_sys, settings, nothing, MockDeterministic)
     IOM.set_time_steps!(container, time_steps)
-    container.built_for_recurrent_solves = recurrent
+    set_built_for_recurrent_solves!(container, recurrent)
     return container
 end
 
@@ -150,7 +150,7 @@ struct RebuildTestProblem <: IOM.AbstractOptimizationProblem end
 
 mutable struct RebuildTestModel <: IOM.AbstractOptimizationModel
     name::Symbol
-    template::RebuildTestTemplate
+    template::IOM.AbstractProblemTemplate
     sys::MockSystem
     internal::IOM.ModelInternal
     simulation_info::Union{Nothing, IOM.SimulationInfo}
@@ -205,6 +205,50 @@ end
     IOM.rebuild_model!(model; initial_time = IOM.get_initial_time(model))
     @test !IOM.is_released(model)
     @test JuMP.num_variables(IOM.get_jump_model(model)) == 1
+end
+
+struct FailingRebuildTemplate <: IOM.AbstractProblemTemplate end
+
+function IOM.build_problem!(
+    container::IOM.OptimizationContainer,
+    ::FailingRebuildTemplate,
+    ::MockSystem,
+)
+    IOM.add_variable_container!(
+        container, TestVariableType, MockThermalGen, ["A"],
+        IOM.get_time_steps(container))
+    error("build failed")
+end
+
+function _failing_rebuild_model(container)
+    return RebuildTestModel(
+        :rebuild_test, FailingRebuildTemplate(), MockSystem(100.0),
+        IOM.ModelInternal(container), nothing, IOM.DecisionModelStore(),
+        Dict{String, Any}())
+end
+
+@testset "rebuild_model! rejects a model not built for rebuilds" begin
+    container = _rebuild_container(; rebuild_model = false)
+    model = RebuildTestModel(
+        :rebuild_test, RebuildTestTemplate(), MockSystem(100.0),
+        IOM.ModelInternal(container), nothing, IOM.DecisionModelStore(),
+        Dict{String, Any}())
+    IOM.build_problem!(container, RebuildTestTemplate(), MockSystem(100.0))
+    @test_throws IS.ConflictingInputsError IOM.rebuild_model!(
+        model; initial_time = IOM.get_initial_time(model))
+    @test JuMP.num_variables(IOM.get_jump_model(container)) == 1
+    @test !isempty(IOM.get_variables(container))
+end
+
+@testset "rebuild_model! marks the model FAILED when the build throws" begin
+    container = _rebuild_container(; rebuild_model = true)
+    model = _failing_rebuild_model(container)
+    IOM.set_status!(model, IOM.ModelBuildStatus.BUILT)
+    original = IOM.get_initial_time(model)
+    @test_throws ErrorException IOM.rebuild_model!(
+        model; initial_time = original + Dates.Hour(1))
+    @test IOM.get_status(model) == IOM.ModelBuildStatus.FAILED
+    @test IOM.get_initial_time(model) == original
 end
 
 struct RefreshTestModel <: IOM.AbstractOptimizationModel end

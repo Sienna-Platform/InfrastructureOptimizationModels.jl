@@ -459,14 +459,32 @@ Rebuild `model` for the step that starts at `initial_time`: empty its container 
 then build the problem again with [`build_problem!`](@ref) while the model's initial time is
 `initial_time`, so the build reads its time series from that step. The model's initial time
 is restored afterwards. A released model holds its JuMP model again after the rebuild.
+
+The model must have been built with `rebuild_model = true`, so that its retained parameters
+do not refer to the JuMP model that the reset empties; otherwise this throws an
+`IS.ConflictingInputsError` before it changes the model. If the build throws, the model's
+status is set to `ModelBuildStatus.FAILED` and the error is rethrown.
 """
 function rebuild_model!(model::AbstractOptimizationModel; initial_time::Dates.DateTime)
     container = get_optimization_container(model)
+    if !get_rebuild_model(get_settings(container))
+        throw(
+            IS.ConflictingInputsError(
+                "Model $(get_name(model)) cannot be rebuilt: it was built with \
+                 rebuild_model = false, so its retained parameters refer to the JuMP \
+                 model that a rebuild empties. Set rebuild_model = true in the model \
+                 settings before the build.",
+            ),
+        )
+    end
     reset_optimization_model!(container)
     original_time = get_initial_time(model)
     set_initial_time!(model, initial_time)
     try
         build_problem!(container, get_template(model), get_system(model))
+    catch
+        set_status!(model, ModelBuildStatus.FAILED)
+        rethrow()
     finally
         set_initial_time!(model, original_time)
     end
