@@ -693,8 +693,18 @@ function _bound_range_with_parameter!(
     return
 end
 
-# Backwards-compatible wrappers - re-used in SemiContinuousFeedforward
-# TODO just call the unified function directly from POM? decide later.
+"""
+    lower_bound_range_with_parameter!(container, constraint_container, lhs_array, P, devices, model)
+    upper_bound_range_with_parameter!(container, constraint_container, lhs_array, P, devices, model)
+
+Add the constraints `lhs_array[name, t] >= rhs` (lower) or `<= rhs` (upper) with
+`rhs = multiplier * status * parameter`. The right-hand side always scales with the component
+status of `get_component_statuses(container, V)`, so `lhs_array` must be a range expression
+or a variable that is `fixed_when_inactive`. These wrappers take no variable type, so they do
+not apply the exception for a variable that stays free while its component is inactive, such
+as stored energy; bound such a variable through the typed entry point, which selects the
+statuses with `_bound_statuses`.
+"""
 function lower_bound_range_with_parameter!(
     container::OptimizationContainer,
     constraint_container::JuMPConstraintArray,

@@ -39,7 +39,10 @@ ComponentStatusArray(values::AbstractArray{Float64, 2}) =
 The statuses held by the parameter container `key`, as a [`ComponentStatusArray`](@ref) that
 reads its values in place. It is built once per container and reused by every later call, so
 a [`get_component_statuses`](@ref) method can return it at no cost per lookup; the cache is
-cleared by [`reset_optimization_model!`](@ref). The parameter array must hold `Float64`.
+cleared by [`reset_optimization_model!`](@ref). The parameter array must hold `Float64` and
+be indexed by component name (a container allocated with `NoAttributes`); a time series
+container indexed by UUID through `TimeSeriesAttributes` is not mapped to names, so every
+lookup would report the default `1.0`.
 """
 function get_component_status_array(container::OptimizationContainer, key::ParameterKey)
     cache = container.component_status_cache
@@ -130,7 +133,9 @@ variable type). The time step is always the last index.
 Defaults: `1` for a `DenseAxisArray`, whose entries are indexed `(name, ..., t)`; the
 second-to-last position for an `N`-dimensional `SparseAxisArray`, whose entries are indexed
 `(..., name, t)`. A type whose sparse entries hold the name elsewhere, such as
-`(owner, name, scenario, t)`, adds a method.
+`(owner, name, scenario, t)` or the piecewise linear layout `(name, pwl_index, t)`, adds a
+method. The status-aware readers assume the dense `(name, t)` layout; no piecewise linear
+variable is `fixed_when_inactive`.
 """
 component_axis(::Type{<:OptimizationKeyType}, ::DenseAxisArray) = 1
 component_axis(::Type{<:OptimizationKeyType}, ::SparseAxisArray{T, N}) where {T, N} = N - 1
@@ -301,9 +306,10 @@ it by the status; every path that reports or evaluates the parameter's value
 through [`calculate_parameter_values`](@ref)`(container, key)`. Default `false`.
 
 The status scales a copy of the multiplier, so the parameter container is never modified;
-dense and sparse containers are supported, with the component read at
-[`component_axis`](@ref). `read_parameters` reports an
-`ObjectiveFunctionParameter` without its multiplier, so without the status either.
+the component is read at [`component_axis`](@ref). [`calculate_parameter_values`](@ref)
+accepts dense and sparse containers, but `read_parameters` reads dense containers only.
+`read_parameters` reports an `ObjectiveFunctionParameter` without its multiplier, so without
+the status either.
 """
 scaled_by_component_status(::Type{<:ParameterType}) = false
 
