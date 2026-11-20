@@ -32,7 +32,7 @@ function _lhs_fixture(
 )
     time_steps = 1:length(values)
     container = _make_lhs_container(time_steps; rebuild_model = rebuild_model)
-    container.built_for_recurrent_solves = recurrent
+    set_built_for_recurrent_solves!(container, recurrent)
     param_container = IOM.add_time_series_parameter_container!(
         container,
         MockLHSParameter,
@@ -71,7 +71,7 @@ end
 
     @testset "RHS time series containers still follow get_param_eltype" begin
         container = _make_lhs_container(1:2)
-        container.built_for_recurrent_solves = true
+        set_built_for_recurrent_solves!(container, true)
         param_container = IOM.add_time_series_parameter_container!(
             container,
             MockRHSParameter,
@@ -112,7 +112,7 @@ end
 
     @testset "Recurrent eltype follows the rebuild setting" begin
         container = _make_lhs_container(1:2)
-        container.built_for_recurrent_solves = true
+        set_built_for_recurrent_solves!(container, true)
         @test IOM.get_param_eltype(container) == JuMP.VariableRef
         IOM.set_rebuild_model!(IOM.get_settings(container), true)
         @test IOM.get_param_eltype(container) == Float64

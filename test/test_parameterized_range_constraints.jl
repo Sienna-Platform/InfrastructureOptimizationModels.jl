@@ -311,7 +311,7 @@ end
 
     @testset "recurrent parameters keep one coefficient per row" begin
         container = _make_parameterized_range_container(devices, time_steps)
-        container.built_for_recurrent_solves = true
+        set_built_for_recurrent_solves!(container, true)
         param_container = IOM.add_variable_value_parameter_container!(
             container, TestValueParameter, MockThermalGen,
             IOM.VariableKey(TestVariableType, MockThermalGen), names, time_steps)
