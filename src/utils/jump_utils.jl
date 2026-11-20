@@ -116,26 +116,41 @@ function to_matrix(array::DenseAxisArray)
     error("Converting type = $(typeof(array)) to a matrix is not supported.")
 end
 
+# The steps from 1 to the latest step with an entry. A step after the latest entry has no
+# trace in the array; callers that know the model's time steps pass them instead.
+_sparse_time_steps(array::SparseAxisArray{T, N}) where {T, N} =
+    1:maximum(k -> k[N], keys(array.data); init = 0)
+
+# One row per step of `time_steps` and one column per entry of `columns`; a missing
+# (column, step) entry is NaN, so each value stays on the row of its own step.
 function _to_matrix(
     array::SparseAxisArray{T, N, K},
     columns,
+    time_steps::UnitRange{Int},
 ) where {T, N, K <: NTuple{N, Any}}
-    # Map non-contiguous time values to dense rows; fill missing (col, time) with NaN.
-    sorted_times = sort!(collect(Set{Int}(k[N] for k in keys(array.data))))
-    row_index = Dict(t => i for (i, t) in enumerate(sorted_times))
-    data = Matrix{Float64}(undef, length(sorted_times), length(columns))
-    for (ix, col) in enumerate(columns), t in sorted_times
-        data[row_index[t], ix] = get(array.data, (col..., t), NaN)
+    for k in keys(array.data)
+        k[N] in time_steps || throw(
+            ArgumentError("Entry $k has a time step outside the time steps $time_steps."),
+        )
+    end
+    data = Matrix{Float64}(undef, length(time_steps), length(columns))
+    for (ix, col) in enumerate(columns), (row, t) in enumerate(time_steps)
+        data[row, ix] = get(array.data, (col..., t), NaN)
     end
     return data
 end
 
-function to_matrix(array::SparseAxisArray{T, N, K}) where {T, N, K <: NTuple{N, Any}}
+to_matrix(array::SparseAxisArray) = to_matrix(array, _sparse_time_steps(array))
+
+function to_matrix(
+    array::SparseAxisArray{T, N, K},
+    time_steps::UnitRange{Int},
+) where {T, N, K <: NTuple{N, Any}}
     # Don't use get_column_names_from_axis_array to avoid additional string conversion
     # TODO: I don't understand why we have two mechanisms of creating columns.
     # Why does get_column_names_from_axis_array rely on encode_tuple_to_column?
     columns = sort!(unique!([k[1:(N - 1)] for k in keys(array.data)]))
-    return _to_matrix(array, columns)
+    return _to_matrix(array, columns, time_steps)
 end
 
 """
@@ -270,15 +285,23 @@ function to_dataframe(
     return DataFrame(Symbol(cols[1]) => array.data)
 end
 
+to_dataframe(array::SparseAxisArray, key::OptimizationContainerKey) =
+    to_dataframe(array, key, _sparse_time_steps(array))
+
+# A dense array holds every step on its own axis.
+to_dataframe(array, key::OptimizationContainerKey, ::UnitRange{Int}) =
+    to_dataframe(array, key)
+
 function to_dataframe(
     array::SparseAxisArray{T, N, K},
     key::OptimizationContainerKey,
+    time_steps::UnitRange{Int},
 ) where {T, N, K <: NTuple{N, Any}}
     # Order raw tuples once for both matrix columns and labels; sorting encoded strings
     # separately diverges for mixed-type keys (`("a",2)<("a",10)` but `"a__10"<"a__2"`).
     tuple_columns = sort!(unique!([k[1:(N - 1)] for k in keys(array.data)]))
     return DataFrame(
-        _to_matrix(array, tuple_columns),
+        _to_matrix(array, tuple_columns, time_steps),
         encode_tuple_to_column.(tuple_columns),
     )
 end

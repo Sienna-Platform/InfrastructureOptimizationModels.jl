@@ -168,11 +168,12 @@ function write_output!(
     update_timestamp::Dates.DateTime,
     array::SparseAxisArray{T, N, K},
 ) where {T, N, K <: NTuple{N, Any}}
-    tuple_columns = sort!(unique!([k[1:(N - 1)] for k in keys(array.data)]))
-    matrix = _to_matrix(array, tuple_columns)
-    columns = encode_tuple_to_column.(tuple_columns)
     container = getfield(store, get_store_container_type(key))
-    container[key][index] =
-        DenseAxisArray(permutedims(matrix), columns, 1:size(matrix, 1))
+    # The rows follow the time steps `initialize_storage!` allocated for this result.
+    time_steps = last(axes(container[key][index]))
+    tuple_columns = sort!(unique!([k[1:(N - 1)] for k in keys(array.data)]))
+    matrix = _to_matrix(array, tuple_columns, time_steps)
+    columns = encode_tuple_to_column.(tuple_columns)
+    container[key][index] = DenseAxisArray(permutedims(matrix), columns, time_steps)
     return
 end

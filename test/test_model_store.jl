@@ -97,6 +97,33 @@ end
         @test result.data == array.data
     end
 
+    @testset "DecisionModelStore keeps every time step of a sparse result" begin
+        store = IOM.DecisionModelStore()
+        key = IOM.ConstraintKey(TestConstraintType, MockComponentType)
+        index = Dates.DateTime(2024, 1, 1)
+        # Allocated as `initialize_storage!` does: one row per step of the horizon.
+        store.duals[key] = valtype(store.duals)()
+        store.duals[key][index] = fill!(
+            DenseAxisArray{Float64}(undef, ["c1__a", "c1__b"], 1:4),
+            NaN,
+        )
+        # No entry at steps 2 and 4.
+        sparse = SparseAxisArray(
+            Dict(
+                ("c1", "a", 1) => 1.0,
+                ("c1", "b", 1) => 2.0,
+                ("c1", "a", 3) => 3.0,
+                ("c1", "b", 3) => 4.0,
+            ),
+        )
+        IOM.write_output!(store, :test, key, index, index, sparse)
+
+        result = IOM.read_outputs(store, key; index = index)
+        @test axes(result) == (["c1__a", "c1__b"], 1:4)
+        @test isequal(result["c1__a", :].data, [1.0, NaN, 3.0, NaN])
+        @test isequal(result["c1__b", :].data, [2.0, NaN, 4.0, NaN])
+    end
+
     @testset "optimizer stats are read and written the same way for every store" begin
         stats = IOM.OptimizerStats()
         for (store, index) in (

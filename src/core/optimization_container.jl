@@ -1098,7 +1098,10 @@ get_constraint(
 } = _get_entry(container, T, U, meta)
 
 function read_duals(container::OptimizationContainer)
-    return Dict(k => to_dataframe(jump_value.(v), k) for (k, v) in get_duals(container))
+    time_steps = get_time_steps(container)
+    return Dict(
+        k => to_dataframe(jump_value.(v), k, time_steps) for (k, v) in get_duals(container)
+    )
 end
 
 ##################################### Parameter Container ##################################
@@ -1353,8 +1356,9 @@ get_expression(
 } = _get_entry(container, T, U, meta)
 
 function read_expressions(container::OptimizationContainer)
+    time_steps = get_time_steps(container)
     return Dict(
-        k => to_dataframe(lookup_value(container, k), k) for
+        k => to_dataframe(lookup_value(container, k), k, time_steps) for
         k in keys(get_expressions(container)) if
         !(get_entry_type(k) <: SystemBalanceExpressions)
     )
