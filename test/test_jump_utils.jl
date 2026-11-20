@@ -129,8 +129,8 @@ struct MockVariableType <: ISOPT.VariableType end
     end
 
     @testset "to_dataframe - SparseAxisArray non-contiguous time keys" begin
-        # Regression: `_to_matrix` indexed rows by the raw time value, so time keys that
-        # are not `1:n` (here {2, 4}) overran the matrix and threw.
+        # Time keys {2, 4}: each value stays on the row of its own step, and the steps
+        # without entries read NaN.
         key = IOM.ConstraintKey(TestConstraintType, IS.TestComponent)
         contents = Dict(
             ("g", 2) => 1.0,
@@ -138,8 +138,30 @@ struct MockVariableType <: ISOPT.VariableType end
         )
         sparse = SparseAxisArray(contents)
         df = IOM.to_dataframe(sparse, key)
-        @test size(df) == (2, 1)
-        @test df[!, "g"] == [1.0, 2.0]
+        @test size(df) == (4, 1)
+        @test isequal(df[!, "g"], [NaN, 1.0, NaN, 2.0])
+    end
+
+    @testset "to_dataframe - SparseAxisArray keeps a row for each step without entries" begin
+        key = IOM.ConstraintKey(TestConstraintType, IS.TestComponent)
+        contents = Dict(
+            ("a", 1) => 1.0,
+            ("b", 1) => 2.0,
+            ("a", 3) => 3.0,
+            ("b", 3) => 4.0,
+        )
+        sparse = SparseAxisArray(contents)
+        df = IOM.to_dataframe(sparse, key, 1:4)
+        @test size(df) == (4, 2)
+        @test isequal(df[!, "a"], [1.0, NaN, 3.0, NaN])
+        @test isequal(df[!, "b"], [2.0, NaN, 4.0, NaN])
+        @test_throws ArgumentError IOM.to_dataframe(sparse, key, 1:2)
+    end
+
+    @testset "to_dataframe - DenseAxisArray ignores the time steps" begin
+        key = IOM.ConstraintKey(TestConstraintType, IS.TestComponent)
+        dense = DenseAxisArray([1.0 2.0; 3.0 4.0], ["a", "b"], 1:2)
+        @test IOM.to_dataframe(dense, key, 1:2) == IOM.to_dataframe(dense, key)
     end
 
     @testset "get_column_names_from_axis_array - 1D String axis" begin

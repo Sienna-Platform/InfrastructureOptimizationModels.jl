@@ -100,7 +100,7 @@ function write_output!(
 ) where {T, N, K <: NTuple{N, Any}}
     tuple_columns = unique!([k[1:(N - 1)] for k in keys(array.data)])
     sort!(tuple_columns; by = encode_tuple_to_column)
-    matrix = _to_matrix(array, tuple_columns)
+    matrix = _to_matrix(array, tuple_columns, _sparse_time_steps(array))
     columns = encode_tuple_to_column.(tuple_columns)
     dense = DenseAxisArray(permutedims(matrix), columns, 1:size(matrix, 1))
     write_output!(store, name, key, index, update_timestamp, dense)

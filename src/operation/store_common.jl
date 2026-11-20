@@ -16,7 +16,7 @@ function _export_container_output!(
     update_timestamp::Dates.DateTime,
     data,
 )
-    df = to_dataframe(data, key)
+    df = to_dataframe(data, key, 1:(export_params.horizon_count))
     time_col =
         range(index; length = export_params.horizon_count, step = export_params.resolution)
     DataFrames.insertcols!(df, 1, :DateTime => time_col)
