@@ -463,7 +463,8 @@ is restored afterwards. A released model holds its JuMP model again after the re
 The model must have been built with `rebuild_model = true`, so that its retained parameters
 do not refer to the JuMP model that the reset empties; otherwise this throws an
 `IS.ConflictingInputsError` before it changes the model. If the build throws, the model's
-status is set to `ModelBuildStatus.FAILED` and the error is rethrown.
+status is set to `ModelBuildStatus.FAILED` and the error is rethrown; a build that succeeds
+sets it to `ModelBuildStatus.BUILT`.
 """
 function rebuild_model!(model::AbstractOptimizationModel; initial_time::Dates.DateTime)
     container = get_optimization_container(model)
@@ -488,6 +489,7 @@ function rebuild_model!(model::AbstractOptimizationModel; initial_time::Dates.Da
     finally
         set_initial_time!(model, original_time)
     end
+    set_status!(model, ModelBuildStatus.BUILT)
     set_released!(model, false)
     return
 end

@@ -251,6 +251,19 @@ end
     @test IOM.get_initial_time(model) == original
 end
 
+@testset "rebuild_model! marks the model BUILT when a rebuild after a failure succeeds" begin
+    container = _rebuild_container(; rebuild_model = true)
+    model = _failing_rebuild_model(container)
+    IOM.set_status!(model, IOM.ModelBuildStatus.BUILT)
+    @test_throws ErrorException IOM.rebuild_model!(
+        model; initial_time = IOM.get_initial_time(model))
+    @test IOM.get_status(model) == IOM.ModelBuildStatus.FAILED
+    model.template = RebuildTestTemplate()
+    IOM.rebuild_model!(model; initial_time = IOM.get_initial_time(model))
+    @test IOM.get_status(model) == IOM.ModelBuildStatus.BUILT
+    @test JuMP.num_variables(IOM.get_jump_model(model)) == 1
+end
+
 struct RefreshTestModel <: IOM.AbstractOptimizationModel end
 
 @testset "update_model_parameters! defaults to a no-op" begin
