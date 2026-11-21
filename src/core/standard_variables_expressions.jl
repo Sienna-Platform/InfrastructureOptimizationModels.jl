@@ -68,6 +68,11 @@ struct ReactivePowerBalance <: SystemBalanceExpressions end
 struct EmergencyUp <: ExpressionType end
 struct EmergencyDown <: ExpressionType end
 struct RawACE <: ExpressionType end
+"""
+Post-contingency flow on a monitored branch for each `(outage, monitored branch, t)`. A zero
+entry means no post-contingency limit applies at that step (the outage or the monitored branch
+is out of service then), not a flow of zero.
+"""
 struct PostContingencyBranchFlow <: PostContingencyExpressions end
 struct PostContingencyActivePowerGeneration <: PostContingencyExpressions end
 struct NetActivePower <: ExpressionType end

@@ -35,6 +35,19 @@ function _get_ramp_constraint_devices(
     return filtered_device
 end
 
+"""
+Select the devices that get ramp constraints under a device model.
+Formulations whose filter depends on the device model extend this method; the default
+drops devices whose ramp limits cannot bind.
+"""
+function _get_ramp_constraint_devices(
+    container::OptimizationContainer,
+    devices,
+    ::DeviceModel,
+)
+    return _get_ramp_constraint_devices(container, devices)
+end
+
 function _get_ramp_slack_vars(
     container::OptimizationContainer,
     model::DeviceModel{V, W},
@@ -88,7 +101,7 @@ function add_linear_ramp_constraints!(
     # common setup for all ramp constraints
     time_steps = get_time_steps(container)
     variable = get_variable(container, U, V)
-    ramp_devices = _get_ramp_constraint_devices(container, devices)
+    ramp_devices = _get_ramp_constraint_devices(container, devices, model)
     minutes_per_period = _get_minutes_per_period(container)
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
@@ -136,15 +149,13 @@ function _add_linear_ramp_constraints_impl!(
     # common setup for all ramp constraints
     time_steps = get_time_steps(container)
     variable = get_variable(container, U, V)
-    ramp_devices = _get_ramp_constraint_devices(container, devices)
+    ramp_devices = _get_ramp_constraint_devices(container, devices, model)
     minutes_per_period = _get_minutes_per_period(container)
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
     jump_model = get_jump_model(container)
     device_name_set = IS.get_name.(ramp_devices)
     cons = add_updown_constraints_containers!(container, T, V, device_name_set, time_steps)
-
-    parameters = built_for_recurrent_solves(container)
 
     for ic in initial_conditions_power
         name = get_component_name(ic)
@@ -153,7 +164,6 @@ function _add_linear_ramp_constraints_impl!(
         ramp_limits = get_ramp_limits(get_component(ic))
         ic_power = get_value(ic)
         @debug "add rate_of_change_constraint" name ic_power
-        @assert (parameters && isa(ic_power, JuMP.VariableRef)) || !parameters
 
         slack = _get_ramp_slack_vars(container, model, name, 1)
         cur = (up = variable[name, 1], down = variable[name, 1])
@@ -212,7 +222,7 @@ function add_linear_ramp_constraints!(
     # common setup for all ramp constraints
     time_steps = get_time_steps(container)
     variable = get_variable(container, U, V)
-    ramp_devices = _get_ramp_constraint_devices(container, devices)
+    ramp_devices = _get_ramp_constraint_devices(container, devices, model)
     minutes_per_period = _get_minutes_per_period(container)
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
@@ -223,8 +233,10 @@ function add_linear_ramp_constraints!(
     # Commitment path from UC as a PARAMETER (fixed 0/1)
     on_param = get_parameter(container, OnStatusParameter, V)
     on_status = on_param.parameter_array  # on_status[name, t] ∈ {0,1} (fixed)
-    # The feedforward parameter path only stores non-must-run units; a name absent from
-    # this axis is must-run and always committed (on_status ≡ 1.0).
+    # The feedforward parameter path only stores the components that are not always
+    # committed; a name absent from this axis is always committed, so its commitment is the
+    # constant 1.0. An outage does not relax its ramp rows: ramp limits still apply while
+    # it is inactive.
     on_status_names = Set(axes(on_status, 1))
 
     ic_power_by_name = Dict(
@@ -265,9 +277,11 @@ function add_linear_ramp_constraints!(
                     slack)
             end
         else
-            # Must-run: commitment is the constant 1.0. At t = 1 this reduces to
+            # Always committed: the commitment is the constant 1.0, whether or not the
+            # component is active. At t = 1 this reduces to
             # power_limits.max * (2 - y_init - 1.0); for t ≥ 2, yprev = ycur = 1.0 makes
-            # big_m = 0 — no start/stop relaxation, only the ramp limits apply.
+            # big_m = 0, so only the ramp limits apply and an outage must be reached within
+            # them.
             big_m_1 = power_limits.max * (2 - y_init - 1.0)
             startstop_1 = (up = big_m_1, down = big_m_1)
             cur_1 = (up = variable[name, 1], down = variable[name, 1])
@@ -335,7 +349,7 @@ function add_semicontinuous_ramp_constraints!(
     # common setup for all ramp constraints
     time_steps = get_time_steps(container)
     variable = get_variable(container, U, V)
-    ramp_devices = _get_ramp_constraint_devices(container, devices)
+    ramp_devices = _get_ramp_constraint_devices(container, devices, model)
     minutes_per_period = _get_minutes_per_period(container)
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
@@ -358,7 +372,7 @@ function add_semicontinuous_ramp_constraints!(
         ic_power = get_value(ic)
         @debug "add rate_of_change_constraint" name ic_power
 
-        must_run = hasmethod(get_must_run, Tuple{V}) && get_must_run(device)
+        must_run = get_must_run(device)
 
         for t in time_steps
             slack = _get_ramp_slack_vars(container, model, name, t)
