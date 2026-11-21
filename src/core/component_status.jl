@@ -69,6 +69,10 @@ the parameterized bounds. Ramp and minimum up/down rows do not read it: those li
 apply while a component is inactive. [`fix_inactive_variables!`](@ref) fixes the variables a component holds while it is
 inactive.
 
+Statuses change only between builds: a recurrent model that reads them must rebuild every
+step (`rebuild_model = true` in its settings), so code that updates a built model in place can
+assume the statuses it was built with.
+
 Downstream packages add a method for their component types, typically returning a
 [`ComponentStatusArray`](@ref) built from a parameter container. A builder fetches the
 statuses once per component type, so the method may allocate. Extend this function, not the

@@ -159,6 +159,15 @@ skip_proportional_cost(d::IS.InfrastructureSystemsComponent, ::Type{<:VariableTy
     skip_proportional_cost(d)
 
 """
+Ramp slacks are priced per unit of slack used, also for always-committed components: a
+penalty booked as a constant would leave the ramp limits unpriced.
+"""
+skip_proportional_cost(
+    ::IS.InfrastructureSystemsComponent,
+    ::Type{<:Union{RateofChangeConstraintSlackUp, RateofChangeConstraintSlackDown}},
+) = false
+
+"""
 Extension point: whether a variable's proportional cost is a per-hour rate, multiplied by
 the step length in hours. Return `false` for variables whose value already grows with the
 step length, so their cost applies once per step.

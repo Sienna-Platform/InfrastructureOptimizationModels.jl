@@ -335,3 +335,48 @@ end
     start = IOM.get_variable(container, IOM.StartVariable, MockThermalGen)
     @test iszero(JuMP.normalized_coefficient(up["gen1", 1], start["gen1", 1]))
 end
+
+function _recurrent_ramp_container(; rebuild_model)
+    time_steps = 1:2
+    mock_sys = MockSystem(100.0)
+    settings = IOM.Settings(
+        mock_sys;
+        horizon = Dates.Hour(length(time_steps)),
+        resolution = Dates.Hour(1),
+        time_series_cache_size = 0,
+        rebuild_model = rebuild_model,
+    )
+    container = IOM.OptimizationContainer(mock_sys, settings, nothing, MockDeterministic)
+    IOM.set_time_steps!(container, time_steps)
+    set_built_for_recurrent_solves!(container, true)
+    return container
+end
+
+@testset "Recurrent ramp rows and the initial condition" begin
+    dev = make_mock_thermal("A")
+    @testset "a rebuilt model takes a numeric initial condition" begin
+        container = _recurrent_ramp_container(; rebuild_model = true)
+        jump_model = IOM.get_jump_model(container)
+        power = IOM.add_variable_container!(
+            container, IOM.ActivePowerVariable, MockThermalGen, ["A"], 1:2)
+        for t in 1:2
+            power["A", t] = JuMP.@variable(jump_model)
+        end
+        ics = IOM.add_initial_condition_container!(
+            container, MockInitialCondition(), MockThermalGen, ["A"])
+        ics[1] = IOM.InitialCondition(MockInitialCondition, dev, 50.0)
+        model = IOM.DeviceModel(MockThermalGen, StatusRampDispatchFormulation)
+        IOM.add_linear_ramp_constraints!(
+            container, TestConstraintType, IOM.ActivePowerVariable, [dev], model,
+            TestPowerModel)
+        up = IOM.get_constraint(container, TestConstraintType, MockThermalGen, "up")
+        @test JuMP.normalized_rhs(up["A", 1]) ≈ 0.1 * 60 + 50.0
+    end
+    @testset "a model updated in place holds only parameter initial conditions" begin
+        container = _recurrent_ramp_container(; rebuild_model = false)
+        ics = IOM.add_initial_condition_container!(
+            container, MockInitialCondition(), MockThermalGen, ["A"])
+        @test_throws MethodError ics[1] =
+            IOM.InitialCondition(MockInitialCondition, dev, 50.0)
+    end
+end

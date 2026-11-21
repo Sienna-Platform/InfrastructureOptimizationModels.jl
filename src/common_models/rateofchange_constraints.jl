@@ -157,8 +157,6 @@ function _add_linear_ramp_constraints_impl!(
     device_name_set = IS.get_name.(ramp_devices)
     cons = add_updown_constraints_containers!(container, T, V, device_name_set, time_steps)
 
-    parameters = built_for_recurrent_solves(container)
-
     for ic in initial_conditions_power
         name = get_component_name(ic)
         # This is to filter out devices that dont need a ramping constraint
@@ -166,7 +164,6 @@ function _add_linear_ramp_constraints_impl!(
         ramp_limits = get_ramp_limits(get_component(ic))
         ic_power = get_value(ic)
         @debug "add rate_of_change_constraint" name ic_power
-        @assert (parameters && isa(ic_power, JuMP.VariableRef)) || !parameters
 
         slack = _get_ramp_slack_vars(container, model, name, 1)
         cur = (up = variable[name, 1], down = variable[name, 1])

@@ -154,6 +154,12 @@ IOM.objective_function_multiplier(
     ::Type{<:Union{_RAMP_SLACKS...}},
     ::Type{TestProportionalFormulation},
 ) = 1.0
+IOM.proportional_cost(
+    op_cost::MockOperationCost,
+    ::Type{<:Union{_RAMP_SLACKS...}},
+    ::MockSkipGen,
+    ::Type{TestProportionalFormulation},
+) = op_cost.proportional_term
 
 @testset "Proportional Cost Objective Functions" begin
     @testset "add_proportional_cost! adds to invariant objective" begin
@@ -514,6 +520,28 @@ IOM.objective_function_multiplier(
             expr = IOM.get_expression(container, IOM.ProductionCostExpression, MockSkipGen)
             for t in time_steps
                 @test JuMP.constant(expr["gen1", t]) ≈ cost_value
+            end
+        end
+    end
+
+    @testset "ramp slacks stay priced on skipped components" begin
+        time_steps = 1:2
+        cost_value = 15.0
+        device = MockSkipGen("gen1", MockOperationCost(cost_value, false))
+        devices = IS.FlattenIteratorWrapper(MockSkipGen, Vector[[device]])
+        for V in _RAMP_SLACKS
+            container = setup_skip_gen_container(time_steps)
+            slack = IOM.add_variable_container!(
+                container, V, MockSkipGen, ["gen1"], time_steps)
+            for t in time_steps
+                slack["gen1", t] = JuMP.@variable(IOM.get_jump_model(container))
+            end
+            IOM.add_proportional_cost!(container, V, devices, TestProportionalFormulation)
+            @test verify_objective_coefficients(
+                container, V, MockSkipGen, "gen1", cost_value)
+            expr = IOM.get_expression(container, IOM.ProductionCostExpression, MockSkipGen)
+            for t in time_steps
+                @test JuMP.constant(expr["gen1", t]) == 0.0
             end
         end
     end
