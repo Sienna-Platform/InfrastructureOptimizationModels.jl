@@ -35,6 +35,19 @@ function _get_ramp_constraint_devices(
     return filtered_device
 end
 
+"""
+Select the devices that get ramp constraints under a device model.
+Formulations whose filter depends on the device model extend this method; the default
+drops devices whose ramp limits cannot bind.
+"""
+function _get_ramp_constraint_devices(
+    container::OptimizationContainer,
+    devices,
+    ::DeviceModel,
+)
+    return _get_ramp_constraint_devices(container, devices)
+end
+
 function _get_ramp_slack_vars(
     container::OptimizationContainer,
     model::DeviceModel{V, W},
@@ -88,7 +101,7 @@ function add_linear_ramp_constraints!(
     # common setup for all ramp constraints
     time_steps = get_time_steps(container)
     variable = get_variable(container, U, V)
-    ramp_devices = _get_ramp_constraint_devices(container, devices)
+    ramp_devices = _get_ramp_constraint_devices(container, devices, model)
     minutes_per_period = _get_minutes_per_period(container)
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
@@ -136,7 +149,7 @@ function _add_linear_ramp_constraints_impl!(
     # common setup for all ramp constraints
     time_steps = get_time_steps(container)
     variable = get_variable(container, U, V)
-    ramp_devices = _get_ramp_constraint_devices(container, devices)
+    ramp_devices = _get_ramp_constraint_devices(container, devices, model)
     minutes_per_period = _get_minutes_per_period(container)
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
@@ -212,7 +225,7 @@ function add_linear_ramp_constraints!(
     # common setup for all ramp constraints
     time_steps = get_time_steps(container)
     variable = get_variable(container, U, V)
-    ramp_devices = _get_ramp_constraint_devices(container, devices)
+    ramp_devices = _get_ramp_constraint_devices(container, devices, model)
     minutes_per_period = _get_minutes_per_period(container)
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)
@@ -339,7 +352,7 @@ function add_semicontinuous_ramp_constraints!(
     # common setup for all ramp constraints
     time_steps = get_time_steps(container)
     variable = get_variable(container, U, V)
-    ramp_devices = _get_ramp_constraint_devices(container, devices)
+    ramp_devices = _get_ramp_constraint_devices(container, devices, model)
     minutes_per_period = _get_minutes_per_period(container)
     IC = _get_initial_condition_type(T, V, W)
     initial_conditions_power = get_initial_condition(container, IC, V)

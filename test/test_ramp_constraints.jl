@@ -154,6 +154,12 @@ struct RampStepGen <: AbstractRampGen
 end
 struct RampPerStepFormulation <: IOM.AbstractDeviceFormulation end
 struct RampDefaultFormulation <: IOM.AbstractDeviceFormulation end
+struct RampKeepAllFormulation <: IOM.AbstractDeviceFormulation end
+IOM._get_ramp_constraint_devices(
+    ::IOM.OptimizationContainer,
+    devices,
+    ::IOM.DeviceModel{RampMockGen, RampKeepAllFormulation},
+) = collect(devices)
 
 IS.get_name(g::AbstractRampGen) = g.name
 IOM.get_active_power_limits(g::AbstractRampGen) = g.limits
@@ -249,6 +255,18 @@ end
         # Smallest per-step minimum 0.0: spread 2.0/60 exceeds the ramp rate, so keep it.
         kept = IOM._get_ramp_constraint_devices(container, [tight_step])
         @test length(kept) == 1
+    end
+
+    @testset "device model selects the ramp devices" begin
+        tight = RampMockGen("B", (min = 1.0, max = 2.0), (up = 1.5 / 60, down = 1.5 / 60))
+        container = _make_ramp_container(tight, time_steps)
+        @test isempty(IOM._get_ramp_constraint_devices(container, [tight], default_model))
+        keep_all_model = IOM.DeviceModel(RampMockGen, RampKeepAllFormulation)
+        IOM.add_semicontinuous_ramp_constraints!(
+            container, TestConstraintType, IOM.ActivePowerVariable,
+            [tight], keep_all_model, TestPowerModel)
+        con_up = IOM.get_constraint(container, TestConstraintType, RampMockGen, "up")
+        @test "B" in axes(con_up, 1)
     end
 end
 
