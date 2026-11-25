@@ -132,7 +132,7 @@ end
 
     @testset "decision round trip" begin
         dir = _test_write(mktempdir(), _test_decision_store(), 2)
-        a = IS.open_outputs(dir)
+        a = IS.open_outputs_reader(dir)
         (vals, axes) = IS.read_dataset(a, "m", "TestVariableType", "MockComponentType")
         @test size(vals) == (3, 2, 2)
         @test vals[:, :, 2] == permutedims(20.0 .+ reshape(1.0:6.0, 2, 3))
@@ -142,7 +142,7 @@ end
         @test vals2[:, 1] == [11.0, 12.0, 13.0]
         @test axes2 == ["horizon", "execution"]
         @test IS.read_table(a, "m", "optimizer_stats").execution == [1, 2]
-        @test string(IS.read_outputs_metadata(joinpath(dir, "outputs.json")).status) ==
+        @test string(IS.read_outputs_document(joinpath(dir, "outputs.json")).status) ==
               "SUCCESSFULLY_FINALIZED"
     end
 
@@ -153,14 +153,14 @@ end
         end
         delete!(store.optimizer_stats, DateTime(2024, 1, 2))
         dir = _test_write(mktempdir(), store, 1)
-        entry = IS.read_outputs_metadata(joinpath(dir, "outputs.json")).models[1]
+        entry = IS.read_outputs_document(joinpath(dir, "outputs.json")).models[1]
         @test entry.name == "m"
         @test entry.supports_realized_values_post_calculation == false
     end
 
     @testset "emulation round trip" begin
         dir = _test_write(mktempdir(), _test_emulation_store(), 4)
-        a = IS.open_outputs(dir)
+        a = IS.open_outputs_reader(dir)
         (vals, axes) = IS.read_dataset(a, "m", "TestVariableType", "MockComponentType")
         @test size(vals) == (2, 4)
         @test vals == reshape(1.0:8.0, 2, 4)
@@ -185,7 +185,7 @@ end
         for i in 1:4
             store.optimizer_stats[i] = _test_stats(Float64(i), 0.0)
         end
-        a = IS.open_outputs(_test_write(mktempdir(), store, 4))
+        a = IS.open_outputs_reader(_test_write(mktempdir(), store, 4))
         (vals, axes) = IS.read_dataset(
             a, "m", "TestVariableType", "MockComponentType"; meta = "MockComponentType2",
         )
@@ -215,7 +215,7 @@ end
         store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
         dir = _test_write(mktempdir(), store, 2; horizon = 2)
         (vals, axes) = IS.read_dataset(
-            IS.open_outputs(dir), "m", "TestVariableType", "MockComponentType";
+            IS.open_outputs_reader(dir), "m", "TestVariableType", "MockComponentType";
             meta = "MockComponentType2",
         )
         @test axes == ["horizon", "MockComponentType2", "MockComponentType", "execution"]
@@ -229,7 +229,7 @@ end
         store.variables[key] = _test_executions(["x", "y"], 3)
         store.optimizer_stats[DateTime(2024, 1, 1)] = _test_stats(1.0, 0.0)
         store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
-        a = IS.open_outputs(_test_write(mktempdir(), store, 2))
+        a = IS.open_outputs_reader(_test_write(mktempdir(), store, 2))
         data = IS.read_axis_data(a, "m", "MockLabelOnlyType")
         @test data.labels == ["x" "y"]
         @test isempty(data.ids)
@@ -240,7 +240,7 @@ end
         store = _test_decision_store()
         key = IOM.VariableKey(TestVariableType2, MockComponentType)
         store.variables[key] = _test_executions(["g1", "g2"], 1)
-        a = IS.open_outputs(_test_write(mktempdir(), store, 2))
+        a = IS.open_outputs_reader(_test_write(mktempdir(), store, 2))
         (vals, axes) = IS.read_dataset(a, "m", "TestVariableType2", "MockComponentType")
         @test axes == ["MockComponentType", "execution"]
         @test vals == [11.0 21.0; 12.0 22.0]
@@ -259,7 +259,7 @@ end
         )
         store.optimizer_stats[DateTime(2024, 1, 1)] = _test_stats(1.0, 0.0)
         store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
-        a = IS.open_outputs(_test_write(mktempdir(), store, 2))
+        a = IS.open_outputs_reader(_test_write(mktempdir(), store, 2))
         (vals, axes) = IS.read_dataset(a, "m", "TestVariableType2", "")
         @test axes == ["execution"]
         @test vals == [11.0, 21.0]
@@ -283,7 +283,7 @@ end
         end
         store.optimizer_stats[DateTime(2024, 1, 1)] = _test_stats(1.0, 0.0)
         store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
-        a = IS.open_outputs(_test_write(mktempdir(), store, 2))
+        a = IS.open_outputs_reader(_test_write(mktempdir(), store, 2))
         for meta in ("a", "b")
             (vals, _) = IS.read_dataset(
                 a, "m", "TestVariableType", "MockComponentType"; meta = meta,
@@ -312,7 +312,7 @@ end
             first(IOM.optimizer_stats_table(store.optimizer_stats, "m")),
         )
         @test only(datasets)[2].meta == "MockComponentType2_x"
-        @test isnothing(IS.validate_metadata(metadata))
+        @test isnothing(IS.validate_document(metadata))
     end
 
     @testset "type parameters keep datasets apart" begin
@@ -361,7 +361,7 @@ end
         store.variables[key2] = _test_executions(["g1", "g2"], ["u1", "u2", "u3"], 3)
         store.optimizer_stats[DateTime(2024, 1, 1)] = _test_stats(1.0, 0.0)
         store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
-        a = IS.open_outputs(_test_write(mktempdir(), store, 2))
+        a = IS.open_outputs_reader(_test_write(mktempdir(), store, 2))
         snake = "testvariabletype__mockcomponenttype"
         (vals, axes) = IS.read_dataset(a, "m", "TestVariableType", "MockComponentType")
         @test axes == ["horizon", snake, "MockComponentType", "execution"]
@@ -393,7 +393,7 @@ end
         end
         store.optimizer_stats[DateTime(2024, 1, 1)] = _test_stats(1.0, 0.0)
         store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
-        a = IS.open_outputs(_test_write(mktempdir(), store, 2))
+        a = IS.open_outputs_reader(_test_write(mktempdir(), store, 2))
         for B in ("MockComponentType", "MockComponentType2")
             (vals, _) = IS.read_dataset(
                 a, "m", "TestVariableType", "MockComponentType"; meta = B,
@@ -411,7 +411,7 @@ end
         dir = mktempdir()
         @test_logs (:info, r"FuelConsumptionExpression") _test_write(dir, store, 2)
         @test haskey(store.expressions, key)
-        metadata = IS.get_metadata(IS.open_outputs(dir))
+        metadata = IS.get_document(IS.open_outputs_reader(dir))
         names = [d.entry_type for d in only(metadata.models).datasets]
         @test !any(occursin("Fuel", n) for n in names)
         @test "TestVariableType" in names
@@ -440,8 +440,8 @@ end
         store = _test_decision_store()
         _test_write(dir, store, 2)
         _test_write(dir, store, 2)
-        a = IS.open_outputs(dir)
-        @test string(IS.get_metadata(a).status) == "SUCCESSFULLY_FINALIZED"
+        a = IS.open_outputs_reader(dir)
+        @test string(IS.get_document(a).status) == "SUCCESSFULLY_FINALIZED"
     end
 
     @testset "missing trait fails" begin

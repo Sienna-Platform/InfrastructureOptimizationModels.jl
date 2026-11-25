@@ -219,7 +219,7 @@ function outputs_metadata(
         ),
         models = [entry],
     )
-    IS.validate_metadata(metadata)
+    IS.validate_document(metadata)
     return (metadata, reg.data, datasets)
 end
 

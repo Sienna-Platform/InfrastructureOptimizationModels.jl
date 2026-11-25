@@ -42,8 +42,8 @@ function _id_matrix(ids::Vector{Int64})
     return reshape(ids, 1, :)
 end
 
-function _same_labels(reg::AxisRegistry, key::String, labels::Matrix{String})
-    return reg.data[(reg.model, key)].labels == labels
+function _same_labels(reg::AxisRegistry, name::String, labels::Matrix{String})
+    return reg.data[(reg.model, name)].labels == labels
 end
 
 function _component_axis(
@@ -62,7 +62,7 @@ function _component_axis(
     )
 end
 
-"Add a component axis for `labels` to `reg`. Return the axis key."
+"Add a component axis for `labels` to `reg`. Return the axis name."
 function register_component_axis!(
     reg::AxisRegistry,
     sys,
@@ -85,17 +85,22 @@ function register_component_axis!(
                 component_type = string(nameof(U)), has_ids = has_ids,
             ),
         ]
-        key = IS.axis_key(_component_axis(columns, length(labels), "", subset))
-        if !haskey(reg.axes, key)
-            reg.axes[key] = InfrastructureOutputSchemas.Axis(
-                _component_axis(columns, length(labels), "/$(reg.model)/axes/$key", subset),
+        name = IS.axis_name(_component_axis(columns, length(labels), "", subset))
+        if !haskey(reg.axes, name)
+            reg.axes[name] = InfrastructureOutputSchemas.Axis(
+                _component_axis(
+                    columns,
+                    length(labels),
+                    "/$(reg.model)/axes/$name",
+                    subset,
+                ),
             )
-            reg.data[(reg.model, key)] =
+            reg.data[(reg.model, name)] =
                 IS.AxisData(_id_matrix(ids), label_matrix, Dates.DateTime[])
-            return key
+            return name
         end
-        if _same_labels(reg, key, label_matrix)
-            return key
+        if _same_labels(reg, name, label_matrix)
+            return name
         end
     end
     throw(
@@ -111,34 +116,34 @@ _has_labels(a::InfrastructureOutputSchemas.LabelAxis, labels::Vector{String}) =
     a.labels == labels
 _has_labels(::Any, ::Vector{String}) = false
 
-"Add a label axis for `labels` to `reg` under `key`. Return `key`."
+"Add a label axis for `labels` to `reg` under `name`. Return `name`."
 function register_label_axis!(
     reg::AxisRegistry,
     labels::Vector{String},
-    key::String,
+    name::String,
     dataset_name::String,
 )
-    if !haskey(reg.axes, key)
-        reg.axes[key] = InfrastructureOutputSchemas.Axis(
+    if !haskey(reg.axes, name)
+        reg.axes[name] = InfrastructureOutputSchemas.Axis(
             InfrastructureOutputSchemas.LabelAxis(;
                 kind = "label",
-                name = key,
+                name = name,
                 labels = labels,
             ),
         )
-        return key
+        return name
     end
-    if _has_labels(reg.axes[key], labels)
-        return key
+    if _has_labels(reg.axes[name], labels)
+        return name
     end
     throw(
         ArgumentError(
-            "Label axis $key already exists with different labels. Dataset: $dataset_name.",
+            "Label axis $name already exists with different labels. Dataset: $dataset_name.",
         ),
     )
 end
 
-function _label_axis_key(dataset_name::String, i::Int, count::Int)
+function _label_axis_name(dataset_name::String, i::Int, count::Int)
     if isone(count)
         return _lower_snake(dataset_name)
     end
@@ -148,7 +153,7 @@ end
 """
 Add one axis per label vector of `key` to `reg`. The first label vectors, one per type of the
 key component, are component axes. Every other label vector is a label axis. Return the axis
-keys.
+names.
 """
 function dataset_axes!(
     reg::AxisRegistry,
@@ -158,15 +163,15 @@ function dataset_axes!(
     dataset_name::String,
 ) where {T, U}
     types = _axis_types(U)
-    axis_keys = String[]
+    axis_names = String[]
     for (type, column) in zip(types, labels)
-        push!(axis_keys, register_component_axis!(reg, sys, type, column, dataset_name))
+        push!(axis_names, register_component_axis!(reg, sys, type, column, dataset_name))
     end
     extra = labels[(length(types) + 1):end]
     for (j, column) in enumerate(extra)
         i = length(types) + j
-        label_key = _label_axis_key(dataset_name, i, length(extra))
-        push!(axis_keys, register_label_axis!(reg, column, label_key, dataset_name))
+        label_axis_name = _label_axis_name(dataset_name, i, length(extra))
+        push!(axis_names, register_label_axis!(reg, column, label_axis_name, dataset_name))
     end
-    return axis_keys
+    return axis_names
 end
