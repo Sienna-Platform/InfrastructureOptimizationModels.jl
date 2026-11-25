@@ -45,6 +45,33 @@ end
         )
     end
 
+    @testset "equal labels with different ids do not share an axis" begin
+        reg = _test_registry()
+        k1 = IOM.register_component_axis!(
+            reg, sys, SameNameComponent{ParamMarkerA}, ["r1", "r2"], "a",
+        )
+        k2 = IOM.register_component_axis!(
+            reg, sys, SameNameComponent{ParamMarkerB}, ["r1", "r2"], "b",
+        )
+        @test k1 == "SameNameComponent"
+        @test k2 == "SameNameComponent__b"
+        @test reg.data[("m", k1)].ids == [1 2]
+        @test reg.data[("m", k2)].ids == [11 12]
+    end
+
+    @testset "pair key of one component type after a conflict" begin
+        reg = _test_registry()
+        IOM.register_component_axis!(reg, sys, MockComponentType, ["g1"], "other")
+        key = IOM.VariableKey(
+            TestVariableType,
+            IOM.ComponentPairKey{MockComponentType, MockComponentType},
+        )
+        names = IOM.dataset_axes!(reg, sys, key, [["a1"], ["b2"]], "Pair")
+        @test names == ["MockComponentType__pair", "MockComponentType__pair_2"]
+        @test reg.data[("m", names[1])].labels == reshape(["a1"], 1, 1)
+        @test reg.data[("m", names[2])].labels == reshape(["b2"], 1, 1)
+    end
+
     @testset "canonical labels replace bus numbers" begin
         reg = _test_registry()
         k = IOM.register_component_axis!(reg, sys, MockBusType, ["1", "2"], "d")

@@ -177,6 +177,18 @@ IOM.resolve_component_axis(
     ::Type{<:ParamComponent},
     labels::Vector{String},
 ) = ([parse(Int, l[end:end]) for l in labels], labels)
+# Two types with one `nameof`. Their components have equal names and different ids.
+struct SameNameComponent{D} <: IS.InfrastructureSystemsComponent end
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{SameNameComponent{ParamMarkerA}},
+    labels::Vector{String},
+) = (collect(1:length(labels)), labels)
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{SameNameComponent{ParamMarkerB}},
+    labels::Vector{String},
+) = (collect(11:(10 + length(labels))), labels)
 struct MockLabelOnlyType <: IS.InfrastructureSystemsComponent end
 struct MockShortIdsType <: IS.InfrastructureSystemsComponent end
 struct MockShortNamesType <: IS.InfrastructureSystemsComponent end

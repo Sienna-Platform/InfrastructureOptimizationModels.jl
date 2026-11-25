@@ -42,8 +42,14 @@ function _id_matrix(ids::Vector{Int64})
     return reshape(ids, 1, :)
 end
 
-function _same_labels(reg::AxisRegistry, name::String, labels::Matrix{String})
-    return reg.data[(reg.model, name)].labels == labels
+function _same_axis_data(
+    reg::AxisRegistry,
+    name::String,
+    ids::Matrix{Int64},
+    labels::Matrix{String},
+)
+    data = reg.data[(reg.model, name)]
+    return data.ids == ids && data.labels == labels
 end
 
 function _component_axis(
@@ -62,13 +68,18 @@ function _component_axis(
     )
 end
 
-"Add a component axis for `labels` to `reg`. Return the axis name."
+"""
+Add a component axis for `labels` to `reg`. Return the axis name. An axis with the same ids
+and labels is used again. `position` is the position of the component type in the key: a
+second component type of one dataset has its own fallback name.
+"""
 function register_component_axis!(
     reg::AxisRegistry,
     sys,
     ::Type{U},
     labels::Vector{String},
     dataset_name::String,
+    position::Int = 1,
 ) where {U}
     ids = Int64[]
     names = labels
@@ -78,8 +89,14 @@ function register_component_axis!(
         ids = Vector{Int64}(resolved_ids)
     end
     has_ids = !isempty(ids)
+    id_matrix = _id_matrix(ids)
     label_matrix = reshape(names, 1, :)
-    for subset in ("", _lower_snake(dataset_name))
+    suffix = _lower_snake(dataset_name)
+    subsets = ["", suffix]
+    if position > 1
+        push!(subsets, string(suffix, "_", position))
+    end
+    for subset in subsets
         columns = [
             InfrastructureOutputSchemas.ComponentAxisColumnsItem(;
                 component_type = string(nameof(U)), has_ids = has_ids,
@@ -96,16 +113,16 @@ function register_component_axis!(
                 ),
             )
             reg.data[(reg.model, name)] =
-                IS.AxisData(_id_matrix(ids), label_matrix, Dates.DateTime[])
+                IS.AxisData(id_matrix, label_matrix, Dates.DateTime[])
             return name
         end
-        if _same_labels(reg, name, label_matrix)
+        if _same_axis_data(reg, name, id_matrix, label_matrix)
             return name
         end
     end
     throw(
         ArgumentError(
-            "Axis for $(nameof(U)) already exists with different labels. Dataset: $dataset_name.",
+            "Axis for $(nameof(U)) already exists with different labels or ids. Dataset: $dataset_name.",
         ),
     )
 end
@@ -164,8 +181,11 @@ function dataset_axes!(
 ) where {T, U}
     types = _axis_types(U)
     axis_names = String[]
-    for (type, column) in zip(types, labels)
-        push!(axis_names, register_component_axis!(reg, sys, type, column, dataset_name))
+    for (position, (type, column)) in enumerate(zip(types, labels))
+        push!(
+            axis_names,
+            register_component_axis!(reg, sys, type, column, dataset_name, position),
+        )
     end
     extra = labels[(length(types) + 1):end]
     for (j, column) in enumerate(extra)
