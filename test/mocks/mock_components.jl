@@ -166,6 +166,61 @@ IOM.supports_outages(::Type{MockSecurityConstrainedFormulation}) = true
 # This replaces PSY.ThermalStandard etc. in tests that don't need real PSY types
 # Subtypes IS.InfrastructureSystemsComponent so it works with VariableKey, ConstraintKey, etc.
 struct MockComponentType <: IS.InfrastructureSystemsComponent end
+struct MockComponentType2 <: IS.InfrastructureSystemsComponent end
+
+struct MockBusType <: IS.InfrastructureSystemsComponent end
+struct ParamMarkerA end
+struct ParamMarkerB end
+struct ParamComponent{D} <: IS.InfrastructureSystemsComponent end
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{<:ParamComponent},
+    labels::Vector{String},
+) = ([parse(Int, l[end:end]) for l in labels], labels)
+# Two types with one `nameof`. Their components have equal names and different ids.
+struct SameNameComponent{D} <: IS.InfrastructureSystemsComponent end
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{SameNameComponent{ParamMarkerA}},
+    labels::Vector{String},
+) = (collect(1:length(labels)), labels)
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{SameNameComponent{ParamMarkerB}},
+    labels::Vector{String},
+) = (collect(11:(10 + length(labels))), labels)
+struct MockLabelOnlyType <: IS.InfrastructureSystemsComponent end
+struct MockShortIdsType <: IS.InfrastructureSystemsComponent end
+struct MockShortNamesType <: IS.InfrastructureSystemsComponent end
+IOM.resolve_component_axis(::MockSystem, ::Type{MockShortIdsType}, labels::Vector{String}) =
+    ([1], labels)
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{MockShortNamesType},
+    labels::Vector{String},
+) = ([1, 2], labels[1:1])
+
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{MockComponentType},
+    labels::Vector{String},
+) =
+    ([parse(Int, l[end:end]) for l in labels], labels)
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{MockComponentType2},
+    labels::Vector{String},
+) =
+    ([parse(Int, l[end:end]) for l in labels], labels)
+# Bus labels are numbers. The canonical labels are the bus names.
+IOM.resolve_component_axis(::MockSystem, ::Type{MockBusType}, labels::Vector{String}) =
+    ([parse(Int, l) for l in labels], ["bus" * l for l in labels])
+IOM.resolve_component_axis(
+    ::MockSystem,
+    ::Type{MockLabelOnlyType},
+    labels::Vector{String},
+) =
+    (Int[], labels)
 
 # Structures for the network problem
 struct MockNetworkNode <: IS.InfrastructureSystemsComponent
