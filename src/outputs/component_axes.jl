@@ -1,6 +1,6 @@
 "Axes and axis data of one model. `dataset_axes!` adds component axes to it."
 struct AxisRegistry
-    axes::Dict{String, PowerOutputSchemas.Axis}
+    axes::Dict{String, InfrastructureOutputSchemas.Axis}
     data::Dict{Tuple{String, String}, IS.AxisData}
     model::String
 end
@@ -47,17 +47,17 @@ function _same_labels(reg::AxisRegistry, key::String, labels::Matrix{String})
 end
 
 function _component_axis(
-    columns::Vector{PowerOutputSchemas.ComponentAxisColumnsItem},
+    columns::Vector{InfrastructureOutputSchemas.ComponentAxisColumnsItem},
     n::Int,
     group::String,
     subset::String,
 )
     if isempty(subset)
-        return PowerOutputSchemas.ComponentAxis(;
+        return InfrastructureOutputSchemas.ComponentAxis(;
             kind = "component", columns = columns, length = n, group = group,
         )
     end
-    return PowerOutputSchemas.ComponentAxis(;
+    return InfrastructureOutputSchemas.ComponentAxis(;
         kind = "component", columns = columns, length = n, group = group, subset = subset,
     )
 end
@@ -81,13 +81,13 @@ function register_component_axis!(
     label_matrix = reshape(names, 1, :)
     for subset in ("", _lower_snake(dataset_name))
         columns = [
-            PowerOutputSchemas.ComponentAxisColumnsItem(;
+            InfrastructureOutputSchemas.ComponentAxisColumnsItem(;
                 component_type = string(nameof(U)), has_ids = has_ids,
             ),
         ]
         key = IS.axis_key(_component_axis(columns, length(labels), "", subset))
         if !haskey(reg.axes, key)
-            reg.axes[key] = PowerOutputSchemas.Axis(
+            reg.axes[key] = InfrastructureOutputSchemas.Axis(
                 _component_axis(columns, length(labels), "/$(reg.model)/axes/$key", subset),
             )
             reg.data[(reg.model, key)] =
@@ -105,9 +105,10 @@ function register_component_axis!(
     )
 end
 
-_has_labels(a::PowerOutputSchemas.Axis, labels::Vector{String}) =
+_has_labels(a::InfrastructureOutputSchemas.Axis, labels::Vector{String}) =
     _has_labels(a.value, labels)
-_has_labels(a::PowerOutputSchemas.LabelAxis, labels::Vector{String}) = a.labels == labels
+_has_labels(a::InfrastructureOutputSchemas.LabelAxis, labels::Vector{String}) =
+    a.labels == labels
 _has_labels(::Any, ::Vector{String}) = false
 
 "Add a label axis for `labels` to `reg` under `key`. Return `key`."
@@ -118,8 +119,12 @@ function register_label_axis!(
     dataset_name::String,
 )
     if !haskey(reg.axes, key)
-        reg.axes[key] = PowerOutputSchemas.Axis(
-            PowerOutputSchemas.LabelAxis(; kind = "label", name = key, labels = labels),
+        reg.axes[key] = InfrastructureOutputSchemas.Axis(
+            InfrastructureOutputSchemas.LabelAxis(;
+                kind = "label",
+                name = key,
+                labels = labels,
+            ),
         )
         return key
     end

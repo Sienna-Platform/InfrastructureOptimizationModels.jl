@@ -5,14 +5,17 @@ _float_column(stats, field::Symbol) = Float64[_nan(getfield(s, field)) for s in 
 _int_column(stats, field::Symbol) = Int64[getfield(s, field) for s in stats]
 
 _column(name::String, dtype::String) =
-    PowerOutputSchemas.Column(; name = name, dtype = PowerOutputSchemas.ColumnDtype(dtype))
+    InfrastructureOutputSchemas.Column(;
+        name = name,
+        dtype = InfrastructureOutputSchemas.ColumnDtype(dtype),
+    )
 
 function _natural_column(name::String, quantity_kind::String, units::String)
-    return PowerOutputSchemas.Column(;
+    return InfrastructureOutputSchemas.Column(;
         name = name,
-        dtype = PowerOutputSchemas.ColumnDtype("f64"),
-        quantity_kind = PowerOutputSchemas.QuantityKind(quantity_kind),
-        unit_system = PowerOutputSchemas.UnitSystem("NATURAL_UNITS"),
+        dtype = InfrastructureOutputSchemas.ColumnDtype("f64"),
+        quantity_kind = quantity_kind,
+        unit_system = InfrastructureOutputSchemas.UnitSystem("NATURAL_UNITS"),
         units = units,
     )
 end
@@ -23,7 +26,7 @@ _seconds_column(name::String) = _natural_column(name, "Duration", "s")
 "Return the `optimizer_stats` table description and its columns for `stats`."
 function optimizer_stats_table(stats::AbstractDict, model::String)
     rows = collect(values(stats))
-    table = PowerOutputSchemas.Table(;
+    table = InfrastructureOutputSchemas.Table(;
         name = "optimizer_stats",
         group = "/$model/tables/optimizer_stats",
         length = length(rows),
@@ -70,7 +73,7 @@ function execution_slice(array::DenseAxisArray)
     return permutedims(array.data, reverse(1:ndims(array)))
 end
 
-function _dataset_values(d::PowerOutputSchemas.Dataset, values::AbstractArray)
+function _dataset_values(d::InfrastructureOutputSchemas.Dataset, values::AbstractArray)
     if isempty(IS.dataset_key(d)[2])
         return vec(values)
     end
@@ -124,7 +127,7 @@ _data_axes(::DecisionModelStore, components::Vector{String}, trailing::Vector{St
 _data_axes(::EmulationModelStore, components::Vector{String}, ::Vector{String}) =
     vcat(["time"], components)
 
-function _decision_values(d::PowerOutputSchemas.Dataset, array::DenseAxisArray)
+function _decision_values(d::InfrastructureOutputSchemas.Dataset, array::DenseAxisArray)
     slice = execution_slice(array)
     if "horizon" in d.axes
         return _dataset_values(d, slice)
@@ -175,39 +178,41 @@ function outputs_metadata(
     params::ModelStoreParams,
     sys,
     settings::Settings,
-    producer::PowerOutputSchemas.ProducerInfo,
+    producer::InfrastructureOutputSchemas.ProducerInfo,
     initial_time::Dates.DateTime,
-    table::PowerOutputSchemas.Table,
+    table::InfrastructureOutputSchemas.Table,
 )
     reg = AxisRegistry(model_axes(store, params, initial_time, model)..., model)
-    datasets = Tuple{OptimizationContainerKey, PowerOutputSchemas.Dataset}[]
+    datasets = Tuple{OptimizationContainerKey, InfrastructureOutputSchemas.Dataset}[]
     for key in _store_keys(store)
         push!(datasets, (key, _key_dataset!(reg, store, sys, key, params)))
     end
     uuid = get_system_uuid(params)
-    entry = PowerOutputSchemas.Model(;
+    entry = InfrastructureOutputSchemas.Model(;
         name = model,
-        model_type = PowerOutputSchemas.ModelType(model_type_name(store)),
+        model_type = model_type_name(store),
         system_uuid = string(uuid),
         base_power = get_base_power(params),
         supports_realized_values_post_calculation = supports_realized_values_post_calculation(
             store,
             params,
         ),
-        settings = PowerOutputSchemas.ModelSettings(;
+        settings = InfrastructureOutputSchemas.ModelSettings(;
             additional_properties = settings_dict(settings),
         ),
-        axes = PowerOutputSchemas.Axis[reg.axes[k] for k in sort!(collect(keys(reg.axes)))],
-        datasets = PowerOutputSchemas.Dataset[d for (_, d) in datasets],
+        axes = InfrastructureOutputSchemas.Axis[
+            reg.axes[k] for k in sort!(collect(keys(reg.axes)))
+        ],
+        datasets = InfrastructureOutputSchemas.Dataset[d for (_, d) in datasets],
         tables = [table],
     )
-    metadata = PowerOutputSchemas.OutputsDocument(;
+    metadata = InfrastructureOutputSchemas.OutputsDocument(;
         schema_version = IS.OUTPUTS_SCHEMA_VERSION,
-        kind = PowerOutputSchemas.Kind("single"),
+        kind = "single",
         producer = producer,
         created_at = TimeZones.now(TimeZones.tz"UTC"),
-        status = PowerOutputSchemas.RunStatus("RUNNING"),
-        systems = PowerOutputSchemas.OutputsDocumentSystems(;
+        status = InfrastructureOutputSchemas.RunStatus("RUNNING"),
+        systems = InfrastructureOutputSchemas.OutputsDocumentSystems(;
             additional_properties = Dict{String, String}(
                 string(uuid) => make_system_dirname(uuid),
             ),
@@ -277,7 +282,7 @@ function write_store_outputs!(
     params::ModelStoreParams,
     sys,
     settings::Settings,
-    producer::PowerOutputSchemas.ProducerInfo,
+    producer::InfrastructureOutputSchemas.ProducerInfo,
     initial_time::Dates.DateTime,
 )
     rm(joinpath(dir, "outputs.json"); force = true)
@@ -305,7 +310,7 @@ The caller must write the system bundle at `joinpath(dir, make_system_dirname(uu
 """
 function write_model_outputs!(
     model::AbstractOptimizationModel,
-    producer::PowerOutputSchemas.ProducerInfo,
+    producer::InfrastructureOutputSchemas.ProducerInfo,
 )
     return write_store_outputs!(
         get_output_dir(model),

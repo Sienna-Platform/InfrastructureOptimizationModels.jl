@@ -50,7 +50,7 @@ function _test_emulation_store()
 end
 
 const _TEST_PRODUCER =
-    PowerOutputSchemas.ProducerInfo(;
+    InfrastructureOutputSchemas.ProducerInfo(;
         package = "Test",
         version = "0.0.0",
         julia = string(VERSION),
@@ -122,8 +122,8 @@ end
         ]
         @test columns.execution == [1, 2]
         @test columns.objective_value == [1.5, 2.5]
-        @test !haskey(PowerOutputSchemas.encode(table.columns[2]), "units")
-        @test !haskey(PowerOutputSchemas.encode(table.columns[2]), "quantity_kind")
+        @test !haskey(InfrastructureOutputSchemas.encode(table.columns[2]), "units")
+        @test !haskey(InfrastructureOutputSchemas.encode(table.columns[2]), "quantity_kind")
         @test table.columns[6].units == "s"
         @test isnan(columns.objective_bound[1])
         @test columns.relative_gap[1] == 0.1
@@ -372,11 +372,11 @@ end
             (snake, ["t1", "t2", "t3"]),
             ("testvariabletype2__mockcomponenttype", ["u1", "u2", "u3"]),
         )
-            expected = PowerOutputSchemas.LabelAxis(;
+            expected = InfrastructureOutputSchemas.LabelAxis(;
                 kind = "label", name = name, labels = labels,
             )
-            @test PowerOutputSchemas.encode(IS.get_axis(a, "m", name)) ==
-                  PowerOutputSchemas.encode(expected)
+            @test InfrastructureOutputSchemas.encode(IS.get_axis(a, "m", name)) ==
+                  InfrastructureOutputSchemas.encode(expected)
         end
         @test size(IS.read_dataset(a, "m", "TestVariableType2", "MockComponentType")[1]) ==
               (3, 3, 2, 2)

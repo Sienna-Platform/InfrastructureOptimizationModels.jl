@@ -137,7 +137,7 @@ import DataFrames
 import DataFrames: DataFrame, DataFrameRow, Not, innerjoin, select
 import DataFramesMeta: @chain, @orderby, @rename, @select, @subset, @transform
 import HDF5
-import PowerOutputSchemas
+import InfrastructureOutputSchemas
 import PrettyTables
 
 ################################################################################

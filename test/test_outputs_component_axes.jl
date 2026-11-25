@@ -1,6 +1,6 @@
 function _test_registry()
     return IOM.AxisRegistry(
-        Dict{String, PowerOutputSchemas.Axis}(),
+        Dict{String, InfrastructureOutputSchemas.Axis}(),
         Dict{Tuple{String, String}, IS.AxisData}(),
         "m",
     )
@@ -112,13 +112,13 @@ end
             reg, sys, key, [["a1", "a2"], ["b1"], ["t1", "t2", "t3"]], "Name__X",
         )
         @test keys == ["MockComponentType", "MockComponentType2", "name__x"]
-        expected = PowerOutputSchemas.Axis(
-            PowerOutputSchemas.LabelAxis(;
+        expected = InfrastructureOutputSchemas.Axis(
+            InfrastructureOutputSchemas.LabelAxis(;
                 kind = "label", name = "name__x", labels = ["t1", "t2", "t3"],
             ),
         )
-        @test PowerOutputSchemas.encode(reg.axes["name__x"]) ==
-              PowerOutputSchemas.encode(expected)
+        @test InfrastructureOutputSchemas.encode(reg.axes["name__x"]) ==
+              InfrastructureOutputSchemas.encode(expected)
         keys = IOM.dataset_axes!(
             reg, sys, key, [["a1", "a2"], ["b1"], ["t1"], ["u1", "u2"]], "Other",
         )
