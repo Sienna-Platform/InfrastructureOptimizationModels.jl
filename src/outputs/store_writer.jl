@@ -4,33 +4,22 @@ _nan(x::Real) = Float64(x)
 _float_column(stats, field::Symbol) = Float64[_nan(getfield(s, field)) for s in stats]
 _int_column(stats, field::Symbol) = Int64[getfield(s, field) for s in stats]
 
-_column(name::String, dtype::String) =
-    InfrastructureOutputSchemas.Column(;
-        name = name,
-        dtype = InfrastructureOutputSchemas.ColumnDtype(dtype),
-    )
+_column(name::String, dtype::String) = IS.OutputColumn(name, dtype)
 
 function _natural_column(name::String, quantity_kind::String, units::String)
-    return InfrastructureOutputSchemas.Column(;
-        name = name,
-        dtype = InfrastructureOutputSchemas.ColumnDtype("f64"),
-        quantity_kind = quantity_kind,
-        unit_system = InfrastructureOutputSchemas.UnitSystem("NATURAL_UNITS"),
-        units = units,
-    )
+    return IS.OutputColumn(name, "f64", quantity_kind, IS.NU, units)
 end
 
 _seconds_column(name::String) = _natural_column(name, "Duration", "s")
 
 # The objective has no unit: IOM does not know the currency of the model.
 "Return the `optimizer_stats` table description and its columns for `stats`."
-function optimizer_stats_table(stats::AbstractDict, model::String)
+function optimizer_stats_table(stats::AbstractDict)
     rows = collect(values(stats))
-    table = InfrastructureOutputSchemas.Table(;
-        name = "optimizer_stats",
-        group = "/$model/tables/optimizer_stats",
-        length = length(rows),
-        columns = [
+    table = IS.OutputTable(
+        "optimizer_stats",
+        length(rows),
+        [
             _column("execution", "i64"),
             _column("objective_value", "f64"),
             _column("termination_status", "i64"),
@@ -73,7 +62,7 @@ function execution_slice(array::DenseAxisArray)
     return permutedims(array.data, reverse(1:ndims(array)))
 end
 
-function _dataset_values(d::InfrastructureOutputSchemas.Dataset, values::AbstractArray)
+function _dataset_values(d::IS.OutputDataset, values::AbstractArray)
     if isempty(IS.dataset_key(d)[2])
         return vec(values)
     end
@@ -107,7 +96,7 @@ function _trailing_axes(
     horizon = get_horizon_count(params)
     steps = length(axes(array)[end])
     if steps == horizon
-        return ["horizon"]
+        return [IS.axis_name(IS.HorizonAxis)]
     end
     if isone(steps)
         return String[]
@@ -123,20 +112,16 @@ _trailing_axes(::EmulationModelStore, ::OptimizationContainerKey, ::DenseAxisArr
     String[]
 
 _data_axes(::DecisionModelStore, components::Vector{String}, trailing::Vector{String}) =
-    vcat(["execution"], components, trailing)
+    vcat([IS.axis_name(IS.ExecutionAxis)], components, trailing)
 _data_axes(::EmulationModelStore, components::Vector{String}, ::Vector{String}) =
-    vcat(["time"], components)
+    vcat([IS.axis_name(IS.TimeAxis)], components)
 
-function _decision_values(d::InfrastructureOutputSchemas.Dataset, array::DenseAxisArray)
+function _decision_values(d::IS.OutputDataset, array::DenseAxisArray)
     slice = execution_slice(array)
-    if "horizon" in d.axes
+    if IS.axis_name(IS.HorizonAxis) in IS.get_axis_names(d)
         return _dataset_values(d, slice)
     end
     return dropdims(slice; dims = 1)
-end
-
-function _axis_lengths(reg::AxisRegistry, axes::Vector{String})
-    return Int[IS.axis_length(reg.axes[a]) for a in axes]
 end
 
 function _key_dataset!(
@@ -153,18 +138,14 @@ function _key_dataset!(
         axes = _data_axes(store, String[], trailing)
         return dataset_descriptor_componentless(
             key;
-            model = reg.model,
-            axes = axes,
-            axis_lengths = _axis_lengths(reg, axes),
+            axes = IS.OutputAxis[reg.axes[name] for name in axes],
         )
     end
     components = dataset_axes!(reg, sys, key, labels, encode_key_as_string(key))
     axes = _data_axes(store, components, trailing)
     return dataset_descriptor(
         key;
-        model = reg.model,
-        axes = axes,
-        axis_lengths = _axis_lengths(reg, axes),
+        axes = IS.OutputAxis[reg.axes[name] for name in axes],
     )
 end
 
@@ -178,17 +159,17 @@ function outputs_metadata(
     params::ModelStoreParams,
     sys,
     settings::Settings,
-    producer::InfrastructureOutputSchemas.ProducerInfo,
+    producer::IS.ProducerInfo,
     initial_time::Dates.DateTime,
-    table::InfrastructureOutputSchemas.Table,
+    table::IS.OutputTable,
 )
-    reg = AxisRegistry(model_axes(store, params, initial_time, model)..., model)
-    datasets = Tuple{OptimizationContainerKey, InfrastructureOutputSchemas.Dataset}[]
+    reg = AxisRegistry(model, model_axes(store, params, initial_time))
+    datasets = Tuple{OptimizationContainerKey, IS.OutputDataset}[]
     for key in _store_keys(store)
         push!(datasets, (key, _key_dataset!(reg, store, sys, key, params)))
     end
     uuid = get_system_uuid(params)
-    entry = InfrastructureOutputSchemas.Model(;
+    entry = IS.OutputsModel(;
         name = model,
         model_type = model_type_name(store),
         system_uuid = string(uuid),
@@ -197,27 +178,16 @@ function outputs_metadata(
             store,
             params,
         ),
-        settings = InfrastructureOutputSchemas.ModelSettings(;
-            additional_properties = settings_dict(settings),
-        ),
-        axes = InfrastructureOutputSchemas.Axis[
-            reg.axes[k] for k in sort!(collect(keys(reg.axes)))
-        ],
-        datasets = InfrastructureOutputSchemas.Dataset[d for (_, d) in datasets],
+        settings = settings_dict(settings),
+        axes = IS.OutputAxis[reg.axes[k] for k in sort!(collect(keys(reg.axes)))],
+        datasets = IS.OutputDataset[d for (_, d) in datasets],
         tables = [table],
     )
-    metadata = InfrastructureOutputSchemas.OutputsDocument(;
-        schema_version = IS.OUTPUTS_SCHEMA_VERSION,
-        kind = "single",
-        producer = producer,
-        created_at = TimeZones.now(TimeZones.tz"UTC"),
-        status = InfrastructureOutputSchemas.RunStatus("RUNNING"),
-        systems = InfrastructureOutputSchemas.OutputsDocumentSystems(;
-            additional_properties = Dict{String, String}(
-                string(uuid) => make_system_dirname(uuid),
-            ),
-        ),
-        models = [entry],
+    metadata = IS.OutputsDocument(
+        "single",
+        producer,
+        Dict{String, String}(string(uuid) => make_system_dirname(uuid)),
+        [entry],
     )
     IS.validate_document(metadata)
     return (metadata, reg.data, datasets)
@@ -282,12 +252,12 @@ function write_store_outputs!(
     params::ModelStoreParams,
     sys,
     settings::Settings,
-    producer::InfrastructureOutputSchemas.ProducerInfo,
+    producer::IS.ProducerInfo,
     initial_time::Dates.DateTime,
 )
     rm(joinpath(dir, "outputs.json"); force = true)
     rm(joinpath(dir, "outputs.h5"); force = true)
-    (table, columns) = optimizer_stats_table(store.optimizer_stats, model)
+    (table, columns) = optimizer_stats_table(store.optimizer_stats)
     (metadata, axis_data, datasets) = outputs_metadata(
         model, store, params, sys, settings, producer, initial_time, table,
     )
@@ -310,7 +280,7 @@ The caller must write the system bundle at `joinpath(dir, make_system_dirname(uu
 """
 function write_model_outputs!(
     model::AbstractOptimizationModel,
-    producer::InfrastructureOutputSchemas.ProducerInfo,
+    producer::IS.ProducerInfo,
 )
     return write_store_outputs!(
         get_output_dir(model),

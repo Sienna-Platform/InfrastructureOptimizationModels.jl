@@ -1,9 +1,5 @@
 function _test_registry()
-    return IOM.AxisRegistry(
-        Dict{String, InfrastructureOutputSchemas.Axis}(),
-        Dict{Tuple{String, String}, IS.AxisData}(),
-        "m",
-    )
+    return IOM.AxisRegistry("m", IS.OutputAxis[])
 end
 
 @testset "Outputs component axes" begin
@@ -13,13 +9,12 @@ end
         reg = _test_registry()
         key = IOM.register_component_axis!(reg, sys, MockComponentType, ["g1", "g2"], "d")
         @test key == "MockComponentType"
-        axis = reg.axes[key].value
-        @test axis.columns[1].has_ids
-        @test axis.length == 2
-        @test axis.group == "/m/axes/MockComponentType"
+        axis = reg.axes[key]
+        @test IS.get_has_ids(IS.get_columns(axis)[1])
+        @test IS.axis_length(axis) == 2
         data = reg.data[("m", key)]
-        @test data.ids == [1 2]
-        @test data.labels == ["g1" "g2"]
+        @test IS.get_ids(data) == [1 2]
+        @test IS.get_labels(data) == ["g1" "g2"]
     end
 
     @testset "dedup identical" begin
@@ -55,8 +50,8 @@ end
         )
         @test k1 == "SameNameComponent"
         @test k2 == "SameNameComponent__b"
-        @test reg.data[("m", k1)].ids == [1 2]
-        @test reg.data[("m", k2)].ids == [11 12]
+        @test IS.get_ids(reg.data[("m", k1)]) == [1 2]
+        @test IS.get_ids(reg.data[("m", k2)]) == [11 12]
     end
 
     @testset "pair key of one component type after a conflict" begin
@@ -68,15 +63,15 @@ end
         )
         names = IOM.dataset_axes!(reg, sys, key, [["a1"], ["b2"]], "Pair")
         @test names == ["MockComponentType__pair", "MockComponentType__pair_2"]
-        @test reg.data[("m", names[1])].labels == reshape(["a1"], 1, 1)
-        @test reg.data[("m", names[2])].labels == reshape(["b2"], 1, 1)
+        @test IS.get_labels(reg.data[("m", names[1])]) == reshape(["a1"], 1, 1)
+        @test IS.get_labels(reg.data[("m", names[2])]) == reshape(["b2"], 1, 1)
     end
 
     @testset "canonical labels replace bus numbers" begin
         reg = _test_registry()
         k = IOM.register_component_axis!(reg, sys, MockBusType, ["1", "2"], "d")
-        @test reg.data[("m", k)].labels == ["bus1" "bus2"]
-        @test reg.data[("m", k)].ids == [1 2]
+        @test IS.get_labels(reg.data[("m", k)]) == ["bus1" "bus2"]
+        @test IS.get_ids(reg.data[("m", k)]) == [1 2]
         k2 = IOM.register_component_axis!(reg, sys, MockBusType, ["1", "2"], "e")
         @test k2 == k
         @test length(reg.axes) == 1
@@ -85,9 +80,9 @@ end
     @testset "label only axis" begin
         reg = _test_registry()
         k = IOM.register_component_axis!(reg, sys, MockLabelOnlyType, ["x", "y"], "d")
-        @test !reg.axes[k].value.columns[1].has_ids
-        @test isempty(reg.data[("m", k)].ids)
-        @test reg.data[("m", k)].labels == ["x" "y"]
+        @test !IS.get_has_ids(IS.get_columns(reg.axes[k])[1])
+        @test isempty(IS.get_ids(reg.data[("m", k)]))
+        @test IS.get_labels(reg.data[("m", k)]) == ["x" "y"]
     end
 
     @testset "encoded labels no ids" begin
@@ -95,8 +90,8 @@ end
         k = IOM.register_component_axis!(
             reg, sys, MockComponentType, ["s1__g1", "s1__g2"], "d",
         )
-        @test !reg.axes[k].value.columns[1].has_ids
-        @test isempty(reg.data[("m", k)].ids)
+        @test !IS.get_has_ids(IS.get_columns(reg.axes[k])[1])
+        @test isempty(IS.get_ids(reg.data[("m", k)]))
     end
 
     @testset "mixed labels resolve by name" begin
@@ -107,8 +102,8 @@ end
         k = IOM.register_component_axis!(
             reg, sys, MockComponentType, ["s1__g1", "g2"], "d",
         )
-        @test reg.axes[k].value.columns[1].has_ids
-        @test reg.data[("m", k)].labels == ["s1__g1" "g2"]
+        @test IS.get_has_ids(IS.get_columns(reg.axes[k])[1])
+        @test IS.get_labels(reg.data[("m", k)]) == ["s1__g1" "g2"]
     end
 
     @testset "resolver result length mismatch fails" begin
@@ -139,13 +134,8 @@ end
             reg, sys, key, [["a1", "a2"], ["b1"], ["t1", "t2", "t3"]], "Name__X",
         )
         @test keys == ["MockComponentType", "MockComponentType2", "name__x"]
-        expected = InfrastructureOutputSchemas.Axis(
-            InfrastructureOutputSchemas.LabelAxis(;
-                kind = "label", name = "name__x", labels = ["t1", "t2", "t3"],
-            ),
-        )
-        @test InfrastructureOutputSchemas.encode(reg.axes["name__x"]) ==
-              InfrastructureOutputSchemas.encode(expected)
+        @test IS.axis_name(reg.axes["name__x"]) == "name__x"
+        @test IS.get_labels(reg.axes["name__x"]) == ["t1", "t2", "t3"]
         keys = IOM.dataset_axes!(
             reg, sys, key, [["a1", "a2"], ["b1"], ["t1"], ["u1", "u2"]], "Other",
         )

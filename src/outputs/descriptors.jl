@@ -44,37 +44,20 @@ end
 _axis_types(::Type{U}) where {U} = (U,)
 _axis_types(::Type{ComponentPairKey{A, B}}) where {A, B} = (A, B)
 
-"Return the `InfrastructureOutputSchemas.Dataset` of `key`. The first axis type of `U` gives the component type."
+"Return the `IS.OutputDataset` of `key`. The first axis type of `U` gives the component type."
 function dataset_descriptor(
     key::OptimizationContainerKey{T, U};
-    model::String,
-    axes::Vector{String},
-    axis_lengths::Vector{Int},
+    axes::Vector{<:IS.OutputAxis},
 ) where {T, U}
-    return IS.dataset_descriptor(
-        T,
-        first(_axis_types(U)),
-        get_meta(key);
-        model = model,
-        axes = axes,
-        axis_lengths = axis_lengths,
-    )
+    return IS.dataset_descriptor(T, first(_axis_types(U)), get_meta(key), axes)
 end
 
-"Return the `InfrastructureOutputSchemas.Dataset` of `key` for a dataset that has no component."
+"Return the `IS.OutputDataset` of `key` for a dataset that has no component."
 function dataset_descriptor_componentless(
     key::OptimizationContainerKey{T, U};
-    model::String,
-    axes::Vector{String},
-    axis_lengths::Vector{Int},
+    axes::Vector{<:IS.OutputAxis},
 ) where {T, U}
-    return IS.dataset_descriptor(
-        T,
-        get_meta(key);
-        model = model,
-        axes = axes,
-        axis_lengths = axis_lengths,
-    )
+    return IS.dataset_descriptor(T, get_meta(key), axes)
 end
 
 "Return the model type name that the outputs metadata stores for a store."
@@ -91,65 +74,27 @@ function supports_realized_values_post_calculation(
     return get_num_executions(params) > 1
 end
 
-"Return the model axes and the axis data of a decision model store."
+"Return the model axes of a decision model store."
 function model_axes(
     ::DecisionModelStore,
     params::ModelStoreParams,
     initial_time::Dates.DateTime,
-    model::String,
 )
-    interval = get_interval(params)
-    num_executions = get_num_executions(params)
-    execution = InfrastructureOutputSchemas.ExecutionAxis(;
-        kind = "execution",
-        initial_timestamp = string(initial_time),
-        interval = IS.iso_duration(interval),
-        count = num_executions,
-        group = "/$model/axes/execution",
-    )
-    horizon = InfrastructureOutputSchemas.HorizonAxis(;
-        kind = "horizon",
-        resolution = IS.iso_duration(get_resolution(params)),
-        horizon_count = get_horizon_count(params),
-    )
-    timestamps =
-        collect(range(initial_time; step = interval, length = num_executions))
-    axes = Dict{String, InfrastructureOutputSchemas.Axis}(
-        "execution" => InfrastructureOutputSchemas.Axis(execution),
-        "horizon" => InfrastructureOutputSchemas.Axis(horizon),
-    )
-    data = Dict{Tuple{String, String}, IS.AxisData}(
-        (model, "execution") => IS.AxisData(timestamps),
-    )
-    return (axes, data)
+    return IS.OutputAxis[
+        IS.ExecutionAxis(initial_time, get_interval(params), get_num_executions(params)),
+        IS.HorizonAxis(get_resolution(params), get_horizon_count(params)),
+    ]
 end
 
-"Return the model axes and the axis data of an emulation model store."
+"Return the model axes of an emulation model store."
 function model_axes(
     ::EmulationModelStore,
     params::ModelStoreParams,
     initial_time::Dates.DateTime,
-    model::String,
 )
-    resolution = get_resolution(params)
-    num_executions = get_num_executions(params)
-    time_axis = InfrastructureOutputSchemas.TimeAxis(;
-        kind = "time",
-        initial_timestamp = string(initial_time),
-        resolution = IS.iso_duration(resolution),
-        length = num_executions,
-        group = "/$model/axes/time",
-    )
-    timestamps =
-        collect(range(initial_time; step = resolution, length = num_executions))
-    axes =
-        Dict{String, InfrastructureOutputSchemas.Axis}(
-            "time" => InfrastructureOutputSchemas.Axis(time_axis),
-        )
-    data = Dict{Tuple{String, String}, IS.AxisData}(
-        (model, "time") => IS.AxisData(timestamps),
-    )
-    return (axes, data)
+    return IS.OutputAxis[
+        IS.TimeAxis(initial_time, get_resolution(params), get_num_executions(params)),
+    ]
 end
 
 _add_optimizer!(::Dict{String, Any}, ::Nothing) = nothing

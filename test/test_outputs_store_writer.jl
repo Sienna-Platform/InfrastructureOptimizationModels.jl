@@ -49,12 +49,7 @@ function _test_emulation_store()
     return store
 end
 
-const _TEST_PRODUCER =
-    InfrastructureOutputSchemas.ProducerInfo(;
-        package = "Test",
-        version = "0.0.0",
-        julia = string(VERSION),
-    )
+const _TEST_PRODUCER = IS.ProducerInfo("Test", "0.0.0", string(VERSION))
 
 function _test_write(dir, store, num_executions; horizon::Int = 3, interval::Int = 1)
     mkpath(joinpath(dir, IOM.make_system_dirname(Base.UUID(UInt128(1)))))
@@ -111,20 +106,21 @@ end
 @testset "Outputs store writer" begin
     @testset "stats table" begin
         (table, columns) = IOM.optimizer_stats_table(
-            _test_decision_store().optimizer_stats, "m",
+            _test_decision_store().optimizer_stats,
         )
-        @test table.length == 2
-        @test table.group == "/m/tables/optimizer_stats"
-        @test [c.name for c in table.columns] == [
+        @test IS.get_length(table) == 2
+        @test IS.table_group("m", table) == "/m/tables/optimizer_stats"
+        @test [IS.get_name(c) for c in IS.get_columns(table)] == [
             "execution", "objective_value", "termination_status", "primal_status",
             "dual_status", "solve_time", "solver_solve_time", "objective_bound",
             "relative_gap",
         ]
         @test columns.execution == [1, 2]
         @test columns.objective_value == [1.5, 2.5]
-        @test !haskey(InfrastructureOutputSchemas.encode(table.columns[2]), "units")
-        @test !haskey(InfrastructureOutputSchemas.encode(table.columns[2]), "quantity_kind")
-        @test table.columns[6].units == "s"
+        @test !IS.has_units(IS.get_columns(table)[2])
+        @test IS.has_units(IS.get_columns(table)[6])
+        @test IS.get_units(IS.get_columns(table)[6]) == "s"
+        @test IS.get_unit_system(IS.get_columns(table)[6]) == IS.NU
         @test isnan(columns.objective_bound[1])
         @test columns.relative_gap[1] == 0.1
         @test isnan(columns.relative_gap[2])
@@ -142,8 +138,8 @@ end
         @test vals2[:, 1] == [11.0, 12.0, 13.0]
         @test axes2 == ["horizon", "execution"]
         @test IS.read_table(a, "m", "optimizer_stats").execution == [1, 2]
-        @test string(IS.read_outputs_document(joinpath(dir, "outputs.json")).status) ==
-              "SUCCESSFULLY_FINALIZED"
+        @test IS.get_status(IS.read_outputs_document(joinpath(dir, "outputs.json"))) ==
+              IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
     end
 
     @testset "single execution decision metadata" begin
@@ -153,9 +149,9 @@ end
         end
         delete!(store.optimizer_stats, DateTime(2024, 1, 2))
         dir = _test_write(mktempdir(), store, 1)
-        entry = IS.read_outputs_document(joinpath(dir, "outputs.json")).models[1]
-        @test entry.name == "m"
-        @test entry.supports_realized_values_post_calculation == false
+        entry = IS.get_models(IS.read_outputs_document(joinpath(dir, "outputs.json")))[1]
+        @test IS.get_name(entry) == "m"
+        @test IS.get_supports_realized_values_post_calculation(entry) == false
     end
 
     @testset "emulation round trip" begin
@@ -231,9 +227,9 @@ end
         store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
         a = IS.open_outputs_reader(_test_write(mktempdir(), store, 2))
         data = IS.read_axis_data(a, "m", "MockLabelOnlyType")
-        @test data.labels == ["x" "y"]
-        @test isempty(data.ids)
-        @test !IS.get_axis(a, "m", "MockLabelOnlyType").columns[1].has_ids
+        @test IS.get_labels(data) == ["x" "y"]
+        @test isempty(IS.get_ids(data))
+        @test !IS.get_has_ids(IS.get_columns(IS.get_axis(a, "m", "MockLabelOnlyType"))[1])
     end
 
     @testset "per-execution scalar has no horizon axis" begin
@@ -309,9 +305,9 @@ end
                 resolution = Hour(1),
             ),
             _TEST_PRODUCER, DateTime(2024, 1, 1),
-            first(IOM.optimizer_stats_table(store.optimizer_stats, "m")),
+            first(IOM.optimizer_stats_table(store.optimizer_stats)),
         )
-        @test only(datasets)[2].meta == "MockComponentType2_x"
+        @test IS.get_meta(only(datasets)[2]) == "MockComponentType2_x"
         @test isnothing(IS.validate_document(metadata))
     end
 
@@ -323,7 +319,7 @@ end
             end
             store.optimizer_stats[DateTime(2024, 1, 1)] = _test_stats(1.0, 0.0)
             store.optimizer_stats[DateTime(2024, 1, 2)] = _test_stats(2.0, 0.0)
-            table = first(IOM.optimizer_stats_table(store.optimizer_stats, "m"))
+            table = first(IOM.optimizer_stats_table(store.optimizer_stats))
             (metadata, _, datasets) = IOM.outputs_metadata(
                 "m", store, _test_params(2), MockSystem(),
                 IOM.Settings(
@@ -332,7 +328,7 @@ end
                 ),
                 _TEST_PRODUCER, DateTime(2024, 1, 1), table,
             )
-            return sort!([d.meta for (_, d) in datasets])
+            return sort!([IS.get_meta(d) for (_, d) in datasets])
         end
         @test metas(
             IOM.VariableKey(ParamVar{ParamMarkerA}, MockComponentType),
@@ -372,11 +368,11 @@ end
             (snake, ["t1", "t2", "t3"]),
             ("testvariabletype2__mockcomponenttype", ["u1", "u2", "u3"]),
         )
-            expected = InfrastructureOutputSchemas.LabelAxis(;
-                kind = "label", name = name, labels = labels,
-            )
-            @test InfrastructureOutputSchemas.encode(IS.get_axis(a, "m", name)) ==
-                  InfrastructureOutputSchemas.encode(expected)
+            axis = IS.get_axis(a, "m", name)
+            @test typeof(axis) == IS.LabelAxis
+            @test IS.axis_name(axis) == name
+            @test IS.get_labels(axis) == labels
+            @test IS.axis_group("m", axis) == "/m/axes/$name"
         end
         @test size(IS.read_dataset(a, "m", "TestVariableType2", "MockComponentType")[1]) ==
               (3, 3, 2, 2)
@@ -412,7 +408,8 @@ end
         @test_logs (:info, r"FuelConsumptionExpression") _test_write(dir, store, 2)
         @test haskey(store.expressions, key)
         metadata = IS.get_document(IS.open_outputs_reader(dir))
-        names = [d.entry_type for d in only(metadata.models).datasets]
+        names =
+            [IS.get_entry_type(d) for d in IS.get_datasets(only(IS.get_models(metadata)))]
         @test !any(occursin("Fuel", n) for n in names)
         @test "TestVariableType" in names
     end
@@ -420,7 +417,7 @@ end
     @testset "systems always declare the bundle" begin
         for system_to_file in (true, false)
             store = _test_decision_store()
-            table = first(IOM.optimizer_stats_table(store.optimizer_stats, "m"))
+            table = first(IOM.optimizer_stats_table(store.optimizer_stats))
             (metadata, _, _) = IOM.outputs_metadata(
                 "m", store, _test_params(2), MockSystem(),
                 IOM.Settings(
@@ -430,7 +427,7 @@ end
                 _TEST_PRODUCER, DateTime(2024, 1, 1), table,
             )
             uuid = Base.UUID(UInt128(1))
-            @test metadata.systems.additional_properties ==
+            @test IS.get_systems(metadata) ==
                   Dict(string(uuid) => IOM.make_system_dirname(uuid))
         end
     end
@@ -441,7 +438,8 @@ end
         _test_write(dir, store, 2)
         _test_write(dir, store, 2)
         a = IS.open_outputs_reader(dir)
-        @test string(IS.get_document(a).status) == "SUCCESSFULLY_FINALIZED"
+        @test IS.get_status(IS.get_document(a)) ==
+              IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
     end
 
     @testset "missing trait fails" begin

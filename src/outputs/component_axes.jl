@@ -1,8 +1,16 @@
 "Axes and axis data of one model. `dataset_axes!` adds component axes to it."
 struct AxisRegistry
-    axes::Dict{String, InfrastructureOutputSchemas.Axis}
+    axes::Dict{String, IS.OutputAxis}
     data::Dict{Tuple{String, String}, IS.AxisData}
     model::String
+end
+
+function AxisRegistry(model::String, axes::Vector{<:IS.OutputAxis})
+    return AxisRegistry(
+        Dict{String, IS.OutputAxis}(IS.axis_name(a) => a for a in axes),
+        Dict{Tuple{String, String}, IS.AxisData}(),
+        model,
+    )
 end
 
 "Return the column labels of `array` as one string vector per component axis."
@@ -49,23 +57,7 @@ function _same_axis_data(
     labels::Matrix{String},
 )
     data = reg.data[(reg.model, name)]
-    return data.ids == ids && data.labels == labels
-end
-
-function _component_axis(
-    columns::Vector{InfrastructureOutputSchemas.ComponentAxisColumnsItem},
-    n::Int,
-    group::String,
-    subset::String,
-)
-    if isempty(subset)
-        return InfrastructureOutputSchemas.ComponentAxis(;
-            kind = "component", columns = columns, length = n, group = group,
-        )
-    end
-    return InfrastructureOutputSchemas.ComponentAxis(;
-        kind = "component", columns = columns, length = n, group = group, subset = subset,
-    )
+    return IS.get_ids(data) == ids && IS.get_labels(data) == labels
 end
 
 """
@@ -97,23 +89,12 @@ function register_component_axis!(
         push!(subsets, string(suffix, "_", position))
     end
     for subset in subsets
-        columns = [
-            InfrastructureOutputSchemas.ComponentAxisColumnsItem(;
-                component_type = string(nameof(U)), has_ids = has_ids,
-            ),
-        ]
-        name = IS.axis_name(_component_axis(columns, length(labels), "", subset))
+        columns = [IS.ComponentAxisColumn(string(nameof(U)), has_ids)]
+        axis = IS.ComponentAxis(columns, length(labels), subset)
+        name = IS.axis_name(axis)
         if !haskey(reg.axes, name)
-            reg.axes[name] = InfrastructureOutputSchemas.Axis(
-                _component_axis(
-                    columns,
-                    length(labels),
-                    "/$(reg.model)/axes/$name",
-                    subset,
-                ),
-            )
-            reg.data[(reg.model, name)] =
-                IS.AxisData(id_matrix, label_matrix, Dates.DateTime[])
+            reg.axes[name] = axis
+            reg.data[(reg.model, name)] = IS.AxisData(id_matrix, label_matrix)
             return name
         end
         if _same_axis_data(reg, name, id_matrix, label_matrix)
@@ -127,11 +108,8 @@ function register_component_axis!(
     )
 end
 
-_has_labels(a::InfrastructureOutputSchemas.Axis, labels::Vector{String}) =
-    _has_labels(a.value, labels)
-_has_labels(a::InfrastructureOutputSchemas.LabelAxis, labels::Vector{String}) =
-    a.labels == labels
-_has_labels(::Any, ::Vector{String}) = false
+_has_labels(axis::IS.LabelAxis, labels::Vector{String}) = IS.get_labels(axis) == labels
+_has_labels(::IS.OutputAxis, ::Vector{String}) = false
 
 "Add a label axis for `labels` to `reg` under `name`. Return `name`."
 function register_label_axis!(
@@ -141,13 +119,7 @@ function register_label_axis!(
     dataset_name::String,
 )
     if !haskey(reg.axes, name)
-        reg.axes[name] = InfrastructureOutputSchemas.Axis(
-            InfrastructureOutputSchemas.LabelAxis(;
-                kind = "label",
-                name = name,
-                labels = labels,
-            ),
-        )
+        reg.axes[name] = IS.LabelAxis(name, labels)
         return name
     end
     if _has_labels(reg.axes[name], labels)
